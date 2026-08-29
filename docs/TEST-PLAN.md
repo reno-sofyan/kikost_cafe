@@ -87,18 +87,22 @@ Skenario referensi (spec §"Uji alur lengkap"):
 13. Buka Laporan → cek omzet, produk terlaris, laba kotor (HPP).
 14. Backup manual → restore ke DB uji.
 
-Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768):
-- ✅ smoke: buka POS bukan landing, app shell offline, tak ada tombol mati
-- ✅ alur: onboarding 6 langkah → login admin otomatis → data contoh ter-seed →
-  gate shift → buka shift (modal awal) → kasir menampilkan grid menu
+Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768, 9 test):
+- ✅ smoke: buka POS bukan landing, app shell offline (SW), tak ada tombol mati
+- ✅ onboarding 6 langkah → login admin otomatis → data contoh ter-seed → gate
+  shift → buka shift (modal awal) → kasir menampilkan grid menu
 - ✅ onboarding hanya sekali (reload tidak kembali ke wizard)
-- ✅ transaksi takeaway tunai: pesanan baru → tambah item → Bayar → modal tunai
-  (Uang Pas) → Selesaikan → "Pembayaran Berhasil"; verifikasi IndexedDB langsung:
-  order `paid` = 1, `products.stockQty` 60→59, `stockMovements` sale = 1 (qtyDelta −1)
-- ✅ pembayaran kurang dari total: tombol "Selesaikan Pembayaran" tetap disabled,
-  tidak ada order `paid`
-- ⏳ **belum**: modifier picker, mode offline + reconnect sync, cetak (mock),
-  retur, tutup shift + laporan — perlu dilengkapi.
+- ✅ **transaksi takeaway tunai**: pesanan → tambah item → Bayar → modal tunai
+  (Uang Pas) → Selesaikan → "Pembayaran Berhasil"; verifikasi IndexedDB: order
+  `paid`=1, `stockQty` 60→59, `stockMovements` sale=1 (qtyDelta −1, refOrderId cocok)
+- ✅ **pembayaran kurang dari total** ditolak (tombol Selesaikan disabled, tak ada paid)
+- ✅ **dine-in + BAYAR OFFLINE**: layar Meja render → quick-start dari meja →
+  `context.setOffline(true)` → bayar tunai → sukses offline; order dine_in paid +
+  tableId, stok −1, meja → `needs_cleaning`, ada `syncQueue` pending; reconnect +
+  reload → tidak dobel
+- ⏳ **belum**: modifier picker, sync ke backend nyata + reconnect push, cetak (mock),
+  retur via UI, tutup shift + cek selisih, laporan — perlu dilengkapi (langkah
+  8–9, 11–13 di atas).
 
 ## Butuh HARDWARE FISIK (belum dapat diuji di CI)
 
