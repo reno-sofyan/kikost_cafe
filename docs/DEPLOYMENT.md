@@ -1,80 +1,84 @@
 # Deployment — pos.kikost.com (VPS bersama Kikost)
 
-> **Aturan mutlak**: jangan menyentuh container/volume/network/DB milik `kikost.com`.
-> Stack POS berdiri sendiri sebagai Docker Compose project `cafe-pos`.
+> **Aturan mutlak**: jangan menyentuh container/volume/network/DB milik `kikost.com`
+> maupun Coolify. Stack POS berdiri sendiri sebagai Docker Compose project `cafe-pos`.
 
-## 0. Prasyarat yang butuh tindakan pemilik
+## Kondisi VPS (terverifikasi via API Hostinger, 2026-08-30)
 
-Selesaikan semua bagian lain lebih dulu; yang berikut memerlukan akses/keputusan Anda:
+| Item | Nilai | Implikasi |
+|---|---|---|
+| VPS | id `1582820`, **KVM 4** — 4 vCPU / 16 GB RAM / 200 GB disk | Headroom besar |
+| IP | `76.13.180.150` (IPv6: `2a02:4780:5e:bde1::1`) | target A record `pos` |
+| OS/Platform | **Ubuntu 24.04 + Coolify** | Reverse proxy = Traefik milik Coolify (`coolify-proxy`), network `coolify` |
+| Beban 24 jam | CPU ~5.5%, RAM ~1.7 GB terpakai | Sangat lega untuk +~1 GB stack POS |
+| Disk (metrik API) | ~8.6 GB (ambigu: perlu `df -h` untuk pastikan free vs used) | **Konfirmasi manual sebelum deploy** |
+| Firewall "KIKOST production" | SSH 22, HTTP 80, HTTPS 443 (TCP+UDP) → any | 80/443 sudah dipegang Coolify. **Tidak perlu ubah firewall** — POS tak buka port baru |
+| DNS `kikost.com` | dikelola Hostinger; `@ www app api booking coolify dashboard` → VPS | tambah `A pos → 76.13.180.150` |
 
-1. **DNS** — buat A record `pos.kikost.com` → IP VPS (sama dengan `kikost.com`).
-2. **Akses SSH** ke VPS (user dengan izin `docker`).
-3. **Reverse proxy** — konfirmasi apakah VPS sudah memakai Traefik / Nginx Proxy Manager
-   untuk `kikost.com`, dan nama docker network-nya.
-4. **APK signing** — keystore release untuk menandatangani APK (lihat `ANDROID-APK.md`).
+## 0. Prasyarat yang butuh tindakan / akses pemilik
 
-## 1. Pemeriksaan VPS (READ-ONLY, wajib)
+1. **DNS** — tambah `A pos → 76.13.180.150` pada zona `kikost.com`
+   (via MCP `hostinger-dns`, panel Hostinger, atau Coolify UI). TTL default.
+2. **Akses ke VPS** — SSH (user grup `docker`) **atau** akses Coolify UI + Coolify API token.
+3. **APK signing** — keystore release (lihat `ANDROID-APK.md`).
+
+## 1. Pemeriksaan VPS (READ-ONLY, wajib sebelum deploy)
+
+Via SSH:
 
 ```bash
-scp deploy/scripts/vps-inspect.sh user@vps:/tmp/
-ssh user@vps 'bash /tmp/vps-inspect.sh' | tee docs/vps-report-$(date +%F).txt
+scp deploy/scripts/vps-inspect.sh user@76.13.180.150:/tmp/
+ssh user@76.13.180.150 'bash /tmp/vps-inspect.sh' | tee docs/vps-report-$(date +%F).txt
 ```
 
-Skrip **tidak mengubah apa pun**. Baca bagian "Ringkasan keputusan" di akhir output.
-Simpan laporannya. Bila ada risiko mengganggu Kikost (disk hampir penuh, RAM mepet,
-port 80/443 dipakai selain reverse proxy, dll) → **hentikan bagian deploy**, laporkan,
-lanjutkan dulu development/test/build/image.
+Skrip **tidak mengubah apa pun**. Yang wajib dikonfirmasi (melengkapi data API di atas):
 
-Poin kritis yang harus lolos:
+- `df -h /` → **disk free > 5 GB** (metrik API ambigu — ini yang menentukan).
+- `docker network ls | grep coolify` → nama network proxy Coolify (biasanya `coolify`).
+- `docker ps` → nama container Kikost (jangan disentuh) + tidak ada `cafe-pos-*`.
+- `docker inspect coolify-proxy --format '{{json .Config.Cmd}}'` → nama entrypoint
+  (`http`/`https`) & certresolver Traefik Coolify.
+- `docker volume ls | grep cafe-pos` → kosong.
 
-- Ada network reverse proxy yang bisa dibagi (mis. `proxy`) **atau** VPS belum punya
-  reverse proxy sama sekali (maka pakai `docker-compose.traefik.yml`).
-- Disk bebas > 5 GB, inode cukup.
-- RAM bebas cukup untuk ± 1 GB (PG 512M + API 384M + web 128M + backup 128M).
-- Tidak ada container/volume/network bernama `cafe-pos-*`.
+Bila disk < 5 GB free atau ada nama bentrok → **hentikan deploy**, laporkan.
 
-## 2. Siapkan direktori aplikasi (terpisah)
+## 2. Siapkan direktori aplikasi (terpisah dari Coolify & Kikost)
 
 ```bash
-ssh user@vps
-sudo mkdir -p /opt/apps/cafe-pos
-sudo chown "$USER" /opt/apps/cafe-pos
+ssh user@76.13.180.150
+sudo mkdir -p /opt/apps/cafe-pos && sudo chown "$USER" /opt/apps/cafe-pos
 cd /opt/apps/cafe-pos
 git clone <repo-url> .          # atau rsync isi repo
 cp deploy/.env.example deploy/.env
 ```
 
-Isi `deploy/.env`:
+Isi `deploy/.env` (rahasia BARU, bukan milik Kikost):
 
 ```bash
-# rahasia — buat baru, jangan pakai punya Kikost
 openssl rand -hex 24   # -> POSTGRES_PASSWORD
 openssl rand -hex 32   # -> SYNC_DEVICE_KEYS (satu per tablet, pisah koma)
 ```
 
-Set `POS_DOMAIN=pos.kikost.com`, `PROXY_NETWORK=<nama network proxy>`,
-`TRAEFIK_CERTRESOLVER=<certresolver Let's Encrypt yang ada>`.
+Set: `POS_DOMAIN=pos.kikost.com`, `PROXY_NETWORK=coolify`,
+`TRAEFIK_HTTPS_ENTRYPOINT=https`, `TRAEFIK_CERTRESOLVER=letsencrypt`
+(sesuaikan bila langkah 1 menunjukkan nama lain).
 
-## 3a. Bila VPS SUDAH punya reverse proxy
+## 3. Pasang di balik Traefik Coolify
 
-Stack POS otomatis menempel ke `PROXY_NETWORK` lewat label Traefik (lihat
-`deploy/docker-compose.yml`). Tidak ada perubahan pada proxy yang sudah ada.
+`deploy/docker-compose.yml` menempelkan `cafe-pos-web` & `cafe-pos-api` ke network
+`coolify` dengan label Traefik. Traefik Coolify menemukannya otomatis dan menerbitkan
+sertifikat Let's Encrypt untuk `pos.kikost.com`. **Coolify UI tidak perlu tahu** dan
+resource Kikost tidak tersentuh.
 
-Jika proxy-nya **Nginx Proxy Manager** (bukan Traefik): abaikan label Traefik,
-buat Proxy Host di UI NPM:
-`pos.kikost.com` → `cafe-pos-web:80` (forward), dan location `/api` → `cafe-pos-api:8080`,
-request SSL Let's Encrypt. Pastikan `cafe-pos-web`/`cafe-pos-api` ikut network NPM
-(`PROXY_NETWORK`).
+> Alternatif (opsional): deploy sebagai resource **Docker Compose** di dalam Coolify UI
+> (New Resource → Docker Compose → tempel `deploy/docker-compose.yml`, set domain
+> `pos.kikost.com`). Coolify yang mengelola label & TLS. Pilih ini bila ingin POS
+> muncul di dashboard Coolify.
 
-## 3b. Bila VPS BELUM punya reverse proxy
-
-Hanya jika benar-benar tidak ada yang memegang 80/443:
-
-```bash
-cd /opt/apps/cafe-pos/deploy
-echo "ACME_EMAIL=admin@kikost.com" >> .env
-docker compose -p cafe-pos-proxy --env-file .env -f docker-compose.traefik.yml up -d
-```
+Jika ternyata VPS **tidak** memakai Coolify/Traefik (mis. sudah diganti): set
+`PROXY_NETWORK=proxy`, `TRAEFIK_HTTPS_ENTRYPOINT=websecure`; atau untuk NPM buat Proxy
+Host `pos.kikost.com` → `cafe-pos-web:80` + location `/api` → `cafe-pos-api:8080`.
+Jika tidak ada proxy sama sekali: `docker-compose.traefik.yml` (last resort).
 
 ## 4. Build image (di luar jam operasional)
 

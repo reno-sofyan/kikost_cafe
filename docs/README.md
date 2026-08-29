@@ -20,6 +20,7 @@ backend Node.js/Fastify + PostgreSQL, deployment Docker Compose terpisah di VPS 
 | [GUIDE-KASIR.md](GUIDE-KASIR.md) | Panduan penggunaan harian untuk kasir |
 | [GUIDE-ADMIN.md](GUIDE-ADMIN.md) | Panduan administrator (produk, pengguna, laporan, backup) |
 | [VPS-PRECHECK.md](VPS-PRECHECK.md) | Cara menjalankan & membaca `deploy/scripts/vps-inspect.sh` |
+| [vps-recon-2026-08-30.md](vps-recon-2026-08-30.md) | Hasil pemeriksaan VPS via API Hostinger (Coolify, resource, firewall, DNS) |
 
 ## Ringkasan repositori
 

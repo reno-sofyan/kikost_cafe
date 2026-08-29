@@ -12,6 +12,9 @@ Docker Compose project: **`cafe-pos`** (terpisah total dari Kikost).
 | `cafe-pos-backup` | `postgres:16-alpine` | Cron `pg_dump` harian | unless-stopped | 0.5 CPU / 128M | ada backup < 26 jam |
 | `cafe-pos-traefik` *(opsional)* | `traefik:v3.1` | Reverse proxy — HANYA bila VPS belum punya | unless-stopped | 0.5 CPU / 128M | — |
 
+> VPS produksi memakai **Coolify** → reverse proxy sudah ada (`coolify-proxy`,
+> network `coolify`). `cafe-pos-traefik` tidak dipakai. Set `PROXY_NETWORK=coolify`.
+
 ## Port
 
 | Port | Diekspos ke | Oleh | Catatan |
@@ -28,7 +31,7 @@ Uji lokal (`docker-compose.local.yml`) mem-publish `127.0.0.1:8080` (web) & `127
 | Network | Tipe | Anggota | Tujuan |
 |---|---|---|---|
 | `cafe-pos-internal` | `internal: true` (tanpa akses internet) | postgres, api, backup | Lalu lintas DB terisolasi |
-| `proxy` (`PROXY_NETWORK`) | external (milik reverse proxy yang ada) | api, web | Routing dari reverse proxy |
+| `coolify` (`PROXY_NETWORK`) | external (milik Coolify/Traefik yang ada) | api, web | Routing dari reverse proxy Coolify |
 
 ## Volume
 
