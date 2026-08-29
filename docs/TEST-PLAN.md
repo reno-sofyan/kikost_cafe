@@ -9,7 +9,7 @@ Terakhir dijalankan: 2026-08-30 (mesin dev).
 | Frontend typecheck | `npm run typecheck` | ✅ lulus |
 | Frontend lint | `npm run lint` | ✅ lulus (0 warning) |
 | Frontend unit/integrasi | `npm test` | ✅ **57 test / 12 file** lulus |
-| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **9 test** lulus (smoke, onboarding→shift→kasir, transaksi takeaway & dine-in, BAYAR OFFLINE, underpayment) |
+| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **13 test** lulus (smoke, onboarding, transaksi takeaway/dine-in, BAYAR OFFLINE, underpayment, modifier, tutup shift +guard/selisih, retur) |
 | Frontend production build | `npm run build` | ✅ lulus (PWA + SW ter-generate) |
 | Backend typecheck | `cd backend && npm run typecheck` | ✅ lulus |
 | Backend lint | `cd backend && npm run lint` | ✅ lulus |
@@ -100,9 +100,16 @@ Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768, 9 t
   `context.setOffline(true)` → bayar tunai → sukses offline; order dine_in paid +
   tableId, stok −1, meja → `needs_cleaning`, ada `syncQueue` pending; reconnect +
   reload → tidak dobel
-- ⏳ **belum**: modifier picker, sync ke backend nyata + reconnect push, cetak (mock),
-  retur via UI, tutup shift + cek selisih, laporan — perlu dilengkapi (langkah
-  8–9, 11–13 di atas).
+- ✅ **modifier picker**: Cappuccino + Large + Boba → `orderItems` lineTotal 35.000,
+  2 modifier tersimpan (priceDelta total 10.000)
+- ✅ **tutup shift ditolak** saat ada open bill (shift tetap `open`)
+- ✅ **tutup shift + selisih**: kas aktual kurang Rp 5.000 → "Selisih" tampil →
+  shift `closed`, `variance = -5000`
+- ✅ **retur sebagian** (via Riwayat → detail → Retur → pilih item → alasan →
+  PIN admin): `returns` record `restocked`, stok kembali 59→60, `orderItems.voided`,
+  audit log `order.return`, order tetap `paid` (tidak dihapus)
+- ⏳ **belum**: sync ke backend nyata + reconnect push, cetak via UI (mock),
+  pembatalan (void) via UI, laporan (omzet/laba HPP) — perlu dilengkapi.
 
 ## Butuh HARDWARE FISIK (belum dapat diuji di CI)
 
