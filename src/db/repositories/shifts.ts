@@ -3,8 +3,13 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import type { CashMovement, CashMovementType, Shift } from '@/types/domain'
 
-export async function getOpenShift(): Promise<Shift | undefined> {
-  return db.shifts.where('status').equals('open').first()
+/**
+ * Shift yang sedang berjalan, atau `null` bila tidak ada.
+ * Mengembalikan `null` (bukan `undefined`) supaya komponen yang memakai
+ * `useLiveQuery` bisa membedakan "masih memuat" (`undefined`) dari "tidak ada shift" (`null`).
+ */
+export async function getOpenShift(): Promise<Shift | null> {
+  return (await db.shifts.where('status').equals('open').first()) ?? null
 }
 
 export async function openShift(params: {

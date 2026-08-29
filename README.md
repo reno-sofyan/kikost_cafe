@@ -23,8 +23,8 @@ Nama & identitas kafe diubah dari dalam aplikasi (Pengaturan). Nama awal: "Kafe 
 | Backup `pg_dump` harian + retensi + restore ke DB uji | ✅ diuji end-to-end |
 | Printer: adapter browser / Bluetooth ESC-POS / WiFi-LAN + mock + native plugin Android | ✅ kode + mock test (printer fisik: pending) |
 | APK Android (proyek `android/`, signing config) | ✅ proyek siap (build butuh JDK+SDK di mesin build) |
-| Unit/integrasi test | ✅ 48 frontend + 21 backend |
-| E2E Playwright | ✅ smoke (4) lulus; skenario transaksi penuh: kerangka |
+| Unit/integrasi test | ✅ 53 frontend + 21 backend |
+| E2E Playwright | ✅ 6 lulus (smoke + onboarding→shift→kasir); skenario transaksi penuh: sebagian |
 | CI (GitHub Actions) + release image ke GHCR | ✅ |
 | Deploy ke VPS + DNS `pos.kikost.com` + tanda tangan APK | ⏳ butuh akses (lihat `docs/DEPLOYMENT.md`) |
 

@@ -1,6 +1,6 @@
 # Rencana & Hasil Pengujian
 
-Terakhir dijalankan: 2026-08-29 (mesin dev).
+Terakhir dijalankan: 2026-08-30 (mesin dev).
 
 ## Ringkasan otomatis
 
@@ -8,7 +8,8 @@ Terakhir dijalankan: 2026-08-29 (mesin dev).
 |---|---|---|
 | Frontend typecheck | `npm run typecheck` | ✅ lulus |
 | Frontend lint | `npm run lint` | ✅ lulus (0 warning) |
-| Frontend unit/integrasi | `npm test` | ✅ **44 test / 9 file** lulus |
+| Frontend unit/integrasi | `npm test` | ✅ **53 test / 11 file** lulus |
+| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **6 test** lulus (smoke + alur onboarding→shift→kasir) |
 | Frontend production build | `npm run build` | ✅ lulus (PWA + SW ter-generate) |
 | Backend typecheck | `cd backend && npm run typecheck` | ✅ lulus |
 | Backend lint | `cd backend && npm run lint` | ✅ lulus |
@@ -21,7 +22,19 @@ Terakhir dijalankan: 2026-08-29 (mesin dev).
 | Sync push/pull end-to-end (container) | curl manual | ✅ accepted → pull mengembalikan data |
 | Backup `pg_dump` (container) | `backup.sh` | ✅ arsip gzip valid dibuat |
 | Restore ke DB uji (container) | `restore.sh` | ✅ 5 tabel, baris terjaga, validasi lulus |
-| `docker compose config` (produksi + traefik) | validasi | ✅ valid |
+| `docker compose config` (Coolify + traefik) | validasi | ✅ valid |
+
+## Bug ditemukan & diperbaiki saat pengujian
+
+1. **Layar blank saat first run** — `getSettings()` menulis di dalam transaksi
+   read-only `useLiveQuery` → `ReadOnlyError`. Fix: `getSettings()` murni baca +
+   `ensureDefaultSettings()` di `main.tsx`.
+2. **Scope transaksi Dexie** — `recalcOrderTotals()` membaca `db.settings` di luar
+   scope 7 transaksi order. Fix: tambahkan `db.settings` ke scope.
+3. **ShiftScreen macet "Memuat..."** — `getOpenShift()` mengembalikan `undefined`
+   saat belum ada shift, yang dianggap komponen sebagai "masih loading" → tombol
+   "Buka Shift" tak pernah muncul → shift pertama tak bisa dibuka (POS tak terpakai
+   setelah onboarding). Fix: `getOpenShift()` kembalikan `null`.
 
 ## Cakupan test otomatis (per requirement)
 
@@ -69,9 +82,13 @@ Skenario referensi (spec §"Uji alur lengkap"):
 13. Buka Laporan → cek omzet, produk terlaris, laba kotor (HPP).
 14. Backup manual → restore ke DB uji.
 
-Status: kerangka Playwright tersedia (`tests/e2e/`, `playwright.config.ts`).
-`npm run test:e2e` menjalankan smoke test (app load, offline shell, health).
-Skenario transaksi penuh perlu dilengkapi setelah data seed final.
+Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768):
+- ✅ smoke: buka POS bukan landing, app shell offline, tak ada tombol mati
+- ✅ alur: onboarding 6 langkah → login admin otomatis → data contoh ter-seed →
+  gate shift → buka shift (modal awal) → kasir menampilkan grid menu
+- ✅ onboarding hanya sekali (reload tidak kembali ke wizard)
+- ⏳ **belum**: langkah 4–17 (tambah item+modifier, offline, bayar, cetak, retur,
+  tutup shift, laporan) — perlu dilengkapi.
 
 ## Butuh HARDWARE FISIK (belum dapat diuji di CI)
 
