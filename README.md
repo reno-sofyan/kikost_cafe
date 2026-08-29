@@ -24,7 +24,7 @@ Nama & identitas kafe diubah dari dalam aplikasi (Pengaturan). Nama awal: "Kafe 
 | Printer: adapter browser / Bluetooth ESC-POS / WiFi-LAN + mock + native plugin Android | ✅ kode + mock test (printer fisik: pending) |
 | APK Android (proyek `android/`, signing config) | ✅ proyek siap (build butuh JDK+SDK di mesin build) |
 | Unit/integrasi test | ✅ 57 frontend + 21 backend |
-| E2E Playwright | ✅ 8 lulus (smoke, onboarding→shift→kasir, transaksi tunai + verifikasi stok) |
+| E2E Playwright | ✅ 9 lulus (+ dine-in & pembayaran offline) |
 | CI (GitHub Actions) + release image ke GHCR | ✅ |
 | Deploy ke VPS + DNS `pos.kikost.com` + tanda tangan APK | ⏳ butuh akses (lihat `docs/DEPLOYMENT.md`) |
 

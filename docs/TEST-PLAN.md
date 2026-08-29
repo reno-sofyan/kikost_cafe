@@ -9,7 +9,7 @@ Terakhir dijalankan: 2026-08-30 (mesin dev).
 | Frontend typecheck | `npm run typecheck` | ✅ lulus |
 | Frontend lint | `npm run lint` | ✅ lulus (0 warning) |
 | Frontend unit/integrasi | `npm test` | ✅ **57 test / 12 file** lulus |
-| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **8 test** lulus (smoke + onboarding→shift→kasir + transaksi tunai + verifikasi stok) |
+| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **9 test** lulus (smoke, onboarding→shift→kasir, transaksi takeaway & dine-in, BAYAR OFFLINE, underpayment) |
 | Frontend production build | `npm run build` | ✅ lulus (PWA + SW ter-generate) |
 | Backend typecheck | `cd backend && npm run typecheck` | ✅ lulus |
 | Backend lint | `cd backend && npm run lint` | ✅ lulus |
