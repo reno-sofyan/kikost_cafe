@@ -9,7 +9,7 @@ Terakhir dijalankan: 2026-08-30 (mesin dev).
 | Frontend typecheck | `npm run typecheck` | ✅ lulus |
 | Frontend lint | `npm run lint` | ✅ lulus (0 warning) |
 | Frontend unit/integrasi | `npm test` | ✅ **61 test / 13 file** lulus |
-| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **13 test** lulus (smoke, onboarding, transaksi takeaway/dine-in, BAYAR OFFLINE, underpayment, modifier, tutup shift +guard/selisih, retur) |
+| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **15 test** lulus (+ pembatalan via UI, laporan omzet/laba-HPP/produk-terlaris) |
 | Frontend e2e SINKRONISASI (backend nyata) | `npm run test:e2e:sync` | ✅ **1 test** lulus (konfigurasi backend via UI → transaksi online & offline → tersinkron ke Postgres **tepat satu kali**, sinkron ulang idempoten) |
 | Frontend production build | `npm run build` | ✅ lulus (PWA + SW ter-generate) |
 | Backend typecheck | `cd backend && npm run typecheck` | ✅ lulus |
@@ -88,7 +88,7 @@ Skenario referensi (spec §"Uji alur lengkap"):
 13. Buka Laporan → cek omzet, produk terlaris, laba kotor (HPP).
 14. Backup manual → restore ke DB uji.
 
-Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768, 9 test):
+Status Playwright (`tests/e2e/`, viewport 1366×768, 15 test + 1 sync):
 - ✅ smoke: buka POS bukan landing, app shell offline (SW), tak ada tombol mati
 - ✅ onboarding 6 langkah → login admin otomatis → data contoh ter-seed → gate
   shift → buka shift (modal awal) → kasir menampilkan grid menu
@@ -114,7 +114,11 @@ Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768, 9 t
   online tersinkron → transaksi **offline** diantrekan → setelah online, `pull` server
   berisi **2 order, nomor transaksi unik** (tidak dobel) → "Sinkronkan Sekarang" 2×
   tidak mengubah state server (idempoten)
-- ⏳ **belum**: cetak via UI (mock), pembatalan (void) via UI, laporan (omzet/laba HPP).
+- ✅ **pembatalan (void) via UI**: Riwayat → detail → Batalkan → alasan → PIN admin →
+  order `void`, stok kembali 59→60, audit log `order.void`
+- ✅ **laporan Hari Ini**: Omzet, Jumlah Transaksi = 1, **Laba Kotor > 0 & < Omzet**
+  (HPP dipotong), Kentang Goreng di Produk Terlaris qty 1x, Laporan Stok render
+- ⏳ **belum**: cetak struk via UI (mock driver), gabung/pisah tagihan, KDS status.
 
 ## Butuh HARDWARE FISIK (belum dapat diuji di CI)
 
