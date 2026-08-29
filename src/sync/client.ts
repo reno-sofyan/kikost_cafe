@@ -1,4 +1,5 @@
 import type { SyncEntity } from '@/types/domain'
+import { getApiBaseUrl, getDeviceKey, isBackendConfigured as isConfigured } from '@/sync/deviceConfig'
 
 export interface SyncPushItem {
   entity: SyncEntity
@@ -24,11 +25,11 @@ export interface SyncPullResponse {
 }
 
 function apiBaseUrl(): string {
-  return (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
+  return getApiBaseUrl()
 }
 
 function deviceSyncKey(): string {
-  return (import.meta.env.VITE_DEVICE_SYNC_KEY as string | undefined) ?? ''
+  return getDeviceKey()
 }
 
 export class SyncNotConfiguredError extends Error {
@@ -81,5 +82,5 @@ export async function pingBackend(): Promise<boolean> {
 }
 
 export function isBackendConfigured(): boolean {
-  return apiBaseUrl().length > 0
+  return isConfigured()
 }

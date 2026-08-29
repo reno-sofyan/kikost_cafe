@@ -46,15 +46,19 @@ npm run android:assembleRelease
 
 ## Konfigurasi URL backend
 
-Aplikasi memakai `VITE_API_BASE_URL` saat build. Untuk APK produksi yang menunjuk ke
-`https://pos.kikost.com`:
+Dua cara (nilai di tablet menang atas nilai build):
 
-```bash
-VITE_API_BASE_URL=https://pos.kikost.com npm run build && npm run cap:sync
-```
+1. **Per tablet, tanpa build ulang (disarankan)** — buka **Pengaturan → Sinkronisasi**,
+   isi URL `https://pos.kikost.com` + kunci perangkat, tekan **Uji Koneksi** lalu
+   **Simpan**. Setiap tablet memakai satu kunci dari `SYNC_DEVICE_KEYS` backend.
+   Bisa "Buat kunci acak" lalu daftarkan kunci itu di `SYNC_DEVICE_KEYS`.
 
-Kunci perangkat sinkronisasi dimasukkan lewat **Pengaturan → Sinkronisasi** di tablet
-(bukan di-hardcode). Setiap tablet memakai satu kunci dari `SYNC_DEVICE_KEYS`.
+2. **Baked-in saat build** — bila ingin APK langsung terkonfigurasi:
+   ```bash
+   VITE_API_BASE_URL=https://pos.kikost.com npm run build && npm run cap:sync
+   ```
+   (Kunci sebaiknya tetap diisi di tablet, bukan `VITE_DEVICE_SYNC_KEY`, agar tiap
+   tablet punya kunci berbeda.)
 
 ## Pemasangan di tablet
 

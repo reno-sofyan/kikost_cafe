@@ -36,6 +36,15 @@ Semua container POS berada pada Docker project `cafe-pos`, network internal
 
 ## Model sinkronisasi
 
+### Konfigurasi backend per-perangkat
+
+`src/sync/deviceConfig.ts`: URL backend + kunci perangkat dibaca dengan prioritas
+**nilai tersimpan di tablet** (`localStorage`, diisi lewat Pengaturan → Sinkronisasi:
+URL, kunci, tombol "Uji Koneksi") **> nilai build-time** (`VITE_API_BASE_URL`,
+`VITE_DEVICE_SYNC_KEY`). Jadi satu APK bisa dipasang di banyak tablet dan
+dikonfigurasi langsung di tablet tanpa build ulang. `src/sync/client.ts` memakai
+config ini untuk `Authorization: Bearer <kunci>` dan base URL.
+
 ### Outbox (klien)
 
 Setiap penulisan bisnis lokal mendaftarkan entri `syncQueue` **dalam transaksi Dexie

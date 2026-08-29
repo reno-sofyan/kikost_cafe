@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:sync": "playwright test --config playwright.sync.config.ts",
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
     "android:assembleDebug": "cd android && ./gradlew assembleDebug",

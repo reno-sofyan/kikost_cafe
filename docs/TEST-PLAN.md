@@ -8,8 +8,9 @@ Terakhir dijalankan: 2026-08-30 (mesin dev).
 |---|---|---|
 | Frontend typecheck | `npm run typecheck` | ✅ lulus |
 | Frontend lint | `npm run lint` | ✅ lulus (0 warning) |
-| Frontend unit/integrasi | `npm test` | ✅ **57 test / 12 file** lulus |
+| Frontend unit/integrasi | `npm test` | ✅ **61 test / 13 file** lulus |
 | Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **13 test** lulus (smoke, onboarding, transaksi takeaway/dine-in, BAYAR OFFLINE, underpayment, modifier, tutup shift +guard/selisih, retur) |
+| Frontend e2e SINKRONISASI (backend nyata) | `npm run test:e2e:sync` | ✅ **1 test** lulus (konfigurasi backend via UI → transaksi online & offline → tersinkron ke Postgres **tepat satu kali**, sinkron ulang idempoten) |
 | Frontend production build | `npm run build` | ✅ lulus (PWA + SW ter-generate) |
 | Backend typecheck | `cd backend && npm run typecheck` | ✅ lulus |
 | Backend lint | `cd backend && npm run lint` | ✅ lulus |
@@ -108,8 +109,12 @@ Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768, 9 t
 - ✅ **retur sebagian** (via Riwayat → detail → Retur → pilih item → alasan →
   PIN admin): `returns` record `restocked`, stok kembali 59→60, `orderItems.voided`,
   audit log `order.return`, order tetap `paid` (tidak dihapus)
-- ⏳ **belum**: sync ke backend nyata + reconnect push, cetak via UI (mock),
-  pembatalan (void) via UI, laporan (omzet/laba HPP) — perlu dilengkapi.
+- ✅ **SINKRONISASI ke backend nyata** (`npm run test:e2e:sync`, Postgres ephemeral):
+  konfigurasi URL+kunci via Pengaturan→Sinkronisasi (Uji Koneksi hijau) → transaksi
+  online tersinkron → transaksi **offline** diantrekan → setelah online, `pull` server
+  berisi **2 order, nomor transaksi unik** (tidak dobel) → "Sinkronkan Sekarang" 2×
+  tidak mengubah state server (idempoten)
+- ⏳ **belum**: cetak via UI (mock), pembatalan (void) via UI, laporan (omzet/laba HPP).
 
 ## Butuh HARDWARE FISIK (belum dapat diuji di CI)
 

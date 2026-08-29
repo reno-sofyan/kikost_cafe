@@ -11,6 +11,8 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // sync.spec.ts butuh backend nyata — dijalankan via playwright.sync.config.ts
+  testIgnore: /sync\.spec\.ts/,
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
