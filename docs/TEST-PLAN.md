@@ -8,8 +8,8 @@ Terakhir dijalankan: 2026-08-30 (mesin dev).
 |---|---|---|
 | Frontend typecheck | `npm run typecheck` | ✅ lulus |
 | Frontend lint | `npm run lint` | ✅ lulus (0 warning) |
-| Frontend unit/integrasi | `npm test` | ✅ **53 test / 11 file** lulus |
-| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **6 test** lulus (smoke + alur onboarding→shift→kasir) |
+| Frontend unit/integrasi | `npm test` | ✅ **57 test / 12 file** lulus |
+| Frontend e2e (Playwright) | `npm run test:e2e` | ✅ **8 test** lulus (smoke + onboarding→shift→kasir + transaksi tunai + verifikasi stok) |
 | Frontend production build | `npm run build` | ✅ lulus (PWA + SW ter-generate) |
 | Backend typecheck | `cd backend && npm run typecheck` | ✅ lulus |
 | Backend lint | `cd backend && npm run lint` | ✅ lulus |
@@ -35,6 +35,11 @@ Terakhir dijalankan: 2026-08-30 (mesin dev).
    saat belum ada shift, yang dianggap komponen sebagai "masih loading" → tombol
    "Buka Shift" tak pernah muncul → shift pertama tak bisa dibuka (POS tak terpakai
    setelah onboarding). Fix: `getOpenShift()` kembalikan `null`.
+4. **`cafeTables.orderBy('name')` & `users.orderBy('name')` → Dexie `SchemaError`**
+   — field `name` tidak ter-indeks di schema. Layar Meja, modal Pesanan Baru
+   (pilih meja), dan Manajemen Pengguna jadi **blank/crash** saat dibuka. Fix:
+   schema `version(2)` menambah indeks `name` pada kedua store; regresi
+   `src/db/schema.test.ts` memeriksa semua `list*()` repository tidak melempar.
 
 ## Cakupan test otomatis (per requirement)
 
@@ -87,8 +92,13 @@ Status Playwright (`tests/e2e/`, `playwright.config.ts`, viewport 1366×768):
 - ✅ alur: onboarding 6 langkah → login admin otomatis → data contoh ter-seed →
   gate shift → buka shift (modal awal) → kasir menampilkan grid menu
 - ✅ onboarding hanya sekali (reload tidak kembali ke wizard)
-- ⏳ **belum**: langkah 4–17 (tambah item+modifier, offline, bayar, cetak, retur,
-  tutup shift, laporan) — perlu dilengkapi.
+- ✅ transaksi takeaway tunai: pesanan baru → tambah item → Bayar → modal tunai
+  (Uang Pas) → Selesaikan → "Pembayaran Berhasil"; verifikasi IndexedDB langsung:
+  order `paid` = 1, `products.stockQty` 60→59, `stockMovements` sale = 1 (qtyDelta −1)
+- ✅ pembayaran kurang dari total: tombol "Selesaikan Pembayaran" tetap disabled,
+  tidak ada order `paid`
+- ⏳ **belum**: modifier picker, mode offline + reconnect sync, cetak (mock),
+  retur, tutup shift + laporan — perlu dilengkapi.
 
 ## Butuh HARDWARE FISIK (belum dapat diuji di CI)
 

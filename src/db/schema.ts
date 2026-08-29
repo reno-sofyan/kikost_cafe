@@ -69,6 +69,13 @@ export class KikostDatabase extends Dexie {
       returns: 'id, orderId, createdAt',
       syncQueue: 'id, entity, entityId, status, createdAt',
     })
+
+    // v2: indeks `name` untuk cafeTables & users — dipakai `orderBy('name')`
+    // pada layar Meja dan Manajemen Pengguna (tanpa indeks -> Dexie SchemaError).
+    this.version(2).stores({
+      users: 'id, role, active, name',
+      cafeTables: 'id, status, area, name',
+    })
   }
 }
 
