@@ -1,0 +1,133 @@
+openapi: 3.1.0
+info:
+  title: Kikost Cafe POS — Sync API
+  version: 0.1.0
+  description: >
+    API sinkronisasi offline-first untuk Kikost Cafe POS. Klien (PWA/APK) menyimpan
+    seluruh data secara lokal di IndexedDB dan mengirim perubahan lewat antrean
+    outbox. Server berperan sebagai relay multi-perangkat + sumber backup, menegakkan
+    idempotency dan proteksi transaksi final.
+servers:
+  - url: https://pos.kikost.com
+    description: Produksi
+  - url: http://localhost:8081
+    description: Uji lokal (docker-compose.local.yml)
+tags:
+  - name: health
+  - name: sync
+
+components:
+  securitySchemes:
+    deviceKey:
+      type: http
+      scheme: bearer
+      description: >
+        Kunci perangkat (opaque string, mis. `openssl rand -hex 32`). Sah bila
+        tercantum di env `SYNC_DEVICE_KEYS` atau terdaftar di tabel `sync_devices`.
+  schemas:
+    PushItem:
+      type: object
+      required: [entity, entityId, idempotencyKey, payload]
+      properties:
+        entity:
+          type: string
+          enum: [orders, orderItems, payments, shifts, cashMovements, expenses, returns, stockMovements, products, ingredients, categories, customers, auditLogs]
+        entityId: { type: string, description: UUID entitas (= payload.id) }
+        idempotencyKey: { type: string, format: uuid }
+        payload:
+          type: object
+          description: Objek entitas utuh dari klien. Harus punya `id` dan `updatedAt`/`createdAt` (epoch ms).
+          additionalProperties: true
+    PushResultItem:
+      type: object
+      properties:
+        idempotencyKey: { type: string, format: uuid }
+        status: { type: string, enum: [accepted, duplicate, rejected] }
+        error: { type: string, nullable: true }
+    PushResponse:
+      type: object
+      properties:
+        results: { type: array, items: { $ref: '#/components/schemas/PushResultItem' } }
+        serverTime: { type: integer, description: Kursor server monotonik terkini. Simpan & kirim sebagai `since` pada pull berikutnya. }
+    PullResponse:
+      type: object
+      properties:
+        entities:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: object, additionalProperties: true }
+        serverTime: { type: integer }
+
+paths:
+  /api/health:
+    get:
+      tags: [health]
+      summary: Status service + konektivitas database
+      responses:
+        '200':
+          description: Sehat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  db: { type: string, example: ok }
+                  latencyMs: { type: integer }
+                  time: { type: string, format: date-time }
+        '503': { description: Database tidak terjangkau }
+  /api/health/live:
+    get:
+      tags: [health]
+      summary: Liveness (proses hidup, tanpa cek DB)
+      responses:
+        '200': { description: ok }
+
+  /api/sync/push:
+    post:
+      tags: [sync]
+      security: [{ deviceKey: [] }]
+      summary: Kirim batch perubahan lokal (idempoten)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, items]
+              properties:
+                deviceId: { type: string }
+                items:
+                  type: array
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/PushItem' }
+      responses:
+        '200':
+          description: Batch diproses (lihat status per item)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushResponse' }
+        '400': { description: Body tidak valid }
+        '401': { description: Kunci perangkat tidak sah / tidak ada }
+        '413': { description: Batch melebihi batas }
+        '429': { description: Rate limit terlampaui }
+
+  /api/sync/pull:
+    get:
+      tags: [sync]
+      security: [{ deviceKey: [] }]
+      summary: Ambil perubahan setelah kursor `since`
+      parameters:
+        - in: query
+          name: since
+          schema: { type: integer, default: 0 }
+          description: Kursor dari `serverTime` respons sebelumnya. 0 = ambil semua.
+      responses:
+        '200':
+          description: Perubahan inkremental per entitas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PullResponse' }
+        '401': { description: Kunci perangkat tidak sah }
+        '429': { description: Rate limit terlampaui }
