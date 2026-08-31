@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+coverage
+test
+scripts/test-with-db.sh
+.git

@@ -1,0 +1,56 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# env
+.env
+.env.local
+
+# capacitor / android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/*.keystore
+android/app/*.jks
+*.keystore
+*.jks
+!android/app/debug.keystore
+
+# testing
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# backend
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/coverage/
+
+# deployment
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+deploy/.rollback/
+deploy/vps-report-*.txt
+
+# logs
+*.log
+npm-debug.log*
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# Android signing (jangan commit)
+android/keystore.properties
+android/*.jks
+android/*.keystore
+
+# TS build cache
+*.tsbuildinfo

@@ -1,0 +1,201 @@
+# Kikost Cafe POS — stack produksi (TERPISAH dari kikost.com).
+#
+# Prinsip isolasi:
+#  - project name khusus: cafe-pos  (jalankan dengan: docker compose -p cafe-pos ...)
+#  - network internal khusus, tidak dibagikan dengan Kikost
+#  - volume khusus berawalan cafe-pos-
+#  - PostgreSQL TIDAK diekspos ke host / internet
+#  - hanya reverse proxy (Traefik) yang memegang port 80/443
+#
+# Deploy: lihat docs/DEPLOYMENT.md. Rollback: docs/ROLLBACK.md.
+
+name: cafe-pos
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+networks:
+  cafe-pos-internal:
+    name: cafe-pos-internal
+    internal: true
+  proxy:
+    name: ${PROXY_NETWORK:-proxy}
+    external: true
+
+volumes:
+  cafe-pos-pgdata:
+    name: cafe-pos-pgdata
+  cafe-pos-backups:
+    name: cafe-pos-backups
+
+services:
+  cafe-pos-postgres:
+    image: postgres:16-alpine
+    container_name: cafe-pos-postgres
+    restart: unless-stopped
+    stop_grace_period: 30s
+    networks:
+      - cafe-pos-internal
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?wajib}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?wajib}
+      POSTGRES_DB: ${POSTGRES_DB:?wajib}
+      # Tuning konservatif untuk VPS bersama.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=${PG_MAX_CONNECTIONS:-50}"
+      - "-c"
+      - "shared_buffers=${PG_SHARED_BUFFERS:-128MB}"
+      - "-c"
+      - "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-384MB}"
+      - "-c"
+      - "work_mem=${PG_WORK_MEM:-8MB}"
+      - "-c"
+      - "maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-64MB}"
+      - "-c"
+      - "log_min_duration_statement=1000"
+    volumes:
+      - cafe-pos-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "${PG_CPU_LIMIT:-1.0}"
+          memory: ${PG_MEM_LIMIT:-512M}
+    logging: *default-logging
+
+  cafe-pos-api:
+    image: ${API_IMAGE:-cafe-pos-api:local}
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: cafe-pos-api
+    restart: unless-stopped
+    stop_grace_period: 20s
+    depends_on:
+      cafe-pos-postgres:
+        condition: service_healthy
+    networks:
+      - cafe-pos-internal
+      - proxy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@cafe-pos-postgres:5432/${POSTGRES_DB}
+      PGPOOL_MAX: ${PGPOOL_MAX:-10}
+      SYNC_DEVICE_KEYS: ${SYNC_DEVICE_KEYS:?wajib}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.kikost.com}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-240}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RUN_MIGRATIONS_ON_BOOT: ${RUN_MIGRATIONS_ON_BOOT:-true}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPU_LIMIT:-1.0}"
+          memory: ${API_MEM_LIMIT:-384M}
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${PROXY_NETWORK:-proxy}
+      traefik.http.routers.cafe-pos-api.rule: "Host(`${POS_DOMAIN:-pos.kikost.com}`) && PathPrefix(`/api`)"
+      traefik.http.routers.cafe-pos-api.entrypoints: ${TRAEFIK_HTTPS_ENTRYPOINT:-https}
+      traefik.http.routers.cafe-pos-api.tls: "true"
+      traefik.http.routers.cafe-pos-api.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.cafe-pos-api.priority: "20"
+      traefik.http.services.cafe-pos-api.loadbalancer.server.port: "8080"
+      traefik.http.routers.cafe-pos-api.middlewares: cafe-pos-secheaders@docker
+      traefik.http.middlewares.cafe-pos-secheaders.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.cafe-pos-secheaders.headers.stsIncludeSubdomains: "true"
+      traefik.http.middlewares.cafe-pos-secheaders.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.cafe-pos-secheaders.headers.browserXssFilter: "true"
+      traefik.http.middlewares.cafe-pos-secheaders.headers.referrerPolicy: "strict-origin-when-cross-origin"
+    logging: *default-logging
+
+  cafe-pos-web:
+    image: ${WEB_IMAGE:-cafe-pos-web:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_BUILD_LABEL: kikost-cafe-pos
+    container_name: cafe-pos-web
+    restart: unless-stopped
+    depends_on:
+      - cafe-pos-api
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "${WEB_CPU_LIMIT:-0.5}"
+          memory: ${WEB_MEM_LIMIT:-128M}
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${PROXY_NETWORK:-proxy}
+      traefik.http.routers.cafe-pos-web.rule: "Host(`${POS_DOMAIN:-pos.kikost.com}`)"
+      traefik.http.routers.cafe-pos-web.entrypoints: ${TRAEFIK_HTTPS_ENTRYPOINT:-https}
+      traefik.http.routers.cafe-pos-web.tls: "true"
+      traefik.http.routers.cafe-pos-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.cafe-pos-web.priority: "10"
+      traefik.http.services.cafe-pos-web.loadbalancer.server.port: "80"
+      traefik.http.routers.cafe-pos-web.middlewares: cafe-pos-secheaders@docker
+    logging: *default-logging
+
+  cafe-pos-backup:
+    image: postgres:16-alpine
+    container_name: cafe-pos-backup
+    restart: unless-stopped
+    depends_on:
+      cafe-pos-postgres:
+        condition: service_healthy
+    networks:
+      - cafe-pos-internal
+    environment:
+      PGHOST: cafe-pos-postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_CRON: ${BACKUP_CRON:-15 18 * * *}   # 01:15 WIB (VPS UTC) — di luar jam operasional
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_ON_START: ${BACKUP_ON_START:-false}
+    volumes:
+      - cafe-pos-backups:/backups
+      - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - ./backup/restore.sh:/usr/local/bin/restore.sh:ro
+      - ./backup/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /backups/.last_success && find /backups/.last_success -mmin -1560 | grep -q . || exit 1"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    logging: *default-logging

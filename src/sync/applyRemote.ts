@@ -1,0 +1,48 @@
+import { db } from '@/db/schema'
+import type { Order, SyncEntity } from '@/types/domain'
+
+const IMMUTABLE_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
+
+/**
+ * Menerapkan entitas dari server ke database lokal (last-write-wins berdasarkan updatedAt),
+ * dengan pengecualian penting: transaksi yang di perangkat ini sudah berstatus final
+ * (paid/void/completed) TIDAK PERNAH ditimpa oleh data dari server, supaya transaksi yang
+ * sudah dibayar tidak pernah tertimpa oleh konflik sinkronisasi.
+ */
+export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, unknown[]>>): Promise<void> {
+  for (const [entity, rows] of Object.entries(entities) as [SyncEntity, unknown[] | undefined][]) {
+    if (!rows || rows.length === 0) continue
+    switch (entity) {
+      case 'orders':
+        await applyOrders(rows as Order[])
+        break
+      default:
+        await applyGeneric(entity, rows)
+    }
+  }
+}
+
+async function applyOrders(remoteOrders: Order[]): Promise<void> {
+  await db.transaction('rw', db.orders, async () => {
+    for (const remote of remoteOrders) {
+      const local = await db.orders.get(remote.id)
+      if (local && IMMUTABLE_ORDER_STATUSES.has(local.status)) continue
+      if (local && local.updatedAt > remote.updatedAt) continue
+      await db.orders.put(remote)
+    }
+  })
+}
+
+async function applyGeneric(entity: SyncEntity, rows: unknown[]): Promise<void> {
+  const table = db.table(entity)
+  await db.transaction('rw', table, async () => {
+    for (const row of rows) {
+      const typed = row as { id: string; updatedAt?: number }
+      const local = (await table.get(typed.id)) as { updatedAt?: number } | undefined
+      if (local && typeof local.updatedAt === 'number' && typeof typed.updatedAt === 'number' && local.updatedAt > typed.updatedAt) {
+        continue
+      }
+      await table.put(row)
+    }
+  })
+}

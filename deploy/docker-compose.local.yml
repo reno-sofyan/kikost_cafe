@@ -1,0 +1,22 @@
+# Override untuk UJI LOKAL saja (tanpa reverse proxy). JANGAN dipakai di produksi.
+# Jalankan: docker compose -p cafe-pos-local --env-file .env.local \
+#            -f docker-compose.yml -f docker-compose.local.yml up -d --build
+
+name: cafe-pos
+
+services:
+  cafe-pos-api:
+    ports:
+      - "127.0.0.1:8081:8080"
+    labels:
+      traefik.enable: "false"
+
+  cafe-pos-web:
+    ports:
+      - "127.0.0.1:8080:80"
+    labels:
+      traefik.enable: "false"
+
+networks:
+  proxy:
+    external: false

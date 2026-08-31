@@ -1,0 +1,25 @@
+# Konteks build image web (root Dockerfile).
+node_modules
+dist
+dist-ssr
+coverage
+playwright-report
+test-results
+
+# Tidak diperlukan untuk build web:
+android
+backend
+docs
+tests
+android-plugins
+deploy
+!deploy/nginx
+!deploy/nginx/**
+
+.git
+.github
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store

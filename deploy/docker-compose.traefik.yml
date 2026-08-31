@@ -1,0 +1,52 @@
+# OPSIONAL — hanya dipakai bila VPS BELUM punya reverse proxy.
+# Jika kikost.com sudah memakai Traefik/Nginx Proxy Manager, JANGAN pakai file ini;
+# cukup sambungkan stack POS ke network proxy yang sudah ada (PROXY_NETWORK di .env).
+#
+# Jalankan: docker compose -p cafe-pos-proxy --env-file .env -f docker-compose.traefik.yml up -d
+
+name: cafe-pos-proxy
+
+networks:
+  proxy:
+    name: proxy
+    external: false
+
+volumes:
+  traefik-acme:
+    name: cafe-pos-traefik-acme
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: cafe-pos-traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=proxy"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?wajib}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+      - "--global.sendanonymoususage=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/acme
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
