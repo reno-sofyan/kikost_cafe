@@ -58,7 +58,7 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
     logoDataUrl: settings.logoDataUrl,
     paperSize: settings.receiptPaperSize,
     orderNumber: `${settings.transactionPrefix}-00000`,
-    cashierName: 'Test Print',
+    cashierName: 'Uji Cetak',
     createdAtLabel: formatDateTime(Date.now()),
     orderTypeLabel: 'Dine-in',
     tableLabel: 'Meja 1',

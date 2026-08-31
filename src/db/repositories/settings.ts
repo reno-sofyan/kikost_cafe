@@ -4,7 +4,7 @@ import type { CafeSettings } from '@/types/domain'
 export const DEFAULT_SETTINGS: CafeSettings = {
   id: 'singleton',
   onboardingCompleted: false,
-  cafeName: 'Kafe Keluarga POS',
+  cafeName: 'Kikost Cafe',
   logoDataUrl: null,
   address: '',
   phone: '',

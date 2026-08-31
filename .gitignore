@@ -54,3 +54,6 @@ android/*.keystore
 
 # TS build cache
 *.tsbuildinfo
+
+# PWA dev build artifacts (vite-plugin-pwa)
+dev-dist/

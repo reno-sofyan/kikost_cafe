@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from '@/db/repositories/settings'
 
 const sample: ReceiptData = buildSampleReceiptData({
   ...DEFAULT_SETTINGS,
-  cafeName: 'Kafe Keluarga',
+  cafeName: 'Kikost Cafe',
   address: 'Jl. Contoh 1',
   phone: '0812',
   taxPercent: 11,
@@ -29,7 +29,7 @@ describe('buildEscPosReceipt', () => {
 
   it('memuat identitas kafe, nomor order, item, total, dan pembayaran', () => {
     const text = decode(buildEscPosReceipt(sample))
-    expect(text).toContain('Kafe Keluarga')
+    expect(text).toContain('Kikost Cafe')
     expect(text).toContain(sample.orderNumber)
     expect(text).toContain('Kopi Susu Gula Aren')
     expect(text).toContain('TOTAL')

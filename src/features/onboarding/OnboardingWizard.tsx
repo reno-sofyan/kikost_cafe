@@ -26,7 +26,7 @@ export function OnboardingWizard() {
   const [error, setError] = useState<string | null>(null)
   const login = useSessionStore((s) => s.login)
 
-  const [cafeName, setCafeName] = useState('Kafe Keluarga POS')
+  const [cafeName, setCafeName] = useState('Kikost Cafe')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
@@ -80,7 +80,7 @@ export function OnboardingWizard() {
 
     setStep('finishing')
     await updateSettings({
-      cafeName: cafeName.trim() || 'Kafe Keluarga POS',
+      cafeName: cafeName.trim() || 'Kikost Cafe',
       address,
       phone,
       logoDataUrl,
@@ -141,7 +141,7 @@ export function OnboardingWizard() {
               </div>
               <h2 className="text-2xl font-bold">Selamat Datang</h2>
               <p className="text-ink-300">
-                Mari siapkan aplikasi kasir untuk kafe keluarga Anda. Proses ini hanya perlu dilakukan sekali.
+                Lengkapi konfigurasi awal untuk mulai menggunakan aplikasi kasir. Proses ini hanya perlu dilakukan sekali.
               </p>
             </div>
           )}
