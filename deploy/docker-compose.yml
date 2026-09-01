@@ -111,20 +111,20 @@ services:
           cpus: "${API_CPU_LIMIT:-1.0}"
           memory: ${API_MEM_LIMIT:-384M}
     labels:
-      traefik.enable: "true"
-      traefik.docker.network: ${PROXY_NETWORK:-proxy}
-      traefik.http.routers.cafe-pos-api.rule: "Host(`${POS_DOMAIN:-pos.kikost.com}`) && PathPrefix(`/api`)"
-      traefik.http.routers.cafe-pos-api.entrypoints: ${TRAEFIK_HTTPS_ENTRYPOINT:-https}
-      traefik.http.routers.cafe-pos-api.tls: "true"
-      traefik.http.routers.cafe-pos-api.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
-      traefik.http.routers.cafe-pos-api.priority: "20"
-      traefik.http.services.cafe-pos-api.loadbalancer.server.port: "8080"
-      traefik.http.routers.cafe-pos-api.middlewares: cafe-pos-secheaders@docker
-      traefik.http.middlewares.cafe-pos-secheaders.headers.stsSeconds: "31536000"
-      traefik.http.middlewares.cafe-pos-secheaders.headers.stsIncludeSubdomains: "true"
-      traefik.http.middlewares.cafe-pos-secheaders.headers.contentTypeNosniff: "true"
-      traefik.http.middlewares.cafe-pos-secheaders.headers.browserXssFilter: "true"
-      traefik.http.middlewares.cafe-pos-secheaders.headers.referrerPolicy: "strict-origin-when-cross-origin"
+      - "traefik.enable=true"
+      - "traefik.docker.network=${PROXY_NETWORK:-proxy}"
+      - "traefik.http.routers.cafe-pos-api.rule=Host(`${POS_DOMAIN:-pos.kikost.com}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.cafe-pos-api.entrypoints=${TRAEFIK_HTTPS_ENTRYPOINT:-https}"
+      - "traefik.http.routers.cafe-pos-api.tls=true"
+      - "traefik.http.routers.cafe-pos-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.routers.cafe-pos-api.priority=20"
+      - "traefik.http.services.cafe-pos-api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.cafe-pos-api.middlewares=cafe-pos-secheaders@docker"
+      - "traefik.http.middlewares.cafe-pos-secheaders.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.cafe-pos-secheaders.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.cafe-pos-secheaders.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.cafe-pos-secheaders.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.cafe-pos-secheaders.headers.referrerPolicy=strict-origin-when-cross-origin"
     logging: *default-logging
 
   cafe-pos-web:
@@ -153,15 +153,15 @@ services:
           cpus: "${WEB_CPU_LIMIT:-0.5}"
           memory: ${WEB_MEM_LIMIT:-128M}
     labels:
-      traefik.enable: "true"
-      traefik.docker.network: ${PROXY_NETWORK:-proxy}
-      traefik.http.routers.cafe-pos-web.rule: "Host(`${POS_DOMAIN:-pos.kikost.com}`)"
-      traefik.http.routers.cafe-pos-web.entrypoints: ${TRAEFIK_HTTPS_ENTRYPOINT:-https}
-      traefik.http.routers.cafe-pos-web.tls: "true"
-      traefik.http.routers.cafe-pos-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
-      traefik.http.routers.cafe-pos-web.priority: "10"
-      traefik.http.services.cafe-pos-web.loadbalancer.server.port: "80"
-      traefik.http.routers.cafe-pos-web.middlewares: cafe-pos-secheaders@docker
+      - "traefik.enable=true"
+      - "traefik.docker.network=${PROXY_NETWORK:-proxy}"
+      - "traefik.http.routers.cafe-pos-web.rule=Host(`${POS_DOMAIN:-pos.kikost.com}`)"
+      - "traefik.http.routers.cafe-pos-web.entrypoints=${TRAEFIK_HTTPS_ENTRYPOINT:-https}"
+      - "traefik.http.routers.cafe-pos-web.tls=true"
+      - "traefik.http.routers.cafe-pos-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.routers.cafe-pos-web.priority=10"
+      - "traefik.http.services.cafe-pos-web.loadbalancer.server.port=80"
+      - "traefik.http.routers.cafe-pos-web.middlewares=cafe-pos-secheaders@docker"
     logging: *default-logging
 
   cafe-pos-backup:
