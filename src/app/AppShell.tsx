@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useSessionStore } from '@/state/sessionStore'
@@ -7,6 +7,8 @@ import { triggerManualSync } from '@/sync/engine'
 import { getOpenShift } from '@/db/repositories/shifts'
 import { roleHasPermission } from '@/lib/permissions'
 import { formatRupiah } from '@/lib/currency'
+import { backupIsStale, lastBackupLabel } from '@/lib/backupReminder'
+import { isBackendConfigured } from '@/sync/deviceConfig'
 import { Icon, type IconName } from '@/components/ui/Icon'
 
 interface NavItem {
@@ -37,6 +39,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const sync = useSyncStore()
   const openShift = useLiveQuery(() => getOpenShift(), [])
+
+  // Pengingat backup (hanya relevan bila TIDAK pakai sinkronisasi server sebagai backup).
+  // `now` di-refresh berkala supaya labelnya ikut menua tanpa perlu reload.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 10 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [])
+  const showBackupWarning =
+    !!currentUser &&
+    roleHasPermission(currentUser.role, 'users.manage') &&
+    !isBackendConfigured() &&
+    backupIsStale(now)
 
   if (!currentUser) return null
 
@@ -90,6 +105,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="rounded-full bg-red-900/40 px-3 py-1.5 text-xs font-medium text-red-400">
                 Belum ada shift
               </span>
+            )}
+            {showBackupWarning && (
+              <button
+                onClick={() => navigate('/pengaturan?tab=backup')}
+                className="flex items-center gap-1.5 rounded-full bg-brown-600/20 px-3 py-1.5 text-xs font-medium text-brown-400 hover:bg-brown-600/30"
+                title="Buka Pengaturan → Backup"
+              >
+                <Icon name="alertTriangle" size={14} />
+                Backup: {lastBackupLabel(now)}
+              </button>
             )}
           </div>
 

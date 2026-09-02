@@ -4,6 +4,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { formatDateTime } from '@/lib/datetime'
 import { saveTextFile } from '@/lib/saveFile'
+import { markBackupDone } from '@/lib/backupReminder'
 import { Capacitor } from '@capacitor/core'
 
 export function BackupManager() {
@@ -20,6 +21,7 @@ export function BackupManager() {
     try {
       const backup = await exportBackup()
       await saveTextFile(backupFileName('kikost-cafe'), JSON.stringify(backup, null, 2), 'application/json')
+      markBackupDone()
       await recordAuditLog({
         userId: currentUser.id,
         userName: currentUser.name,

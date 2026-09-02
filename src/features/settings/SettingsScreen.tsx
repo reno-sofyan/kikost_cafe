@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings, updateSettings } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
@@ -12,6 +13,8 @@ import type { ReceiptPaperSize } from '@/types/domain'
 
 type Tab = 'profil' | 'pajak' | 'qris' | 'printer' | 'pengguna' | 'sinkronisasi' | 'backup' | 'audit'
 
+const TAB_KEYS: Tab[] = ['profil', 'pajak', 'qris', 'printer', 'pengguna', 'sinkronisasi', 'backup', 'audit']
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -23,7 +26,9 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 export function SettingsScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
-  const [tab, setTab] = useState<Tab>('profil')
+  const [searchParams] = useSearchParams()
+  const initialTab = TAB_KEYS.find((k) => k === searchParams.get('tab')) ?? 'profil'
+  const [tab, setTab] = useState<Tab>(initialTab)
   const settings = useLiveQuery(() => getSettings(), [])
 
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
