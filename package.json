@@ -26,6 +26,7 @@
     "@capacitor/filesystem": "^7.0.1",
     "@capacitor/network": "^7.0.1",
     "@capacitor/preferences": "^7.0.1",
+    "@capacitor/share": "^7.0.4",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
     "jspdf": "^2.5.2",

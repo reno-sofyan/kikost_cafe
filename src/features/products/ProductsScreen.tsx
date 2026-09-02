@@ -4,6 +4,7 @@ import Papa from 'papaparse'
 import { listCategories } from '@/db/repositories/categories'
 import { createProduct, exportProductsCsv, searchProducts, setProductAvailability, toggleFavorite } from '@/db/repositories/products'
 import { formatRupiah } from '@/lib/currency'
+import { saveTextFile } from '@/lib/saveFile'
 import { ProductFormModal } from '@/features/products/ProductFormModal'
 import { CategoryManager } from '@/features/products/CategoryManager'
 import { ModifierManager } from '@/features/products/ModifierManager'
@@ -38,13 +39,7 @@ export function ProductsScreen() {
 
   async function handleExport() {
     const csv = await exportProductsCsv()
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `produk-kikost-cafe.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    await saveTextFile('produk-kikost-cafe.csv', csv, 'text/csv')
   }
 
   function handleImportClick() {

@@ -48,10 +48,10 @@ export function ReportsScreen() {
         )}
         {report && (
           <div className="ml-auto flex gap-2">
-            <button className="btn-secondary" onClick={() => exportSalesReportCsv(report)}>
+            <button className="btn-secondary" onClick={() => void exportSalesReportCsv(report)}>
               Ekspor CSV
             </button>
-            <button className="btn-secondary" onClick={() => exportSalesReportPdf(report)}>
+            <button className="btn-secondary" onClick={() => void exportSalesReportPdf(report)}>
               Ekspor PDF
             </button>
           </div>

@@ -3,6 +3,8 @@ import { backupFileName, exportBackup, restoreBackup, validateBackupFile } from 
 import { useSessionStore } from '@/state/sessionStore'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { formatDateTime } from '@/lib/datetime'
+import { saveTextFile } from '@/lib/saveFile'
+import { Capacitor } from '@capacitor/core'
 
 export function BackupManager() {
   const currentUser = useSessionStore((s) => s.currentUser)!
@@ -17,13 +19,7 @@ export function BackupManager() {
     setError(null)
     try {
       const backup = await exportBackup()
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = backupFileName('kikost-cafe')
-      a.click()
-      URL.revokeObjectURL(url)
+      await saveTextFile(backupFileName('kikost-cafe'), JSON.stringify(backup, null, 2), 'application/json')
       await recordAuditLog({
         userId: currentUser.id,
         userName: currentUser.name,
@@ -32,7 +28,13 @@ export function BackupManager() {
         entityId: 'manual',
         details: 'Backup manual diekspor',
       })
-      setMessage(`Backup berhasil diunduh pada ${formatDateTime(Date.now())}`)
+      setMessage(
+        Capacitor.isNativePlatform()
+          ? `Backup dibuat pada ${formatDateTime(Date.now())} — pilih tujuan simpan (Drive/WhatsApp/email) di menu bagikan.`
+          : `Backup berhasil diunduh pada ${formatDateTime(Date.now())}`,
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal membuat backup')
     } finally {
       setBusy(false)
     }

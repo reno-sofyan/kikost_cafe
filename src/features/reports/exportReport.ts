@@ -1,19 +1,10 @@
 import jsPDF from 'jspdf'
 import { formatRupiah } from '@/lib/currency'
 import { formatDate } from '@/lib/datetime'
+import { saveFile, saveTextFile } from '@/lib/saveFile'
 import type { SalesReport } from '@/db/repositories/reports'
 
-function downloadText(filename: string, content: string, mime: string): void {
-  const blob = new Blob([content], { type: `${mime};charset=utf-8;` })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-export function exportSalesReportCsv(report: SalesReport): void {
+export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   const lines: string[] = []
   lines.push('Ringkasan')
   lines.push(`Omzet,${report.revenue}`)
@@ -39,10 +30,10 @@ export function exportSalesReportCsv(report: SalesReport): void {
   lines.push('Metode Pembayaran,Jumlah')
   for (const m of report.byPaymentMethod) lines.push(`${m.method},${m.amount}`)
 
-  downloadText(`laporan-penjualan-${formatDate(report.range.from)}.csv`, lines.join('\n'), 'text/csv')
+  await saveTextFile(`laporan-penjualan-${formatDate(report.range.from)}.csv`, lines.join('\n'), 'text/csv')
 }
 
-export function exportSalesReportPdf(report: SalesReport): void {
+export async function exportSalesReportPdf(report: SalesReport): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   let y = 15
   doc.setFontSize(14)
@@ -85,5 +76,5 @@ export function exportSalesReportPdf(report: SalesReport): void {
     y += 4.5
   }
 
-  doc.save(`laporan-penjualan-${formatDate(report.range.from)}.pdf`)
+  await saveFile(`laporan-penjualan-${formatDate(report.range.from)}.pdf`, doc.output('blob'))
 }
