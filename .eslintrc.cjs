@@ -15,6 +15,7 @@ module.exports = {
   plugins: ['react-refresh'],
   ignorePatterns: [
     'dist',
+    'dev-dist', // service worker dev-build yang dihasilkan vite-plugin-pwa
     'android',
     'node_modules',
     'backend', // punya konfigurasi ESLint sendiri (backend/.eslintrc.cjs)
