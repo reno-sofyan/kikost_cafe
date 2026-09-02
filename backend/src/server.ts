@@ -82,14 +82,16 @@ export async function buildServer(): Promise<FastifyInstance> {
   })
 
   // ---- Health (tanpa auth) ----
-  app.get('/api/health', async (_request, reply) => {
+  app.get('/api/health', async (request, reply) => {
     try {
       const started = Date.now()
       await getPool().query('SELECT 1')
       return { status: 'ok', db: 'ok', latencyMs: Date.now() - started, time: new Date().toISOString() }
     } catch (err) {
+      // Endpoint publik tanpa auth: jangan bocorkan detail internal (versi PG, host, dsb).
+      request.log.error({ err: err instanceof Error ? err.message : err }, 'health: koneksi DB gagal')
       reply.code(503)
-      return { status: 'degraded', db: 'error', error: err instanceof Error ? err.message : 'unknown' }
+      return { status: 'degraded', db: 'error' }
     }
   })
 

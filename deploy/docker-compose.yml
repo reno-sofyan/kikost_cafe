@@ -95,7 +95,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@cafe-pos-postgres:5432/${POSTGRES_DB}
       PGPOOL_MAX: ${PGPOOL_MAX:-10}
       SYNC_DEVICE_KEYS: ${SYNC_DEVICE_KEYS:?wajib}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.kikost.com}
+      # Web PWA (same-origin) + WebView aplikasi Android/iOS (Capacitor menyajikan
+      # dari https://localhost / capacitor://localhost, sehingga fetch ke API
+      # memicu preflight CORS). Bukan wildcard — gerbang sebenarnya tetap device key.
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.kikost.com,https://localhost,capacitor://localhost}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-240}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       RUN_MIGRATIONS_ON_BOOT: ${RUN_MIGRATIONS_ON_BOOT:-true}
