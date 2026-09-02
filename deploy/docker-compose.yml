@@ -165,7 +165,10 @@ services:
     logging: *default-logging
 
   cafe-pos-backup:
-    image: postgres:16-alpine
+    image: ${BACKUP_IMAGE:-cafe-pos-backup:local}
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
     container_name: cafe-pos-backup
     restart: unless-stopped
     depends_on:
@@ -180,15 +183,13 @@ services:
       PGDATABASE: ${POSTGRES_DB}
       BACKUP_CRON: ${BACKUP_CRON:-15 18 * * *}   # 01:15 WIB (VPS UTC) — di luar jam operasional
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
-      BACKUP_ON_START: ${BACKUP_ON_START:-false}
+      BACKUP_ON_START: ${BACKUP_ON_START:-true}
     volumes:
       - cafe-pos-backups:/backups
-      - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
-      - ./backup/restore.sh:/usr/local/bin/restore.sh:ro
-      - ./backup/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
-    entrypoint: ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "test -f /backups/.last_success && find /backups/.last_success -mmin -1560 | grep -q . || exit 1"]
+      # Sehat bila crond hidup DAN (belum ada backup — hari pertama — ATAU backup
+      # terakhir < 26 jam). Tidak lagi menandai unhealthy sebelum cron pertama jalan.
+      test: ["CMD-SHELL", "pgrep -x crond >/dev/null && { [ ! -f /backups/.last_success ] || find /backups/.last_success -mmin -1560 | grep -q .; } || exit 1"]
       interval: 5m
       timeout: 10s
       retries: 3

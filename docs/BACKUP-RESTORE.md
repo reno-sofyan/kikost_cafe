@@ -16,7 +16,11 @@ jadi kehilangan DB server bukan kehilangan data selama perangkat masih ada.
 - Cron: `BACKUP_CRON` (default `15 18 * * *` = 01:15 WIB).
 - Retensi: `BACKUP_RETENTION_DAYS` (default 14) — arsip lebih tua dihapus otomatis.
 - `cafe-pos-latest.sql.gz` selalu = backup terakhir.
-- Healthcheck container gagal bila tidak ada backup sukses dalam 26 jam.
+- `BACKUP_ON_START=true` (default): satu backup ditulis segera tiap container start.
+- Healthcheck: sehat selama `crond` hidup; unhealthy hanya bila sudah pernah ada
+  backup sukses tapi yang terakhir > 26 jam.
+- Skrip di-*bake* ke image `deploy/backup/Dockerfile` (bukan bind-mount), supaya
+  tahan terhadap runner Coolify yang membersihkan direktori checkout pasca-deploy.
 
 ## Backup manual
 
