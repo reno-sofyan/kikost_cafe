@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const isNative = vi.fn(() => false)
-const writeFile = vi.fn(async () => ({ uri: 'file:///cache/x.json' }))
-const share = vi.fn(async () => undefined)
+const writeFile = vi.fn(async (_opts: Record<string, unknown>) => ({ uri: 'file:///cache/x.json' }))
+const share = vi.fn(async (_opts: Record<string, unknown>) => undefined)
 
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => isNative() } }))
 vi.mock('@capacitor/filesystem', () => ({
-  Filesystem: { writeFile: (...a: unknown[]) => writeFile(...(a as [])) },
+  Filesystem: { writeFile: (opts: Record<string, unknown>) => writeFile(opts) },
   Directory: { Cache: 'CACHE' },
 }))
-vi.mock('@capacitor/share', () => ({ Share: { share: (...a: unknown[]) => share(...(a as [])) } }))
+vi.mock('@capacitor/share', () => ({ Share: { share: (opts: Record<string, unknown>) => share(opts) } }))
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -40,7 +40,7 @@ describe('saveTextFile', () => {
     const uri = await saveTextFile('backup.json', '{}', 'application/json')
 
     expect(writeFile).toHaveBeenCalledOnce()
-    expect(writeFile.mock.calls[0][0]).toMatchObject({ path: 'backup.json', directory: 'CACHE' })
+    expect(writeFile).toHaveBeenCalledWith(expect.objectContaining({ path: 'backup.json', directory: 'CACHE' }))
     expect(share).toHaveBeenCalledOnce()
     expect(uri).toBe('file:///cache/x.json')
   })

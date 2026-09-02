@@ -16,10 +16,12 @@ test('membuka onboarding/POS, bukan landing page', async ({ page }) => {
 
 test('onboarding menampilkan langkah wajib', async ({ page }) => {
   await page.goto('/')
-  const body = page.locator('body')
-  if (await body.textContent().then((t) => /Selamat Datang|Pengaturan Awal/i.test(t ?? ''))) {
-    await expect(body).toContainText(/Profil Kafe|Pajak|QRIS|Printer|Administrator/i)
-  }
+  // Wizard bertahap: welcome -> profil -> pajak. Pastikan tiap langkah wajib benar-benar render.
+  await expect(page.getByRole('heading', { name: 'Selamat Datang' })).toBeVisible()
+  await page.getByRole('button', { name: 'Lanjut' }).click()
+  await expect(page.getByRole('heading', { name: 'Profil Kafe' })).toBeVisible()
+  await page.getByRole('button', { name: 'Lanjut' }).click()
+  await expect(page.getByRole('heading', { name: /Pajak/ })).toBeVisible()
 })
 
 test('shell tetap termuat setelah offline (service worker)', async ({ page, context }) => {
