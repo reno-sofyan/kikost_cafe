@@ -106,6 +106,7 @@ export function KitchenDisplayScreen() {
                   {ORDER_TYPE_LABELS[order.type]}
                   {table ? ` • ${table.name}` : ''}
                   {order.queueNumber ? ` • Antrean #${order.queueNumber}` : ''}
+                  {order.notes ? <span className="ml-1 font-medium text-ink-200">• {order.notes}</span> : null}
                 </div>
 
                 <div className="flex-1 space-y-2">

@@ -13,7 +13,7 @@ import type {
   OrderType,
 } from '@/types/domain'
 
-/** Nomor antrean harian (reset tiap hari) untuk pesanan takeaway/delivery, dihitung dari data yang ada. */
+/** Nomor antrean harian (reset tiap hari) untuk semua pesanan, dihitung dari data yang ada. */
 async function drawQueueNumber(): Promise<number> {
   const todayKey = jakartaDateKey(Date.now())
   const todaysOrders = await db.orders
@@ -28,6 +28,7 @@ export async function startOrder(params: {
   tableId?: string
   customerId?: string
   guestCount?: number
+  notes?: string
   cashierId: string
   cashierName: string
   shiftId: string
@@ -41,7 +42,7 @@ export async function startOrder(params: {
     type: params.type,
     tableId: params.tableId ?? null,
     customerId: params.customerId ?? null,
-    queueNumber: params.type !== 'dine_in' ? await drawQueueNumber() : null,
+    queueNumber: await drawQueueNumber(),
     guestCount: params.guestCount ?? null,
     status: 'open',
     subtotal: 0,
@@ -57,7 +58,7 @@ export async function startOrder(params: {
     shiftId: params.shiftId,
     cashierId: params.cashierId,
     cashierName: params.cashierName,
-    notes: '',
+    notes: params.notes?.trim() ?? '',
     idempotencyKey: newIdempotencyKey(),
     parentOrderId: null,
     voidReason: null,
@@ -249,7 +250,7 @@ export async function splitOrder(orderId: string, itemIdsToMove: string[]): Prom
       updatedAt: now,
       paidAt: null,
       status: 'open',
-      queueNumber: original.type !== 'dine_in' ? await drawQueueNumber() : null,
+      queueNumber: await drawQueueNumber(),
     }
     await db.orders.add(newOrder)
     for (const itemId of itemIdsToMove) {

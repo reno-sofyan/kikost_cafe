@@ -7,7 +7,6 @@ import type {
   ModifierOption,
   Product,
   Recipe,
-  CafeTable,
 } from '@/types/domain'
 
 /**
@@ -175,30 +174,4 @@ export async function seedInitialCatalog(): Promise<void> {
     },
   ]
   await db.recipes.bulkAdd(recipes)
-
-  const tables: CafeTable[] = [
-    ...['1', '2', '3', '4'].map((n) => ({
-      id: newId(),
-      name: `Meja ${n}`,
-      area: 'Indoor',
-      capacity: 4,
-      status: 'available' as const,
-      currentOrderId: null,
-      occupiedSince: null,
-      guestCount: null,
-      updatedAt: now,
-    })),
-    ...['5', '6'].map((n) => ({
-      id: newId(),
-      name: `Meja ${n}`,
-      area: 'Outdoor',
-      capacity: 2,
-      status: 'available' as const,
-      currentOrderId: null,
-      occupiedSince: null,
-      guestCount: null,
-      updatedAt: now,
-    })),
-  ]
-  await db.cafeTables.bulkAdd(tables)
 }

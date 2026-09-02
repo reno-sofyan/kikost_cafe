@@ -56,7 +56,6 @@ export function CashierScreen() {
   const products = useLiveQuery(() => searchProducts(search, categoryId), [search, categoryId]) ?? []
   const order = useLiveQuery(() => (activeOrderId ? getOrder(activeOrderId) : undefined), [activeOrderId])
   const items = useLiveQuery(() => (activeOrderId ? listOrderItems(activeOrderId) : []), [activeOrderId])
-  const table = useLiveQuery(() => (order?.tableId ? db.cafeTables.get(order.tableId) : undefined), [order?.tableId])
 
   const activeItems = useMemo(() => (items ?? []).filter((i) => !i.voided), [items])
 
@@ -73,12 +72,12 @@ export function CashierScreen() {
     )
   }
 
-  async function handleStartOrder(params: { type: OrderType; tableId?: string; customerId?: string; guestCount?: number }) {
+  async function handleStartOrder(params: { type: OrderType; customerId?: string; guestCount?: number; notes?: string }) {
     const newOrder = await startOrder({
       type: params.type,
-      tableId: params.tableId,
       customerId: params.customerId,
       guestCount: params.guestCount,
+      notes: params.notes,
       cashierId: currentUser.id,
       cashierName: currentUser.name,
       shiftId: openShift!.id,
@@ -181,8 +180,8 @@ export function CashierScreen() {
   return (
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col border-r border-ink-800">
-        <div className="flex flex-none items-center gap-3 border-b border-ink-800 px-4 py-3">
-          <div className="relative flex-1">
+        <div className="flex flex-none flex-wrap items-center gap-2 border-b border-ink-800 px-4 py-3">
+          <div className="relative min-w-[12rem] flex-1">
             <Icon name="barcode" size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
             <input
               className="input-field pl-10"
@@ -194,10 +193,10 @@ export function CashierScreen() {
               }}
             />
           </div>
-          <button className="btn-secondary" onClick={() => setShowOpenBills(true)}>
+          <button className="btn-secondary flex-1 whitespace-nowrap sm:flex-none" onClick={() => setShowOpenBills(true)}>
             Pesanan Terbuka
           </button>
-          <button className="btn-primary" onClick={() => setShowNewOrder(true)}>
+          <button className="btn-primary flex-1 whitespace-nowrap sm:flex-none" onClick={() => setShowNewOrder(true)}>
             + Pesanan Baru
           </button>
         </div>
@@ -251,7 +250,7 @@ export function CashierScreen() {
         </div>
       </div>
 
-      <div className="flex w-96 flex-none flex-col bg-ink-900">
+      <div className="flex w-80 flex-none flex-col bg-ink-900 xl:w-96">
         {!activeOrderId || !order ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <Icon name="receipt" size={40} className="text-ink-400" />
@@ -261,12 +260,15 @@ export function CashierScreen() {
           <>
             <div className="flex-none border-b border-ink-800 px-4 py-3">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-ink-50">{order.orderNumber}</span>
+                <span className="font-bold text-ink-50">
+                  {order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
+                </span>
                 <span className="text-xs text-ink-400">{ORDER_TYPE_LABELS[order.type]}</span>
               </div>
-              <div className="mt-1 text-sm text-ink-400">
-                {table ? `${table.name} • ${order.guestCount ?? 1} tamu` : ''}
-                {order.queueNumber ? `Antrean #${order.queueNumber}` : ''}
+              <div className="mt-1 flex flex-wrap gap-x-2 text-sm text-ink-400">
+                <span>{order.orderNumber}</span>
+                {order.type === 'dine_in' && order.guestCount ? <span>• {order.guestCount} tamu</span> : null}
+                {order.notes ? <span className="text-ink-300">• {order.notes}</span> : null}
               </div>
             </div>
 

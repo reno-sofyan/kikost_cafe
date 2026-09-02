@@ -19,7 +19,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['administrator', 'supervisor', 'kasir'] },
-  { to: '/meja', label: 'Meja', icon: 'table', roles: ['administrator', 'supervisor', 'kasir'] },
   { to: '/dapur', label: 'Dapur', icon: 'chef' },
   { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['administrator', 'supervisor', 'kasir'] },
   { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['administrator', 'supervisor', 'kasir'] },

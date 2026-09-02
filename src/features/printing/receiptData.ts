@@ -23,6 +23,7 @@ export interface ReceiptData {
   orderTypeLabel: string
   tableLabel: string | null
   queueLabel: string | null
+  customerNote: string | null
   lines: ReceiptLine[]
   subtotal: number
   discountAmount: number
@@ -61,8 +62,9 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
     cashierName: 'Uji Cetak',
     createdAtLabel: formatDateTime(Date.now()),
     orderTypeLabel: 'Dine-in',
-    tableLabel: 'Meja 1',
-    queueLabel: null,
+    tableLabel: null,
+    queueLabel: 'Antrean #12',
+    customerNote: 'Budi',
     lines: [
       { name: 'Kopi Susu Gula Aren', qty: 2, unitPrice: 22000, lineTotal: 44000, modifierLines: ['  Ukuran: Regular'], note: null },
       { name: 'Nasi Goreng Kikost', qty: 1, unitPrice: 28000, lineTotal: 28000, modifierLines: [], note: 'Tidak pedas' },
@@ -109,6 +111,7 @@ export async function buildReceiptData(order: Order, settings: CafeSettings): Pr
     orderTypeLabel: ORDER_TYPE_LABELS[order.type],
     tableLabel: table ? table.name : null,
     queueLabel: order.queueNumber ? `Antrean #${order.queueNumber}` : null,
+    customerNote: order.notes.trim() || null,
     lines,
     subtotal: order.subtotal,
     discountAmount: order.discountAmount,

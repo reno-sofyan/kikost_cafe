@@ -81,6 +81,7 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   b.line(`Waktu: ${data.createdAtLabel}`)
   b.line(`Tipe: ${data.orderTypeLabel}${data.tableLabel ? ` (${data.tableLabel})` : ''}`)
   if (data.queueLabel) b.line(data.queueLabel)
+  if (data.customerNote) b.line(`Pelanggan: ${data.customerNote}`)
   b.line(divider(width))
 
   for (const item of data.lines) {

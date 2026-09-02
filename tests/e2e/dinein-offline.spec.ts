@@ -2,23 +2,20 @@ import { expect, test } from '@playwright/test'
 import { completeOnboarding, idbAll, idbGet, openShift } from './helpers'
 
 interface Product { id: string; sku: string; stockQty: number }
-interface OrderRow { id: string; status: string; type: string; tableId: string | null }
-interface TableRow { id: string; name: string; status: string; currentOrderId: string | null }
+interface OrderRow { id: string; status: string; type: string; tableId: string | null; queueNumber: number | null; notes: string }
 
-test('dine-in: pilih meja → pesan → BAYAR OFFLINE → sukses, stok & meja konsisten', async ({ page, context }) => {
+test('dine-in tanpa meja: pesan → BAYAR OFFLINE → sukses, stok & antrean konsisten', async ({ page, context }) => {
   test.slow()
   await completeOnboarding(page)
   await openShift(page)
 
-  // Layar Meja harus render (regresi bug SchemaError cafeTables.orderBy('name')).
-  await page.getByRole('link', { name: 'Meja' }).click()
-  await expect(page.getByRole('heading', { name: 'Denah Meja' })).toBeVisible()
-  await expect(page.getByText('Indoor')).toBeVisible()
-  await expect(page.getByText('Outdoor')).toBeVisible()
-
-  // Klik meja tersedia → quickStart membuat order dine_in & pindah ke kasir.
-  await page.getByRole('button', { name: /Meja 1/ }).click()
+  await page.getByRole('link', { name: 'Kasir' }).click()
+  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  // Dine-in adalah default; tambahkan catatan pelanggan lalu mulai.
+  await page.getByPlaceholder('mis. "Budi" atau "cewe jaket merah"').fill('Budi')
+  await page.getByRole('button', { name: 'Mulai Pesanan' }).click()
   await expect(page).toHaveURL(/\/kasir$/)
+  await expect(page.getByText(/Antrean #\d+/).first()).toBeVisible()
 
   // Tambah item.
   await page.getByRole('button', { name: 'Snack' }).click()
@@ -47,14 +44,12 @@ test('dine-in: pilih meja → pesan → BAYAR OFFLINE → sukses, stok & meja ko
   const paid = orders.filter((o) => o.status === 'paid')
   expect(paid).toHaveLength(1)
   expect(paid[0].type).toBe('dine_in')
-  expect(paid[0].tableId).toBeTruthy()
+  expect(paid[0].tableId).toBeNull()
+  expect(paid[0].queueNumber).toBeGreaterThan(0)
+  expect(paid[0].notes).toBe('Budi')
 
   const after = await idbGet<Product>(page, 'products', before.id)
   expect(after?.stockQty).toBe(before.stockQty - 1)
-
-  // Meja jadi "perlu dibersihkan" setelah bayar.
-  const tableRow = (await idbAll<TableRow>(page, 'cafeTables')).find((t) => t.id === paid[0].tableId)!
-  expect(tableRow.status).toBe('needs_cleaning')
 
   // Ada entri antrean sinkronisasi yang menunggu (belum terkirim karena offline).
   const queue = await idbAll<{ status: string; entity: string }>(page, 'syncQueue')

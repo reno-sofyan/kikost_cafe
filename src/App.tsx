@@ -10,7 +10,6 @@ import { OnboardingWizard } from '@/features/onboarding/OnboardingWizard'
 import { LoginScreen } from '@/features/auth/LoginScreen'
 import { LockScreen } from '@/features/auth/LockScreen'
 import { CashierScreen } from '@/features/pos/CashierScreen'
-import { TablesScreen } from '@/features/tables/TablesScreen'
 import { KitchenDisplayScreen } from '@/features/kitchen/KitchenDisplayScreen'
 import { HistoryScreen } from '@/features/history/HistoryScreen'
 import { CustomersScreen } from '@/features/customers/CustomersScreen'
@@ -68,7 +67,6 @@ export default function App() {
           <Route path="/" element={<Navigate to="/kasir" replace />} />
           <Route path="/kasir" element={<CashierScreen />} />
           <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
-          <Route path="/meja" element={<TablesScreen />} />
           <Route path="/dapur" element={<KitchenDisplayScreen />} />
           <Route path="/riwayat" element={<HistoryScreen />} />
           <Route path="/pelanggan" element={<CustomersScreen />} />
