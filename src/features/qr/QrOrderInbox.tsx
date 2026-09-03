@@ -34,6 +34,7 @@ export function QrOrderInbox() {
   const [now, setNow] = useState(Date.now())
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const seenIds = useRef<Set<string>>(new Set())
@@ -64,6 +65,25 @@ export function QrOrderInbox() {
     }
   }
 
+  async function accept(orderId: string) {
+    setBusyId(orderId)
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await confirmQrOrder(orderId, actor)
+      const parts: string[] = [`Diterima — antrean #${res.queueNumber}.`]
+      if (res.priceChanged) {
+        parts.push(`Total disesuaikan Rp${res.oldTotal.toLocaleString('id-ID')} → Rp${res.newTotal.toLocaleString('id-ID')} (harga menu berubah).`)
+      }
+      if (res.removedItems.length) parts.push(`Dikeluarkan (tak tersedia): ${res.removedItems.join(', ')}.`)
+      setNotice(parts.join(' '))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal memproses')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-3 border-b border-ink-800 px-6 py-4">
@@ -76,6 +96,14 @@ export function QrOrderInbox() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {error && <p className="mb-3 rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">{error}</p>}
+        {notice && (
+          <p className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-sage-600/15 px-3 py-2 text-sm text-sage-300">
+            <span>{notice}</span>
+            <button className="flex-none text-ink-400" onClick={() => setNotice(null)}>
+              tutup
+            </button>
+          </p>
+        )}
 
         {calls.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -155,7 +183,7 @@ export function QrOrderInbox() {
                       <button
                         className="btn-primary flex-1 !min-h-0 !py-2 text-sm"
                         disabled={busyId === order.id}
-                        onClick={() => void run(order.id, () => confirmQrOrder(order.id, actor))}
+                        onClick={() => void accept(order.id)}
                       >
                         {busyId === order.id ? 'Memproses...' : 'Terima & Kirim ke Dapur'}
                       </button>

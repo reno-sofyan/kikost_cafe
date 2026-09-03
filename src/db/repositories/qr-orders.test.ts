@@ -92,22 +92,49 @@ describe('QR order inbox', () => {
     expect(pending.map((o) => o.id)).toEqual(['qr-1'])
   })
 
-  it('confirm: beri nomor antrean, pindah ke CONFIRMED, kirim ke dapur', async () => {
+  async function seedProduct(price = 20000, isAvailable = true) {
     await db.categories.put({ id: 'cat', name: 'Kopi', sortOrder: 0, active: true, createdAt: 1, updatedAt: 1 })
     await db.products.put({
-      id: 'p1', categoryId: 'cat', name: 'Kopi', sku: 'p1', barcode: null, price: 20000, costPrice: 5000,
+      id: 'p1', categoryId: 'cat', name: 'Kopi', sku: 'p1', barcode: null, price, costPrice: 5000,
       unit: 'pcs', photoDataUrl: null, trackOwnStock: false, stockQty: 0, lowStockThreshold: 0,
-      isFavorite: false, isAvailable: true, modifierGroupIds: [], createdAt: 1, updatedAt: 1,
+      isFavorite: false, isAvailable, modifierGroupIds: [], createdAt: 1, updatedAt: 1,
     })
+  }
+
+  it('confirm: beri nomor antrean, pindah ke CONFIRMED, kirim ke dapur', async () => {
+    await seedProduct()
     await seedQrOrder()
-    const { queueNumber } = await confirmQrOrder('qr-1', actor)
-    expect(queueNumber).toBe(1)
+    const res = await confirmQrOrder('qr-1', actor)
+    expect(res.queueNumber).toBe(1)
+    expect(res.priceChanged).toBe(false)
     const o = await db.orders.get('qr-1')
     expect(o?.lifecycleStatus).toBe('CONFIRMED')
     expect(o?.status).toBe('open')
     expect(o?.queueNumber).toBe(1)
     expect(await db.kitchenTickets.where('orderId').equals('qr-1').count()).toBe(1)
     expect(await db.auditLogs.where('action').equals('qr.order.confirm').count()).toBe(1)
+  })
+
+  it('confirm menghitung ulang harga dengan harga menu terkini', async () => {
+    await seedProduct(30000) // naik dari 20000 saat submit
+    await seedQrOrder()
+    const res = await confirmQrOrder('qr-1', actor)
+    expect(res.priceChanged).toBe(true)
+    expect(res.oldTotal).toBe(20000)
+    expect(res.newTotal).toBe(30000)
+    const item = await db.orderItems.where('orderId').equals('qr-1').first()
+    expect(item?.unitPrice).toBe(30000)
+    expect(item?.lineTotal).toBe(30000)
+  })
+
+  it('confirm mengeluarkan item yang produknya sudah tidak tersedia', async () => {
+    await seedProduct(20000, false)
+    await seedQrOrder()
+    const res = await confirmQrOrder('qr-1', actor)
+    expect(res.removedItems).toEqual(['Kopi'])
+    const item = await db.orderItems.where('orderId').equals('qr-1').first()
+    expect(item?.removed).toBe(true)
+    expect((await db.orders.get('qr-1'))?.grandTotal).toBe(0)
   })
 
   it('confirm dua kali → error, tidak dobel', async () => {
