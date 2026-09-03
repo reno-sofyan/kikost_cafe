@@ -4,7 +4,6 @@ import { newId, newIdempotencyKey } from '@/lib/id'
 import { computeLineTotal, computeOrderTotals } from '@/lib/orderTotals'
 import { getSettings, nextTransactionNumber } from '@/db/repositories/settings'
 import { occupyTable } from '@/db/repositories/tables'
-import { assignItemToTicket } from '@/db/repositories/kitchen'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { assertTransition, deriveKitchenPhase, legacyStatusFor } from '@/lib/orderState'
 import { getDeviceId } from '@/sync/device'
@@ -16,6 +15,7 @@ import type {
   OrderItem,
   OrderItemModifierSnapshot,
   OrderLifecycleStatus,
+  OrderSource,
   OrderType,
 } from '@/types/domain'
 
@@ -38,6 +38,7 @@ export class NoActiveShiftError extends Error {
 
 export async function startOrder(params: {
   type: OrderType
+  source?: OrderSource
   tableId?: string
   customerId?: string
   guestCount?: number
@@ -77,6 +78,7 @@ export async function startOrder(params: {
     grandTotal: 0,
     shiftId: params.shiftId,
     deviceId: getDeviceId(),
+    source: params.source ?? (params.type === 'takeaway' ? 'takeaway' : params.type === 'delivery' ? 'delivery' : 'cashier'),
     cashierId: params.cashierId,
     cashierName: params.cashierName,
     notes: params.notes?.trim() ?? '',
@@ -186,6 +188,7 @@ export async function addOrderItem(params: {
     lineTotal,
     kitchenStatus: 'new',
     removed: false,
+    kitchenPrintedAt: null,
     ticketId: null,
     queuedAt: now,
     startedAt: null,
@@ -198,14 +201,15 @@ export async function addOrderItem(params: {
   }
   await db.transaction(
     'rw',
-    [db.orderItems, db.orders, db.kitchenTickets, db.syncQueue, db.settings],
+    [db.orderItems, db.orders, db.syncQueue, db.settings],
     async () => {
-      const ticketId = await assignItemToTicket(params.orderId, item.id, now)
-      item.ticketId = ticketId
+      // Tiket dapur & cetak dibuat saat item di-"Kirim ke Dapur/Bar"
+      // (sendOrderToKitchen) — bukan saat item ditambahkan. Item baru mulai
+      // dengan ticketId null & kitchenPrintedAt null hingga di-dispatch.
       await db.orderItems.add(item)
       await enqueueSync('orderItems', item.id, item)
-      // Item pertama mengkonfirmasi order (dikirim ke dapur). Kafe: tanpa tombol
-      // "kirim ke dapur" terpisah — menambah item = mengkonfirmasi.
+      // Item pertama mengkonfirmasi order. Kafe: tanpa tombol terpisah —
+      // menambah item = mengkonfirmasi order (DRAFT -> CONFIRMED).
       const order = await db.orders.get(params.orderId)
       if (order && (order.lifecycleStatus ?? 'DRAFT') === 'DRAFT') {
         await transitionOrder(params.orderId, 'CONFIRMED')

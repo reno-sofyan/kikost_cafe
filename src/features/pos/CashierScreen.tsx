@@ -16,6 +16,7 @@ import {
   voidOrderItem,
 } from '@/db/repositories/orders'
 import { canFulfillProductQty } from '@/db/repositories/stock'
+import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { usePosStore } from '@/state/posStore'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
@@ -342,6 +343,21 @@ export function CashierScreen() {
                   Kosongkan
                 </button>
               </div>
+              {activeItems.some((i) => i.kitchenPrintedAt == null) && (
+                <button
+                  className="btn-secondary w-full"
+                  onClick={async () => {
+                    const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name })
+                    setStockWarning(
+                      res.itemCount === 0
+                        ? 'Semua item sudah dikirim ke dapur.'
+                        : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}.`,
+                    )
+                  }}
+                >
+                  Kirim ke Dapur / Bar
+                </button>
+              )}
               <button
                 className="btn-primary w-full"
                 disabled={activeItems.length === 0}

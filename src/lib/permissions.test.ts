@@ -8,16 +8,19 @@ describe('roleHasPermission', () => {
     }
   })
 
-  it('kasir hanya boleh menerapkan diskon, tidak boleh void / override / laporan', () => {
+  it('kasir hanya diskon + retry cetak, tidak boleh void / override / laporan', () => {
     expect(roleHasPermission('kasir', 'discount.apply')).toBe(true)
+    expect(roleHasPermission('kasir', 'print.retry')).toBe(true)
     expect(roleHasPermission('kasir', 'order.void')).toBe(false)
     expect(roleHasPermission('kasir', 'price.override')).toBe(false)
     expect(roleHasPermission('kasir', 'reports.view')).toBe(false)
     expect(roleHasPermission('kasir', 'users.manage')).toBe(false)
+    expect(roleHasPermission('kasir', 'printer.manage')).toBe(false)
+    expect(roleHasPermission('kasir', 'receipt.reprint')).toBe(false)
   })
 
-  it('dapur tidak punya izin apa pun', () => {
-    expect(permissionsForRole('dapur')).toHaveLength(0)
+  it('dapur hanya boleh retry cetak (tiket dapur macet)', () => {
+    expect(permissionsForRole('dapur')).toEqual(['print.retry'])
   })
 
   it('supervisor bisa menyetujui tindakan sensitif tapi tidak kelola pengguna/pengaturan', () => {

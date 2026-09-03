@@ -16,6 +16,9 @@ import type {
   OrderItem,
   OrderLifecycleStatus,
   Payment,
+  Printer,
+  PrintJob,
+  PrintRoute,
   Product,
   Purchase,
   Recipe,
@@ -54,6 +57,9 @@ export class KikostDatabase extends Dexie {
   kitchenTickets!: Table<KitchenTicket, string>
   bills!: Table<Bill, string>
   payments!: Table<Payment, string>
+  printers!: Table<Printer, string>
+  printRoutes!: Table<PrintRoute, string>
+  printJobs!: Table<PrintJob, string>
   shifts!: Table<Shift, string>
   cashMovements!: Table<CashMovement, string>
   expenses!: Table<Expense, string>
@@ -245,6 +251,59 @@ export class KikostDatabase extends Dexie {
           .toCollection()
           .modify((p: Payment) => {
             p.billId = p.billId ?? `bill_${p.orderId}`
+          })
+      })
+
+    // v6 (Fitur B: printer multi-station): printer, routing, antrean cetak.
+    // Fitur A (QR) sebagian: order.source + kitchenTicket.station.
+    this.version(6)
+      .stores({
+        printers: 'id, station, active',
+        printRoutes: 'id, categoryId, station',
+        printJobs: 'id, status, kind, station, orderId, createdAt',
+        kitchenTickets: 'id, orderId, station, sequenceNo, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const settings = await tx.table('settings').get('singleton')
+        const pc = settings?.printerConfig
+        if (pc && pc.connectionType && pc.connectionType !== 'none' && pc.connectionType !== 'browser') {
+          const existing = await tx.table('printers').count()
+          if (existing === 0) {
+            const now = Date.now()
+            await tx.table('printers').add({
+              id: 'printer_cashier_default',
+              name: 'Printer Kasir',
+              station: 'cashier',
+              connectionType: pc.connectionType,
+              bluetoothAddress: pc.bluetoothAddress ?? null,
+              bluetoothName: pc.bluetoothName ?? null,
+              networkHost: pc.networkHost ?? null,
+              networkPort: pc.networkPort ?? 9100,
+              paperSize: pc.paperSize ?? settings?.receiptPaperSize ?? '58mm',
+              active: true,
+              fallbackPrinterId: null,
+              createdAt: now,
+              updatedAt: now,
+            })
+          }
+        }
+        await tx
+          .table('kitchenTickets')
+          .toCollection()
+          .modify((t: KitchenTicket & { station: string }) => {
+            if (!t.station || t.station === 'all') t.station = 'kitchen'
+          })
+        await tx
+          .table('orders')
+          .toCollection()
+          .modify((o: Order & { source?: string }) => {
+            o.source = o.source ?? (o.type === 'takeaway' ? 'takeaway' : o.type === 'delivery' ? 'delivery' : 'cashier')
+          })
+        await tx
+          .table('orderItems')
+          .toCollection()
+          .modify((it: OrderItem & { kitchenPrintedAt?: number | null }) => {
+            it.kitchenPrintedAt = it.kitchenPrintedAt ?? (it.kitchenStatus !== 'new' ? it.createdAt : null)
           })
       })
   }

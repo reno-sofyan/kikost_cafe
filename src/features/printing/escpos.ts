@@ -1,5 +1,6 @@
 import { formatRupiah } from '@/lib/currency'
 import type { ReceiptData } from '@/features/printing/receiptData'
+import type { KitchenTicketPayload } from '@/types/domain'
 
 const ESC = 0x1b
 const GS = 0x1d
@@ -116,5 +117,33 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   if (data.footerNote) b.line(data.footerNote)
   b.feed(3).cut()
 
+  return b.toBytes()
+}
+
+/** Tiket dapur/bar ESC/POS — hanya item pada tiket ini (tak mencetak ulang pesanan lama). */
+export function buildEscPosKitchenTicket(p: KitchenTicketPayload): Uint8Array {
+  const width = CHARS_PER_LINE[p.paperSize]
+  const b = new EscPosBuilder().init()
+
+  b.align('center')
+  b.doubleHeight(true).bold(true).line(p.ticketLabel || 'ORDER DAPUR').bold(false).doubleHeight(false)
+  if (p.outletName) b.line(p.outletName)
+  b.line(divider(width))
+
+  b.align('left')
+  b.bold(true).line(`No: ${p.orderNumber}`).bold(false)
+  if (p.tableOrQueue) b.line(p.tableOrQueue)
+  if (p.customerName) b.line(`Pelanggan: ${p.customerName}`)
+  b.line(`Waktu: ${p.orderedAtLabel}`)
+  b.line(`Oleh: ${p.cashierName}${p.source ? ` (${p.source})` : ''}`)
+  b.line(divider(width))
+
+  for (const line of p.lines) {
+    b.bold(true).doubleHeight(true).line(`${line.qty}x ${line.name}`).doubleHeight(false).bold(false)
+    for (const m of line.modifiers) b.line(`  - ${m}`)
+    if (line.note) b.line(`  * ${line.note}`)
+  }
+  b.line(divider(width))
+  b.feed(3).cut()
   return b.toBytes()
 }

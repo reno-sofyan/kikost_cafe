@@ -15,6 +15,7 @@ function item(partial: Partial<OrderItem>): OrderItem {
     discountAmount: 0,
     lineTotal: 0,
     kitchenStatus: 'new',
+    kitchenPrintedAt: null,
     removed: false,
     ticketId: null,
     queuedAt: null,

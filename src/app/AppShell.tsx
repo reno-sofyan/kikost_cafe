@@ -9,6 +9,8 @@ import { roleHasPermission } from '@/lib/permissions'
 import { formatRupiah } from '@/lib/currency'
 import { backupIsStale, lastBackupLabel } from '@/lib/backupReminder'
 import { isBackendConfigured } from '@/sync/deviceConfig'
+import { countActivePrintFailures } from '@/db/repositories/printQueue'
+import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
 
 interface NavItem {
@@ -22,6 +24,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['administrator', 'supervisor', 'kasir'] },
   { to: '/dapur', label: 'Dapur', icon: 'chef' },
+  { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['administrator', 'supervisor', 'kasir', 'dapur'] },
   { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['administrator', 'supervisor', 'kasir'] },
   { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['administrator', 'supervisor', 'kasir'] },
   { to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', roles: ['administrator', 'supervisor', 'kasir'] },
@@ -39,6 +42,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const sync = useSyncStore()
   const openShift = useLiveQuery(() => getOpenShift(), [])
+  const printAlerts =
+    useLiveQuery(async () => {
+      const failed = await countActivePrintFailures()
+      const retrying = await db.printJobs.where('status').equals('RETRYING').count()
+      return failed + retrying
+    }, []) ?? 0
 
   // Pengingat backup (hanya relevan bila TIDAK pakai sinkronisasi server sebagai backup).
   // `now` di-refresh berkala supaya labelnya ikut menua tanpa perlu reload.
@@ -114,6 +123,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon name="alertTriangle" size={14} />
                 Backup: {lastBackupLabel(now)}
+              </button>
+            )}
+            {printAlerts > 0 && (
+              <button
+                onClick={() => navigate('/cetak')}
+                className="flex items-center gap-1.5 rounded-full bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/40"
+                title="Buka Antrean Cetak"
+              >
+                <Icon name="printer" size={14} />
+                {printAlerts} cetak bermasalah
               </button>
             )}
           </div>

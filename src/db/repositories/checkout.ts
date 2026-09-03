@@ -13,6 +13,10 @@ import {
   OrderAlreadyFinalizedError,
   payBill,
 } from '@/db/repositories/billing'
+import { activePrinterForStation } from '@/db/repositories/printers'
+import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
+import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
+import { getSettings } from '@/db/repositories/settings'
 import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, ReturnRecord } from '@/types/domain'
 
 export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError }
@@ -43,6 +47,23 @@ export async function finalizePayment(params: {
     allowPartial: params.allowPartial,
     allowNegativeStock: params.allowNegativeStock,
   })
+
+  // Antre cetak nota bila order selesai & ada printer kasir aktif — kegagalan
+  // printer TIDAK membatalkan pembayaran (job tetap tersimpan untuk retry).
+  if (result.order.lifecycleStatus === 'COMPLETED') {
+    try {
+      const settings = await getSettings()
+      if (settings.printerConfig.autoPrintKitchenOrder) {
+        await sendOrderToKitchen(params.orderId, { userId: params.confirmedByUserId, userName: '' })
+      }
+      if (await activePrinterForStation('cashier')) {
+        await enqueueReceiptForOrder(params.orderId, { userId: params.confirmedByUserId, userName: '' })
+      }
+    } catch {
+      /* diabaikan — pembayaran sudah tercatat */
+    }
+  }
+
   return { order: result.order, payments: result.payments }
 }
 

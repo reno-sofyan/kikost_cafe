@@ -13,6 +13,10 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'users.manage',
     'shift.manage',
     'cash.variance.approve',
+    'printer.manage',
+    'print.retry',
+    'receipt.reprint',
+    'kitchen.ticket.cancel',
   ],
   supervisor: [
     'discount.apply',
@@ -24,9 +28,13 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'reports.view',
     'shift.manage',
     'cash.variance.approve',
+    'printer.manage',
+    'print.retry',
+    'receipt.reprint',
+    'kitchen.ticket.cancel',
   ],
-  kasir: ['discount.apply'],
-  dapur: [],
+  kasir: ['discount.apply', 'print.retry'],
+  dapur: ['print.retry'],
 }
 
 export function roleHasPermission(role: Role, permission: Permission): boolean {

@@ -15,6 +15,10 @@ export type Permission =
   | 'users.manage'
   | 'shift.manage'
   | 'cash.variance.approve'
+  | 'printer.manage'
+  | 'print.retry'
+  | 'receipt.reprint'
+  | 'kitchen.ticket.cancel'
 
 export interface User {
   id: string
@@ -80,6 +84,89 @@ export interface PrinterConfig {
   networkPort: number | null
   autoPrintOnPayment: boolean
   autoPrintKitchenOrder: boolean
+}
+
+// ---- Printer multi-station (Fitur B) ----
+
+export type PrinterStation = 'cashier' | 'kitchen' | 'bar'
+
+export const PRINTER_STATIONS: PrinterStation[] = ['cashier', 'kitchen', 'bar']
+
+export interface Printer {
+  id: string
+  name: string
+  station: PrinterStation
+  connectionType: Exclude<PrinterConnectionType, 'none'>
+  bluetoothAddress: string | null
+  bluetoothName: string | null
+  networkHost: string | null
+  networkPort: number | null
+  paperSize: ReceiptPaperSize
+  active: boolean
+  /** Printer cadangan bila printer ini gagal. */
+  fallbackPrinterId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+/** Pemetaan kategori menu → station. `categoryId: null` = aturan default. */
+export interface PrintRoute {
+  id: string
+  categoryId: string | null
+  station: PrinterStation
+  updatedAt: number
+}
+
+export type PrintJobKind = 'receipt' | 'kitchen_ticket'
+export type PrintJobStatus =
+  | 'QUEUED'
+  | 'PRINTING'
+  | 'PRINTED'
+  | 'FAILED'
+  | 'RETRYING'
+  | 'PERMANENTLY_FAILED'
+
+export interface PrintJob {
+  id: string
+  /** Kunci idempotensi bisnis — retry jaringan tak boleh mencetak dua kali. */
+  idempotencyKey: string
+  kind: PrintJobKind
+  station: PrinterStation
+  printerId: string | null
+  /** ReceiptData (untuk 'receipt') atau KitchenTicketPayload (untuk 'kitchen_ticket') sebagai JSON. */
+  payload: unknown
+  title: string
+  isReprint: boolean
+  orderId: string | null
+  ticketId: string | null
+  requestedBy: string
+  requestedByName: string
+  status: PrintJobStatus
+  attempts: number
+  lastError: string | null
+  createdAt: number
+  updatedAt: number
+  printedAt: number | null
+}
+
+export interface KitchenTicketLine {
+  qty: number
+  name: string
+  modifiers: string[]
+  note: string
+}
+
+export interface KitchenTicketPayload {
+  outletName: string
+  orderNumber: string
+  tableOrQueue: string
+  customerName: string
+  orderedAtLabel: string
+  cashierName: string
+  source: string
+  ticketLabel: string
+  paperSize: ReceiptPaperSize
+  lines: KitchenTicketLine[]
 }
 
 export type UnitOfMeasure = 'pcs' | 'g' | 'kg' | 'ml' | 'l'
@@ -270,6 +357,7 @@ export interface Customer {
 }
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery'
+export type OrderSource = 'cashier' | 'qr_table' | 'takeaway' | 'delivery'
 
 /**
  * Status legacy — menggerakkan proteksi pembayaran, proteksi sync "final", dan
@@ -329,6 +417,9 @@ export interface OrderItem {
   kitchenStatus: KitchenItemStatus
   /** Soft-delete: item dihapus sebelum dikirim ke dapur (menggantikan hard delete). */
   removed: boolean
+  /** Waktu item ini dicetak ke tiket dapur/bar. Item tambahan (belum tercetak) tak
+   *  memicu cetak ulang seluruh pesanan. */
+  kitchenPrintedAt: number | null
   ticketId: string | null
   queuedAt: number | null
   startedAt: number | null
@@ -368,6 +459,8 @@ export interface Order {
   shiftId: string | null
   /** Perangkat pembuat — untuk penomoran & antrean aman-offline dan atribusi shift. */
   deviceId: string
+  /** Asal pesanan. Default 'cashier'; 'qr_table' untuk pesanan mandiri via QR. */
+  source: OrderSource
   cashierId: string
   cashierName: string
   notes: string
@@ -515,6 +608,8 @@ export type SyncEntity =
   | 'purchases'
   | 'stockOpnames'
   | 'bills'
+  | 'printers'
+  | 'printRoutes'
   | 'products'
   | 'ingredients'
   | 'recipes'

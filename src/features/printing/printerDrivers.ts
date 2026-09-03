@@ -101,3 +101,43 @@ export function resolvePrinterDriver(config: PrinterConfig): PrinterDriver {
       throw new PrinterNotConfiguredError()
   }
 }
+
+// ---- Transport tingkat rendah untuk antrean cetak (kirim byte ESC/POS ke satu printer) ----
+
+interface EscPosTransportTarget {
+  connectionType: 'bluetooth' | 'network' | 'browser'
+  bluetoothAddress: string | null
+  networkHost: string | null
+  networkPort: number | null
+}
+
+export type EscPosSender = (target: EscPosTransportTarget, bytes: Uint8Array) => Promise<void>
+
+let sender: EscPosSender = defaultSender
+
+/** Untuk pengujian: ganti transport nyata dengan mock. */
+export function setEscPosSender(next: EscPosSender): void {
+  sender = next
+}
+export function resetEscPosSender(): void {
+  sender = defaultSender
+}
+
+async function defaultSender(target: EscPosTransportTarget, bytes: Uint8Array): Promise<void> {
+  if (target.connectionType === 'browser') {
+    throw new PrinterNotConfiguredError()
+  }
+  if (!Capacitor.isNativePlatform()) throw new PrinterUnavailableOnPlatformError()
+  if (target.connectionType === 'bluetooth') {
+    if (!target.bluetoothAddress) throw new PrinterNotConfiguredError()
+    await EscPosPrinter.connectBluetooth({ address: target.bluetoothAddress })
+  } else {
+    if (!target.networkHost || !target.networkPort) throw new PrinterNotConfiguredError()
+    await EscPosPrinter.connectNetwork({ host: target.networkHost, port: target.networkPort })
+  }
+  await EscPosPrinter.printBytes({ base64: toBase64(bytes) })
+}
+
+export function sendEscPosBytes(target: EscPosTransportTarget, bytes: Uint8Array): Promise<void> {
+  return sender(target, bytes)
+}

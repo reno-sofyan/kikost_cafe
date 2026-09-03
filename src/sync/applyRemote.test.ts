@@ -28,6 +28,7 @@ function order(partial: Partial<Order>): Order {
     grandTotal: 10000,
     shiftId: null,
     deviceId: 'test-device',
+    source: 'cashier',
     cashierId: 'u1',
     cashierName: 'Kasir',
     notes: '',

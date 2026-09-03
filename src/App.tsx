@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
 import { startSyncEngine } from '@/sync/engine'
+import { startPrintEngine } from '@/features/printing/printEngine'
 import { AppShell } from '@/app/AppShell'
 import { AutoLockWatcher } from '@/app/AutoLockWatcher'
 import { OnboardingWizard } from '@/features/onboarding/OnboardingWizard'
@@ -11,6 +12,7 @@ import { LoginScreen } from '@/features/auth/LoginScreen'
 import { LockScreen } from '@/features/auth/LockScreen'
 import { CashierScreen } from '@/features/pos/CashierScreen'
 import { KitchenDisplayScreen } from '@/features/kitchen/KitchenDisplayScreen'
+import { PrintQueueScreen } from '@/features/printing/PrintQueueScreen'
 import { HistoryScreen } from '@/features/history/HistoryScreen'
 import { CustomersScreen } from '@/features/customers/CustomersScreen'
 import { ExpensesScreen } from '@/features/expenses/ExpensesScreen'
@@ -27,8 +29,12 @@ export default function App() {
   const isLocked = useSessionStore((s) => s.isLocked)
 
   useEffect(() => {
-    const stop = startSyncEngine()
-    return stop
+    const stopSync = startSyncEngine()
+    const stopPrint = startPrintEngine()
+    return () => {
+      stopSync()
+      stopPrint()
+    }
   }, [])
 
   if (settings === undefined) {
@@ -68,6 +74,7 @@ export default function App() {
           <Route path="/kasir" element={<CashierScreen />} />
           <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
           <Route path="/dapur" element={<KitchenDisplayScreen />} />
+          <Route path="/cetak" element={<PrintQueueScreen />} />
           <Route path="/riwayat" element={<HistoryScreen />} />
           <Route path="/pelanggan" element={<CustomersScreen />} />
           <Route path="/pengeluaran" element={<ExpensesScreen />} />

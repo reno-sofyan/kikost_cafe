@@ -17,6 +17,8 @@ export const SYNC_ENTITIES = [
   'stockMovements',
   'purchases',
   'stockOpnames',
+  'printers',
+  'printRoutes',
   'products',
   'ingredients',
   'recipes',

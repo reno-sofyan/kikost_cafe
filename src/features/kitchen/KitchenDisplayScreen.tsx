@@ -3,8 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { listActiveKitchenItems, setOrderItemKitchenStatus } from '@/db/repositories/orders'
 import { playNewOrderChime } from '@/lib/kitchenSound'
+import { reprintKitchenTicket } from '@/db/repositories/kitchenDispatch'
+import { useSessionStore } from '@/state/sessionStore'
+import { roleHasPermission } from '@/lib/permissions'
 import { durationSince } from '@/lib/datetime'
-import { printKitchenTicket } from '@/features/kitchen/printKitchenTicket'
 import { Icon } from '@/components/ui/Icon'
 import type { KitchenItemStatus, Order, OrderItem } from '@/types/domain'
 
@@ -36,20 +38,20 @@ const STATUS_ACTION_LABEL: Record<KitchenItemStatus, string> = {
 }
 
 export function KitchenDisplayScreen() {
+  const currentUser = useSessionStore((s) => s.currentUser)!
+  const canReprint = roleHasPermission(currentUser.role, 'receipt.reprint')
   const [filter, setFilter] = useState<KitchenItemStatus | 'all'>('all')
   const [now, setNow] = useState(Date.now())
   const items = useLiveQuery(() => listActiveKitchenItems(), [])
   const orderIds = useMemo(() => Array.from(new Set((items ?? []).map((i) => i.orderId))), [items])
   const orders = useLiveQuery(() => db.orders.where('id').anyOf(orderIds.length ? orderIds : ['-']).toArray(), [orderIds])
   const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
-  const tickets = useLiveQuery(
+  const ticketsRaw = useLiveQuery(
     () => db.kitchenTickets.where('orderId').anyOf(orderIds.length ? orderIds : ['-']).toArray(),
     [orderIds],
   )
-  const ticketSeqById = useMemo(
-    () => new Map((tickets ?? []).map((t) => [t.id, t.sequenceNo])),
-    [tickets],
-  )
+  const tickets = useMemo(() => ticketsRaw ?? [], [ticketsRaw])
+  const ticketSeqById = useMemo(() => new Map(tickets.map((t) => [t.id, t.sequenceNo])), [tickets])
 
   const seenNewIds = useRef<Set<string>>(new Set())
 
@@ -155,12 +157,18 @@ export function KitchenDisplayScreen() {
                   })}
                 </div>
 
-                <button
-                  className="btn-ghost mt-3 text-sm"
-                  onClick={() => printKitchenTicket(order, orderItems.filter((i) => !i.voided), table?.name)}
-                >
-                  <Icon name="printer" size={16} className="mr-1" /> Cetak Order Dapur
-                </button>
+                {canReprint && tickets.filter((t) => t.orderId === order.id).length > 0 && (
+                  <button
+                    className="btn-ghost mt-3 text-sm"
+                    onClick={async () => {
+                      for (const t of tickets.filter((tt) => tt.orderId === order.id)) {
+                        await reprintKitchenTicket(t.id, { userId: currentUser.id, userName: currentUser.name })
+                      }
+                    }}
+                  >
+                    <Icon name="printer" size={16} className="mr-1" /> Cetak Ulang Tiket
+                  </button>
+                )}
               </div>
             )
           })}
