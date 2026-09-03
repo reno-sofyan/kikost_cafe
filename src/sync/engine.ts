@@ -123,10 +123,12 @@ export function startSyncEngine(): () => void {
   void refreshPendingCounts()
   if (navigator.onLine) void runSyncCycle()
 
+  // 10 dtk: cukup responsif untuk memunculkan pesanan QR baru di kasir tanpa
+  // membebani backend (single-tablet, payload kecil). Push tetap segera saat online.
   intervalHandle = setInterval(() => {
     void runSyncCycle()
     void refreshPendingCounts()
-  }, 30_000)
+  }, 10_000)
 
   return () => {
     window.removeEventListener('online', handleOnline)

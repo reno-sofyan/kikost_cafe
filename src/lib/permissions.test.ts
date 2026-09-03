@@ -23,6 +23,13 @@ describe('roleHasPermission', () => {
     expect(permissionsForRole('dapur')).toEqual(['print.retry'])
   })
 
+  it('kasir boleh menerima/menolak pesanan QR, tapi tidak kelola meja & QR', () => {
+    expect(roleHasPermission('kasir', 'qr.order.confirm')).toBe(true)
+    expect(roleHasPermission('kasir', 'qr.manage')).toBe(false)
+    expect(roleHasPermission('administrator', 'qr.manage')).toBe(true)
+    expect(roleHasPermission('supervisor', 'qr.manage')).toBe(true)
+  })
+
   it('supervisor bisa menyetujui tindakan sensitif tapi tidak kelola pengguna/pengaturan', () => {
     expect(roleHasPermission('supervisor', 'order.void')).toBe(true)
     expect(roleHasPermission('supervisor', 'users.manage')).toBe(false)

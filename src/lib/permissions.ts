@@ -17,6 +17,8 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'print.retry',
     'receipt.reprint',
     'kitchen.ticket.cancel',
+    'qr.manage',
+    'qr.order.confirm',
   ],
   supervisor: [
     'discount.apply',
@@ -32,8 +34,10 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'print.retry',
     'receipt.reprint',
     'kitchen.ticket.cancel',
+    'qr.manage',
+    'qr.order.confirm',
   ],
-  kasir: ['discount.apply', 'print.retry'],
+  kasir: ['discount.apply', 'print.retry', 'qr.order.confirm'],
   dapur: ['print.retry'],
 }
 

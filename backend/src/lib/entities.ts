@@ -19,11 +19,15 @@ export const SYNC_ENTITIES = [
   'stockOpnames',
   'printers',
   'printRoutes',
+  'tableCalls',
   'products',
   'ingredients',
   'recipes',
   'categories',
   'customers',
+  'cafeTables',
+  'modifierGroups',
+  'modifierOptions',
   'auditLogs',
 ] as const
 

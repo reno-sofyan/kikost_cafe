@@ -19,6 +19,8 @@ export type Permission =
   | 'print.retry'
   | 'receipt.reprint'
   | 'kitchen.ticket.cancel'
+  | 'qr.manage'
+  | 'qr.order.confirm'
 
 export interface User {
   id: string
@@ -64,6 +66,8 @@ export interface CafeSettings {
   allowPartialPayment: boolean
   qrisImageDataUrl: string | null
   qrisMerchantName: string | null
+  /** Basis URL publik halaman pesan-mandiri (mis. https://pos.kikost.com). QR berisi `<base>/order/<token>`. */
+  qrOrderBaseUrl: string
   receiptPaperSize: ReceiptPaperSize
   receiptFooterNote: string
   autoLockMinutes: number
@@ -344,6 +348,21 @@ export interface CafeTable {
   currentOrderId: string | null
   occupiedSince: number | null
   guestCount: number | null
+  /** Token acak (bukan id meja) yang dipetakan backend → meja. null bila QR belum dibuat. */
+  qrToken: string | null
+  /** QR aktif? Dinonaktifkan → backend menolak (410) tanpa hapus meja. */
+  qrActive: boolean
+  updatedAt: number
+}
+
+/** Permintaan ringan dari pelanggan lewat halaman status QR (panggil waiter / minta tagihan). */
+export interface TableCall {
+  id: string
+  tableId: string
+  type: 'waiter' | 'bill'
+  status: 'pending' | 'done'
+  note: string
+  createdAt: number
   updatedAt: number
 }
 
@@ -371,6 +390,7 @@ export type OrderStatus = 'open' | 'paid' | 'void' | 'completed'
  *   + CANCELLED (batal sebelum konfirmasi) / VOIDED (dibatalkan setelah konfirmasi)
  */
 export type OrderLifecycleStatus =
+  | 'PENDING_CONFIRMATION'
   | 'DRAFT'
   | 'CONFIRMED'
   | 'PREPARING'
@@ -378,6 +398,7 @@ export type OrderLifecycleStatus =
   | 'SERVED'
   | 'COMPLETED'
   | 'CANCELLED'
+  | 'REJECTED'
   | 'VOIDED'
 
 export type KitchenItemStatus = 'new' | 'in_progress' | 'ready' | 'done'
@@ -466,6 +487,8 @@ export interface Order {
   notes: string
   idempotencyKey: string
   parentOrderId: string | null
+  /** Alasan penolakan pesanan QR oleh kasir/waiter (lifecycle REJECTED). */
+  rejectedReason: string | null
   voidReason: string | null
   voidedBy: string | null
   voidedAt: number | null
@@ -610,11 +633,15 @@ export type SyncEntity =
   | 'bills'
   | 'printers'
   | 'printRoutes'
+  | 'tableCalls'
   | 'products'
   | 'ingredients'
   | 'recipes'
   | 'categories'
   | 'customers'
+  | 'cafeTables'
+  | 'modifierGroups'
+  | 'modifierOptions'
   | 'auditLogs'
 
 export type SyncOperation = 'upsert'

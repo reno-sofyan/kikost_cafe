@@ -10,6 +10,7 @@ import { formatRupiah } from '@/lib/currency'
 import { backupIsStale, lastBackupLabel } from '@/lib/backupReminder'
 import { isBackendConfigured } from '@/sync/deviceConfig'
 import { countActivePrintFailures } from '@/db/repositories/printQueue'
+import { countPendingQrOrders } from '@/db/repositories/qrOrders'
 import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
 
@@ -23,6 +24,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['administrator', 'supervisor', 'kasir'] },
+  { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['administrator', 'supervisor', 'kasir'] },
   { to: '/dapur', label: 'Dapur', icon: 'chef' },
   { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['administrator', 'supervisor', 'kasir', 'dapur'] },
   { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['administrator', 'supervisor', 'kasir'] },
@@ -48,6 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       const retrying = await db.printJobs.where('status').equals('RETRYING').count()
       return failed + retrying
     }, []) ?? 0
+  const pendingQr = useLiveQuery(() => countPendingQrOrders(), []) ?? 0
 
   // Pengingat backup (hanya relevan bila TIDAK pakai sinkronisasi server sebagai backup).
   // `now` di-refresh berkala supaya labelnya ikut menua tanpa perlu reload.
@@ -123,6 +126,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon name="alertTriangle" size={14} />
                 Backup: {lastBackupLabel(now)}
+              </button>
+            )}
+            {pendingQr > 0 && (
+              <button
+                onClick={() => navigate('/pesanan-qr')}
+                className="flex items-center gap-1.5 rounded-full bg-brew-600/30 px-3 py-1.5 text-xs font-medium text-brew-300 hover:bg-brew-600/40"
+                title="Buka Pesanan QR"
+              >
+                <Icon name="bell" size={14} />
+                {pendingQr} pesanan QR menunggu
               </button>
             )}
             {printAlerts > 0 && (

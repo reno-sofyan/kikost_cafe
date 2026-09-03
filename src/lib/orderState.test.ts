@@ -40,6 +40,19 @@ describe('orderState — validasi transisi', () => {
     expect(legacyStatusFor('VOIDED')).toBe('void')
     expect(legacyStatusFor('CANCELLED')).toBe('void')
   })
+
+  it('pesanan QR: PENDING_CONFIRMATION → CONFIRMED / REJECTED', () => {
+    expect(canTransition('PENDING_CONFIRMATION', 'CONFIRMED')).toBe(true)
+    expect(canTransition('PENDING_CONFIRMATION', 'REJECTED')).toBe(true)
+    expect(canTransition('PENDING_CONFIRMATION', 'COMPLETED')).toBe(false)
+    expect(canTransition('REJECTED', 'CONFIRMED')).toBe(false)
+    expect(legacyStatusFor('PENDING_CONFIRMATION')).toBe('open')
+    expect(legacyStatusFor('REJECTED')).toBe('void')
+  })
+
+  it('deriveKitchenPhase tidak menggerakkan pesanan yang belum dikonfirmasi', () => {
+    expect(deriveKitchenPhase('PENDING_CONFIRMATION', ['new'])).toBe('PENDING_CONFIRMATION')
+  })
 })
 
 describe('deriveKitchenPhase', () => {

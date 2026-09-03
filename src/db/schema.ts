@@ -27,6 +27,7 @@ import type {
   StockMovement,
   StockOpname,
   SyncQueueEntry,
+  TableCall,
   User,
 } from '@/types/domain'
 
@@ -60,6 +61,7 @@ export class KikostDatabase extends Dexie {
   printers!: Table<Printer, string>
   printRoutes!: Table<PrintRoute, string>
   printJobs!: Table<PrintJob, string>
+  tableCalls!: Table<TableCall, string>
   shifts!: Table<Shift, string>
   cashMovements!: Table<CashMovement, string>
   expenses!: Table<Expense, string>
@@ -304,6 +306,37 @@ export class KikostDatabase extends Dexie {
           .toCollection()
           .modify((it: OrderItem & { kitchenPrintedAt?: number | null }) => {
             it.kitchenPrintedAt = it.kitchenPrintedAt ?? (it.kitchenStatus !== 'new' ? it.createdAt : null)
+          })
+      })
+
+    // v7 (Fitur A: pemesanan mandiri via QR meja): token QR per meja, permintaan
+    // pelanggan (panggil waiter / minta tagihan), lifecycle PENDING_CONFIRMATION/REJECTED.
+    // Aditif — kolom baru opsional, store baru, indeks baru.
+    this.version(7)
+      .stores({
+        cafeTables: 'id, status, area, name, qrToken',
+        tableCalls: 'id, tableId, type, status, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const settings = await tx.table('settings').get('singleton')
+        if (settings) {
+          await tx.table('settings').put({
+            ...settings,
+            qrOrderBaseUrl: settings.qrOrderBaseUrl ?? 'https://pos.kikost.com',
+          })
+        }
+        await tx
+          .table('cafeTables')
+          .toCollection()
+          .modify((t: CafeTable) => {
+            t.qrToken = t.qrToken ?? null
+            t.qrActive = t.qrActive ?? false
+          })
+        await tx
+          .table('orders')
+          .toCollection()
+          .modify((o: Order & { rejectedReason?: string | null }) => {
+            o.rejectedReason = o.rejectedReason ?? null
           })
       })
   }

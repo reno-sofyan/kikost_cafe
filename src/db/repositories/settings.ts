@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   allowPartialPayment: false,
   qrisImageDataUrl: null,
   qrisMerchantName: null,
+  qrOrderBaseUrl: 'https://pos.kikost.com',
   receiptPaperSize: '58mm',
   receiptFooterNote: 'Terima kasih atas kunjungan Anda',
   autoLockMinutes: 5,

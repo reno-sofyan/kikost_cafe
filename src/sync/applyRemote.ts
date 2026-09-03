@@ -1,5 +1,6 @@
 import { db } from '@/db/schema'
 import { reconcileTransactionSequence } from '@/db/repositories/settings'
+import { playNewOrderChime } from '@/lib/kitchenSound'
 import type { Order, Payment, SyncEntity } from '@/types/domain'
 
 const IMMUTABLE_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
@@ -27,14 +28,31 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
 }
 
 async function applyOrders(remoteOrders: Order[]): Promise<void> {
+  let newPendingQr = 0
   await db.transaction('rw', db.orders, async () => {
     for (const remote of remoteOrders) {
       const local = await db.orders.get(remote.id)
       if (local && IMMUTABLE_ORDER_STATUSES.has(local.status)) continue
       if (local && local.updatedAt > remote.updatedAt) continue
+      if (
+        !local &&
+        remote.source === 'qr_table' &&
+        remote.lifecycleStatus === 'PENDING_CONFIRMATION'
+      ) {
+        newPendingQr++
+      }
       await db.orders.put(remote)
     }
   })
+  // Pesanan QR baru dari pelanggan → bunyikan lonceng supaya kasir sadar walau
+  // sedang di layar lain.
+  if (newPendingQr > 0) {
+    try {
+      playNewOrderChime()
+    } catch {
+      /* audio bisa diblokir sebelum interaksi pengguna — abaikan */
+    }
+  }
   // H11 — kejar penghitung nomor transaksi lokal agar tak bentrok dengan nomor
   // dari perangkat lain setelah keduanya online kembali.
   await reconcileTransactionSequence(remoteOrders.map((o) => o.orderNumber))

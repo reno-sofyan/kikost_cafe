@@ -3,6 +3,8 @@ import type { OrderLifecycleStatus, OrderStatus } from '@/types/domain'
 /**
  * State machine siklus hidup order gaya POS matang.
  *
+ *   PENDING_CONFIRMATION → CONFIRMED   (pesanan QR diterima kasir/waiter)
+ *   PENDING_CONFIRMATION → REJECTED    (pesanan QR ditolak, wajib alasan)
  *   DRAFT → CONFIRMED → PREPARING → READY → SERVED → COMPLETED
  *   DRAFT → CANCELLED            (batal sebelum item dikonfirmasi ke dapur)
  *   CONFIRMED/PREPARING/READY/SERVED → VOIDED   (dibatalkan, butuh supervisor)
@@ -12,6 +14,7 @@ import type { OrderLifecycleStatus, OrderStatus } from '@/types/domain'
  * final. `assertTransition` dipakai satu pintu oleh `transitionOrder()` di repo.
  */
 const ALLOWED: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> = {
+  PENDING_CONFIRMATION: ['CONFIRMED', 'REJECTED', 'CANCELLED'],
   DRAFT: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PREPARING', 'READY', 'SERVED', 'COMPLETED', 'VOIDED'],
   PREPARING: ['READY', 'SERVED', 'COMPLETED', 'VOIDED'],
@@ -22,12 +25,14 @@ const ALLOWED: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> = {
   // transisi ini — order tetap COMPLETED + ReturnRecord.
   COMPLETED: ['VOIDED'],
   CANCELLED: [],
+  REJECTED: [],
   VOIDED: [],
 }
 
 export const FINAL_LIFECYCLE: ReadonlySet<OrderLifecycleStatus> = new Set([
   'COMPLETED',
   'CANCELLED',
+  'REJECTED',
   'VOIDED',
 ])
 
@@ -50,7 +55,7 @@ export function assertTransition(from: OrderLifecycleStatus, to: OrderLifecycleS
 /** Status legacy (`open/paid/void/completed`) yang sepadan dengan sebuah lifecycle status. */
 export function legacyStatusFor(lifecycle: OrderLifecycleStatus): OrderStatus {
   if (lifecycle === 'COMPLETED') return 'paid'
-  if (lifecycle === 'VOIDED' || lifecycle === 'CANCELLED') return 'void'
+  if (lifecycle === 'VOIDED' || lifecycle === 'CANCELLED' || lifecycle === 'REJECTED') return 'void'
   return 'open'
 }
 
@@ -63,7 +68,7 @@ export function deriveKitchenPhase(
   current: OrderLifecycleStatus,
   itemKitchenStatuses: Array<'new' | 'in_progress' | 'ready' | 'done'>,
 ): OrderLifecycleStatus {
-  if (FINAL_LIFECYCLE.has(current) || current === 'DRAFT') return current
+  if (FINAL_LIFECYCLE.has(current) || current === 'DRAFT' || current === 'PENDING_CONFIRMATION') return current
   if (itemKitchenStatuses.length === 0) return 'CONFIRMED'
   if (itemKitchenStatuses.every((s) => s === 'done')) return 'SERVED'
   if (itemKitchenStatuses.every((s) => s === 'ready' || s === 'done')) return 'READY'

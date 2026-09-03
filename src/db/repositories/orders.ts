@@ -20,7 +20,7 @@ import type {
 } from '@/types/domain'
 
 /** Nomor antrean harian (reset tiap hari) untuk semua pesanan, dihitung dari data yang ada. */
-async function drawQueueNumber(): Promise<number> {
+export async function drawQueueNumber(): Promise<number> {
   const todayKey = jakartaDateKey(Date.now())
   const todaysOrders = await db.orders
     .filter((o) => o.queueNumber !== null && jakartaDateKey(o.createdAt) === todayKey)
@@ -84,6 +84,7 @@ export async function startOrder(params: {
     notes: params.notes?.trim() ?? '',
     idempotencyKey: newIdempotencyKey(),
     parentOrderId: null,
+    rejectedReason: null,
     voidReason: null,
     voidedBy: null,
     voidedAt: null,
@@ -390,6 +391,7 @@ export async function splitOrder(orderId: string, itemIdsToMove: string[]): Prom
       paidAt: null,
       status: 'open',
       lifecycleStatus: original.lifecycleStatus === 'DRAFT' ? 'DRAFT' : 'CONFIRMED',
+      rejectedReason: null,
       queueNumber: await drawQueueNumber(),
     }
     await db.orders.add(newOrder)

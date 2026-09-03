@@ -13,6 +13,7 @@ import { LockScreen } from '@/features/auth/LockScreen'
 import { CashierScreen } from '@/features/pos/CashierScreen'
 import { KitchenDisplayScreen } from '@/features/kitchen/KitchenDisplayScreen'
 import { PrintQueueScreen } from '@/features/printing/PrintQueueScreen'
+import { QrOrderInbox } from '@/features/qr/QrOrderInbox'
 import { HistoryScreen } from '@/features/history/HistoryScreen'
 import { CustomersScreen } from '@/features/customers/CustomersScreen'
 import { ExpensesScreen } from '@/features/expenses/ExpensesScreen'
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/kasir" element={<CashierScreen />} />
           <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
           <Route path="/dapur" element={<KitchenDisplayScreen />} />
+          <Route path="/pesanan-qr" element={<QrOrderInbox />} />
           <Route path="/cetak" element={<PrintQueueScreen />} />
           <Route path="/riwayat" element={<HistoryScreen />} />
           <Route path="/pelanggan" element={<CustomersScreen />} />
