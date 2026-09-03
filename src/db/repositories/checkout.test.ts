@@ -162,6 +162,11 @@ describe('voidOrder & returnOrderItems', () => {
     expect(pays.filter((p) => p.amount === -80000)).toHaveLength(1)
     const audit = await db.auditLogs.toArray()
     expect(audit.some((a) => a.action === 'order.void')).toBe(true)
+    // Dokumen refund append-only tercatat, terkait ke pembayaran pembalik.
+    const refunds = await db.refunds.where('orderId').equals(order.id).toArray()
+    expect(refunds).toHaveLength(1)
+    expect(refunds[0]).toMatchObject({ reason: 'void', amount: 80000, method: 'cash', orderItemIds: [] })
+    expect(refunds[0].reversalPaymentId).toBe(pays.find((p) => p.amount === -80000)!.id)
   })
 
   it('void dengan restock=true mengembalikan stok', async () => {
@@ -204,5 +209,11 @@ describe('voidOrder & returnOrderItems', () => {
     expect(record.refundAmount).toBe(50000)
     expect((await db.products.get('p-own'))?.stockQty).toBe(10)
     expect((await db.orderItems.get(items[0].id))?.voided).toBe(true)
+
+    // Refund doc reason 'return', menyimpan item yang diretur, terhubung ke ReturnRecord.
+    const refunds = await db.refunds.where('orderId').equals(order.id).toArray()
+    expect(refunds).toHaveLength(1)
+    expect(refunds[0]).toMatchObject({ reason: 'return', amount: 50000, orderItemIds: [items[0].id] })
+    expect(record.refundId).toBe(refunds[0].id)
   })
 })

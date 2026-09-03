@@ -21,6 +21,12 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
       case 'payments':
         await applyPayments(rows as Payment[])
         break
+      case 'refunds':
+        await applyAppendOnly('refunds', rows as { id: string }[])
+        break
+      case 'auditLogs':
+        await applyAppendOnly('auditLogs', rows as { id: string }[])
+        break
       default:
         await applyGeneric(entity, rows)
     }
@@ -69,6 +75,17 @@ async function applyPayments(remotePayments: Payment[]): Promise<void> {
       const local = await db.payments.get(remote.id)
       if (local) continue
       await db.payments.put(remote)
+    }
+  })
+}
+
+/** Entitas append-only (refund, audit log): sekali ada lokal, tak pernah ditimpa. */
+async function applyAppendOnly(entity: SyncEntity, rows: { id: string }[]): Promise<void> {
+  const table = db.table(entity)
+  await db.transaction('rw', table, async () => {
+    for (const row of rows) {
+      if (await table.get(row.id)) continue
+      await table.put(row)
     }
   })
 }

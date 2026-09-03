@@ -13,6 +13,7 @@ import type {
   ModifierGroup,
   ModifierOption,
   Order,
+  Refund,
   OrderItem,
   OrderLifecycleStatus,
   Payment,
@@ -68,6 +69,7 @@ export class KikostDatabase extends Dexie {
   cashMovements!: Table<CashMovement, string>
   expenses!: Table<Expense, string>
   returns!: Table<ReturnRecord, string>
+  refunds!: Table<Refund, string>
   syncQueue!: Table<SyncQueueEntry, string>
 
   constructor() {
@@ -346,6 +348,20 @@ export class KikostDatabase extends Dexie {
     this.version(8).stores({
       productions: 'id, status, createdAt',
     })
+
+    // v9 (Fase 2c): dokumen Refund terpisah (append-only) + ReturnRecord.refundId.
+    this.version(9)
+      .stores({
+        refunds: 'id, orderId, reason, createdAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('returns')
+          .toCollection()
+          .modify((r: ReturnRecord & { refundId?: string | null }) => {
+            r.refundId = r.refundId ?? null
+          })
+      })
   }
 }
 

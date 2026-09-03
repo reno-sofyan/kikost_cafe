@@ -647,8 +647,32 @@ export interface ReturnRecord {
   restocked: boolean
   /** Pembayaran pembalik (amount negatif) yang dibuat untuk retur ini. */
   reversalPaymentId: string | null
+  /** Dokumen refund yang menyertai retur ini (Fase 2c). */
+  refundId: string | null
   userId: string
   approverName: string
+  createdAt: number
+}
+
+export type RefundReason = 'void' | 'return'
+
+/**
+ * Dokumen pengembalian dana — append-only, satu per pergerakan uang keluar.
+ * Uangnya tetap bergerak lewat `Payment` beramount negatif (`reversalPaymentId`);
+ * `Refund` adalah jejak audit/akuntansinya (alasan, metode, penyetuju, item).
+ */
+export interface Refund {
+  id: string
+  orderId: string
+  billId: string
+  reason: RefundReason
+  amount: number
+  method: PaymentMethod
+  reversalPaymentId: string
+  orderItemIds: string[]
+  note: string
+  approvedByUserId: string
+  approvedByName: string
   createdAt: number
 }
 
@@ -665,6 +689,7 @@ export type SyncEntity =
   | 'purchases'
   | 'stockOpnames'
   | 'productions'
+  | 'refunds'
   | 'bills'
   | 'printers'
   | 'printRoutes'

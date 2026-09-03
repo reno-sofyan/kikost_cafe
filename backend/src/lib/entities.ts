@@ -18,6 +18,7 @@ export const SYNC_ENTITIES = [
   'purchases',
   'stockOpnames',
   'productions',
+  'refunds',
   'printers',
   'printRoutes',
   'tableCalls',
@@ -105,6 +106,11 @@ export function shouldApply(params: {
   // Payment: immutable setelah ada. Nominal & metode tak boleh berubah lewat sync.
   if (entity === 'payments') {
     return { apply: false, reason: 'Pembayaran bersifat immutable setelah tercatat' }
+  }
+
+  // Refund: dokumen append-only, sama seperti payment.
+  if (entity === 'refunds') {
+    return { apply: false, reason: 'Refund bersifat immutable setelah tercatat' }
   }
 
   if (entity === 'orders') {

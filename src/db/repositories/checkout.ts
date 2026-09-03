@@ -17,7 +17,7 @@ import { activePrinterForStation } from '@/db/repositories/printers'
 import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { getSettings } from '@/db/repositories/settings'
-import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, ReturnRecord } from '@/types/domain'
+import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, Refund, RefundReason, ReturnRecord } from '@/types/domain'
 
 export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError }
 export type { PaymentInput }
@@ -82,7 +82,7 @@ export async function voidOrder(params: {
 }): Promise<void> {
   await db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.payments, db.shifts, db.cashMovements, db.syncQueue, db.auditLogs],
+    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.payments, db.refunds, db.shifts, db.cashMovements, db.syncQueue, db.auditLogs],
     async () => {
       const order = await db.orders.get(params.orderId)
       if (!order) throw new Error('Pesanan tidak ditemukan')
@@ -93,7 +93,17 @@ export async function voidOrder(params: {
       if (wasPaid) {
         const original = await db.payments.where('orderId').equals(order.id).toArray()
         for (const orig of original.filter((p) => p.amount > 0 && !p.reversalOfPaymentId)) {
-          await createReversalPayment(order, orig, -orig.amount, params.approverUserId, now)
+          const reversal = await createReversalPayment(order, orig, -orig.amount, params.approverUserId, now)
+          await createRefundDoc({
+            order,
+            reversal,
+            reason: 'void',
+            orderItemIds: [],
+            note: params.reason,
+            approvedByUserId: params.approverUserId,
+            approvedByName: params.approverName,
+            at: now,
+          })
         }
         if (params.restock) {
           const items = await db.orderItems
@@ -182,6 +192,43 @@ async function createReversalPayment(
 }
 
 /**
+ * Dokumen refund (append-only) yang menyertai satu pembayaran pembalik.
+ * Uangnya sudah bergerak lewat `reversal`; ini jejak akuntansi/auditnya.
+ * Id deterministik (= id pembayaran pembalik) → idempoten antar-perangkat.
+ */
+async function createRefundDoc(params: {
+  order: Order
+  reversal: Payment
+  reason: RefundReason
+  orderItemIds: string[]
+  note: string
+  approvedByUserId: string
+  approvedByName: string
+  at: number
+}): Promise<Refund> {
+  const id = params.reversal.id
+  const existing = await db.refunds.get(id)
+  if (existing) return existing
+  const refund: Refund = {
+    id,
+    orderId: params.order.id,
+    billId: params.reversal.billId ?? implicitBillId(params.order.id),
+    reason: params.reason,
+    amount: Math.abs(params.reversal.amount),
+    method: params.reversal.method,
+    reversalPaymentId: params.reversal.id,
+    orderItemIds: params.orderItemIds,
+    note: params.note,
+    approvedByUserId: params.approvedByUserId,
+    approvedByName: params.approvedByName,
+    createdAt: params.at,
+  }
+  await db.refunds.add(refund)
+  await enqueueSync('refunds', refund.id, refund)
+  return refund
+}
+
+/**
  * Retur sebagian/seluruh item dari transaksi yang sudah dibayar. Membuat pembayaran
  * pembalik sebesar nilai item yang diretur; transaksi asli tetap utuh. Total refund
  * kumulatif tidak boleh melebihi grand total. Stok tidak dikembalikan kecuali
@@ -197,7 +244,7 @@ export async function returnOrderItems(params: {
 }): Promise<ReturnRecord> {
   return db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.returns, db.payments, db.shifts, db.cashMovements, db.syncQueue, db.auditLogs],
+    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.returns, db.payments, db.refunds, db.shifts, db.cashMovements, db.syncQueue, db.auditLogs],
     async () => {
       const order = await db.orders.get(params.orderId)
       if (!order) throw new Error('Pesanan tidak ditemukan')
@@ -240,6 +287,18 @@ export async function returnOrderItems(params: {
       const reversal = dominant
         ? await createReversalPayment(order, dominant, -refundAmount, params.approverUserId, now)
         : null
+      const refundDoc = reversal
+        ? await createRefundDoc({
+            order,
+            reversal,
+            reason: 'return',
+            orderItemIds: params.orderItemIds,
+            note: params.reason,
+            approvedByUserId: params.approverUserId,
+            approvedByName: params.approverName,
+            at: now,
+          })
+        : null
 
       // Perbarui status refund bill.
       for (const b of await db.bills.where('orderId').equals(order.id).toArray()) {
@@ -258,6 +317,7 @@ export async function returnOrderItems(params: {
         refundAmount,
         restocked: params.restock,
         reversalPaymentId: reversal?.id ?? null,
+        refundId: refundDoc?.id ?? null,
         userId: params.approverUserId,
         approverName: params.approverName,
         createdAt: now,
