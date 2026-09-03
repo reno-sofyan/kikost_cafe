@@ -64,9 +64,12 @@ export async function ensureOrderBill(order: Order): Promise<Bill> {
     roundingAdjustment: order.roundingAdjustment,
     grandTotal: order.grandTotal,
   }
+  // Bila tagihan sudah dipecah (ada bill lain), JANGAN samakan bill utama dengan
+  // total order — tiap bill memegang porsinya sendiri.
+  const hasSplit = (await db.bills.where('orderId').equals(order.id).toArray()).some((b) => b.id !== id)
   if (existing) {
-    // Selama belum ada pembayaran, jaga total bill sinkron dengan order.
-    if (existing.amountPaid === 0 && existing.amountRefunded === 0) {
+    // Selama belum ada pembayaran & belum dipecah, jaga total bill sinkron dengan order.
+    if (existing.amountPaid === 0 && existing.amountRefunded === 0 && !hasSplit) {
       const updated: Bill = { ...existing, ...base, paymentStatus: statusFor({ ...base, amountPaid: 0, amountRefunded: 0 }), updatedAt: now }
       await db.bills.put(updated)
       await enqueueSync('bills', id, updated)
@@ -267,5 +270,139 @@ export async function splitBillByAmount(orderId: string, amount: number, label: 
     await db.bills.put(updatedMain)
     await enqueueSync('bills', updatedMain.id, updatedMain)
     return portionBill
+  })
+}
+
+/**
+ * Memecah tagihan satu order menjadi beberapa bill per-ITEM (partisi: tiap item
+ * aktif masuk tepat satu grup). Diskon/SC/pajak/pembulatan order dialokasikan
+ * proporsional terhadap subtotal tiap grup; bill terakhir menyerap sisa pembulatan
+ * sehingga jumlah seluruh bill = grand total order persis. Hanya bila belum ada
+ * pembayaran & belum pernah dipecah.
+ */
+export async function splitBillByItems(
+  orderId: string,
+  groups: string[][],
+  labels?: string[],
+): Promise<Bill[]> {
+  return db.transaction('rw', [db.orders, db.orderItems, db.bills, db.syncQueue], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    const activeItems = await db.orderItems
+      .where('orderId')
+      .equals(orderId)
+      .filter((i) => !i.voided && !i.removed)
+      .toArray()
+
+    const main = await ensureOrderBill(order)
+    if (main.amountPaid > 0 || main.amountRefunded > 0) {
+      throw new Error('Tidak bisa memecah tagihan yang sudah ada pembayaran.')
+    }
+    const alreadySplit = (await db.bills.where('orderId').equals(orderId).toArray()).some((b) => b.id !== main.id)
+    if (alreadySplit) throw new Error('Tagihan sudah dipecah. Gabungkan dulu untuk memecah ulang.')
+
+    const validGroups = groups.map((g) => [...new Set(g)]).filter((g) => g.length > 0)
+    if (validGroups.length < 2) throw new Error('Butuh minimal dua bagian.')
+
+    const assigned = validGroups.flat()
+    if (new Set(assigned).size !== assigned.length) throw new Error('Satu item tidak boleh masuk dua bagian.')
+    const activeIds = new Set(activeItems.map((i) => i.id))
+    if (assigned.some((id) => !activeIds.has(id))) throw new Error('Ada item yang tidak valid.')
+    if (assigned.length !== activeItems.length) throw new Error('Semua item harus masuk salah satu bagian.')
+
+    const itemById = new Map(activeItems.map((i) => [i.id, i]))
+    const groupSubtotals = validGroups.map((g) => g.reduce((s, id) => s + itemById.get(id)!.lineTotal, 0))
+    const orderSubtotal = order.subtotal || groupSubtotals.reduce((a, b) => a + b, 0) || 1
+
+    const allocate = (total: number): number[] => {
+      const out = groupSubtotals.map((gs) => Math.round((total * gs) / orderSubtotal))
+      out[out.length - 1] = total - out.slice(0, -1).reduce((a, b) => a + b, 0)
+      return out
+    }
+    const discs = allocate(order.discountAmount)
+    const scs = allocate(order.serviceChargeAmount)
+    const taxes = allocate(order.taxAmount)
+    const grands = allocate(order.grandTotal)
+
+    const now = Date.now()
+    const bills: Bill[] = []
+    for (let i = 0; i < validGroups.length; i++) {
+      const billId = i === 0 ? main.id : `${main.id}_i${i}`
+      const bill: Bill = {
+        id: billId,
+        orderId,
+        label: labels?.[i]?.trim() || `Tagihan ${i + 1}`,
+        itemIds: validGroups[i],
+        portionAmount: null,
+        subtotal: groupSubtotals[i],
+        discountAmount: discs[i],
+        serviceChargeAmount: scs[i],
+        taxAmount: taxes[i],
+        roundingAdjustment: grands[i] - (groupSubtotals[i] - discs[i] + scs[i] + taxes[i]),
+        grandTotal: grands[i],
+        amountPaid: 0,
+        amountRefunded: 0,
+        paymentStatus: grands[i] <= 0 ? 'PAID' : 'UNPAID',
+        createdAt: i === 0 ? main.createdAt : now,
+        updatedAt: now,
+      }
+      if (i === 0) await db.bills.put(bill)
+      else await db.bills.add(bill)
+      await enqueueSync('bills', billId, bill)
+      bills.push(bill)
+    }
+    return bills
+  })
+}
+
+/** Menggabungkan kembali bill yang dipecah menjadi satu bill "seluruh order". */
+export async function unsplitBills(orderId: string): Promise<void> {
+  await db.transaction('rw', [db.orders, db.bills, db.syncQueue], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    const bills = await db.bills.where('orderId').equals(orderId).toArray()
+    if (bills.some((b) => b.amountPaid > 0 || b.amountRefunded > 0)) {
+      throw new Error('Tidak bisa menggabungkan tagihan yang sudah ada pembayaran.')
+    }
+    const mainId = implicitBillId(orderId)
+    for (const b of bills) {
+      if (b.id === mainId) continue
+      await db.bills.delete(b.id)
+      // Backend tak punya operasi hapus: dorong bill "kosong & lunas" supaya
+      // re-sync tak menghidupkan tagihan lama & tak menghalangi order selesai.
+      await enqueueSync('bills', b.id, {
+        ...b,
+        itemIds: [],
+        subtotal: 0,
+        discountAmount: 0,
+        serviceChargeAmount: 0,
+        taxAmount: 0,
+        roundingAdjustment: 0,
+        grandTotal: 0,
+        paymentStatus: 'PAID',
+        updatedAt: Date.now(),
+      })
+    }
+    const now = Date.now()
+    const main: Bill = {
+      id: mainId,
+      orderId,
+      label: 'Tagihan',
+      itemIds: 'all',
+      portionAmount: null,
+      subtotal: order.subtotal,
+      discountAmount: order.discountAmount,
+      serviceChargeAmount: order.serviceChargeAmount,
+      taxAmount: order.taxAmount,
+      roundingAdjustment: order.roundingAdjustment,
+      grandTotal: order.grandTotal,
+      amountPaid: 0,
+      amountRefunded: 0,
+      paymentStatus: order.grandTotal <= 0 ? 'PAID' : 'UNPAID',
+      createdAt: bills.find((b) => b.id === mainId)?.createdAt ?? now,
+      updatedAt: now,
+    }
+    await db.bills.put(main)
+    await enqueueSync('bills', mainId, main)
   })
 }

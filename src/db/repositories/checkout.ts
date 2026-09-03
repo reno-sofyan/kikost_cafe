@@ -68,6 +68,36 @@ export async function finalizePayment(params: {
 }
 
 /**
+ * Membayar SATU bill tertentu (dipakai saat tagihan dipecah per item / nominal).
+ * Sama seperti `finalizePayment` tapi menarget `billId` alih-alih bill utama.
+ * Cetak dapur/nota hanya saat SELURUH order menjadi COMPLETED.
+ */
+export async function payOrderBill(params: {
+  billId: string
+  payments: PaymentInput[]
+  confirmedByUserId: string
+  allowPartial?: boolean
+  allowNegativeStock?: { approverUserId: string; approverName: string }
+}): Promise<{ order: Order; payments: Payment[] }> {
+  const result = await payBill(params)
+
+  if (result.order.lifecycleStatus === 'COMPLETED') {
+    try {
+      const settings = await getSettings()
+      if (settings.printerConfig.autoPrintKitchenOrder) {
+        await sendOrderToKitchen(result.order.id, { userId: params.confirmedByUserId, userName: '' })
+      }
+      if (await activePrinterForStation('cashier')) {
+        await enqueueReceiptForOrder(result.order.id, { userId: params.confirmedByUserId, userName: '' })
+      }
+    } catch {
+      /* diabaikan — pembayaran sudah tercatat */
+    }
+  }
+  return { order: result.order, payments: result.payments }
+}
+
+/**
  * Membatalkan seluruh transaksi (harus dengan PIN supervisor).
  * - Order yang sudah dibayar: buat pembayaran pembalik (amount negatif) untuk tiap
  *   pembayaran asli, sesuaikan kas shift, dan (opsional) kembalikan stok.
