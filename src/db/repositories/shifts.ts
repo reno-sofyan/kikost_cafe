@@ -1,15 +1,26 @@
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
+import { getDeviceId } from '@/sync/device'
+import { getSettings } from '@/db/repositories/settings'
+import { recordAuditLog } from '@/db/repositories/auditLog'
 import type { CashMovement, CashMovementType, Shift } from '@/types/domain'
 
 /**
- * Shift yang sedang berjalan, atau `null` bila tidak ada.
- * Mengembalikan `null` (bukan `undefined`) supaya komponen yang memakai
- * `useLiveQuery` bisa membedakan "masih memuat" (`undefined`) dari "tidak ada shift" (`null`).
+ * Shift yang sedang berjalan DI PERANGKAT INI, atau `null` bila tidak ada.
+ * Difilter per `deviceId` supaya setelah pull dari perangkat lain, shift terbuka
+ * milik perangkat lain tidak dianggap sebagai shift perangkat ini.
+ * Mengembalikan `null` (bukan `undefined`) supaya `useLiveQuery` bisa membedakan
+ * "masih memuat" (`undefined`) dari "tidak ada shift" (`null`).
  */
 export async function getOpenShift(): Promise<Shift | null> {
-  return (await db.shifts.where('status').equals('open').first()) ?? null
+  const deviceId = getDeviceId()
+  const own = await db.shifts
+    .where('status')
+    .equals('open')
+    .filter((s) => (s.deviceId ?? 'legacy') === deviceId || s.deviceId == null)
+    .first()
+  return own ?? null
 }
 
 export async function openShift(params: {
@@ -18,15 +29,17 @@ export async function openShift(params: {
   openingCash: number
 }): Promise<Shift> {
   const existing = await getOpenShift()
-  if (existing) throw new Error('Masih ada shift yang sedang berjalan. Tutup shift tersebut terlebih dahulu.')
+  if (existing) throw new Error('Masih ada shift yang sedang berjalan di perangkat ini. Tutup shift tersebut terlebih dahulu.')
   const shift: Shift = {
     id: newId(),
+    deviceId: getDeviceId(),
     cashierId: params.cashierId,
     cashierName: params.cashierName,
     openingCash: params.openingCash,
     expectedCash: params.openingCash,
     closingCashActual: null,
     variance: null,
+    varianceApprovedBy: null,
     status: 'open',
     openedAt: Date.now(),
     closedAt: null,
@@ -78,13 +91,25 @@ export async function listCashMovements(shiftId: string): Promise<CashMovement[]
   return db.cashMovements.where('shiftId').equals(shiftId).sortBy('createdAt')
 }
 
-/** Menutup shift. Ditolak apabila masih ada open bill yang berkaitan dengan shift ini. */
+export class CashVarianceApprovalRequiredError extends Error {
+  constructor(public readonly variance: number) {
+    super(`Selisih kas Rp${Math.abs(variance)} melewati toleransi — butuh persetujuan supervisor.`)
+    this.name = 'CashVarianceApprovalRequiredError'
+  }
+}
+
+/**
+ * Menutup shift. Ditolak bila masih ada open bill di shift ini. Selisih kas
+ * absolut di atas `settings.cashVarianceTolerance` butuh penyetuju supervisor.
+ */
 export async function closeShift(params: {
   shiftId: string
   closingCashActual: number
   notes: string
+  varianceApprover?: { userId: string; userName: string }
 }): Promise<Shift> {
-  return db.transaction('rw', db.shifts, db.orders, db.syncQueue, async () => {
+  const tolerance = (await getSettings()).cashVarianceTolerance
+  return db.transaction('rw', db.shifts, db.orders, db.syncQueue, db.auditLogs, async () => {
     const shift = await db.shifts.get(params.shiftId)
     if (!shift) throw new Error('Shift tidak ditemukan')
     if (shift.status === 'closed') throw new Error('Shift sudah ditutup sebelumnya')
@@ -99,16 +124,32 @@ export async function closeShift(params: {
     }
 
     const variance = params.closingCashActual - shift.expectedCash
+    if (Math.abs(variance) > tolerance && !params.varianceApprover) {
+      throw new CashVarianceApprovalRequiredError(variance)
+    }
+
     const updatedShift: Shift = {
       ...shift,
       closingCashActual: params.closingCashActual,
       variance,
+      varianceApprovedBy: params.varianceApprover?.userId ?? null,
       status: 'closed',
       closedAt: Date.now(),
       notes: params.notes,
     }
     await db.shifts.put(updatedShift)
     await enqueueSync('shifts', shift.id, updatedShift)
+
+    if (params.varianceApprover) {
+      await recordAuditLog({
+        userId: params.varianceApprover.userId,
+        userName: params.varianceApprover.userName,
+        action: 'shift.variance.approve',
+        entityType: 'shift',
+        entityId: shift.id,
+        details: `Selisih kas Rp${variance} pada shift ${shift.cashierName} disetujui.`,
+      })
+    }
     return updatedShift
   })
 }

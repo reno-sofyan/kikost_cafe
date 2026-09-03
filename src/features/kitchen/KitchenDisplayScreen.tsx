@@ -42,6 +42,14 @@ export function KitchenDisplayScreen() {
   const orderIds = useMemo(() => Array.from(new Set((items ?? []).map((i) => i.orderId))), [items])
   const orders = useLiveQuery(() => db.orders.where('id').anyOf(orderIds.length ? orderIds : ['-']).toArray(), [orderIds])
   const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
+  const tickets = useLiveQuery(
+    () => db.kitchenTickets.where('orderId').anyOf(orderIds.length ? orderIds : ['-']).toArray(),
+    [orderIds],
+  )
+  const ticketSeqById = useMemo(
+    () => new Map((tickets ?? []).map((t) => [t.id, t.sequenceNo])),
+    [tickets],
+  )
 
   const seenNewIds = useRef<Set<string>>(new Set())
 
@@ -110,12 +118,19 @@ export function KitchenDisplayScreen() {
                 </div>
 
                 <div className="flex-1 space-y-2">
-                  {orderItems.map((item) => (
+                  {orderItems.map((item) => {
+                    const seq = item.ticketId ? ticketSeqById.get(item.ticketId) ?? 1 : 1
+                    return (
                     <div key={item.id} className={`rounded-lg bg-ink-800 p-2 ${item.voided ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className={`font-semibold text-ink-50 ${item.voided ? 'line-through' : ''}`}>
                           {item.qty}x {item.productName}
                         </span>
+                        {seq > 1 && (
+                          <span className="flex-none rounded bg-brown-600/30 px-1.5 py-0.5 text-[10px] font-semibold text-brown-400">
+                            TAMBAHAN #{seq}
+                          </span>
+                        )}
                       </div>
                       {item.modifiers.map((m) => (
                         <p key={m.optionId} className="text-xs text-ink-400">
@@ -136,7 +151,8 @@ export function KitchenDisplayScreen() {
                         )
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
 
                 <button

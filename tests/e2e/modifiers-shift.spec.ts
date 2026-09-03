@@ -90,9 +90,11 @@ test('tutup shift setelah dibayar: selisih dihitung, shift closed', async ({ pag
   const dialog = page.locator('div.rounded-2xl.bg-ink-900').filter({
     has: page.getByRole('heading', { name: 'Tutup Shift' }),
   })
-  const actualInput = dialog.getByLabel('Kas Aktual (hasil hitung fisik)')
-  const seharusnya = Number((await actualInput.inputValue()).replace(/\D/g, ''))
+  // Non-blind close: "Kas seharusnya" tampil di dialog; field aktual mulai kosong.
+  const seharusnyaText = await dialog.getByText(/Kas seharusnya:/).textContent()
+  const seharusnya = Number((seharusnyaText ?? '').replace(/\D/g, ''))
   expect(seharusnya).toBeGreaterThan(500000) // modal awal + penjualan tunai
+  const actualInput = dialog.getByLabel('Kas Aktual (hasil hitung fisik)')
   await actualInput.fill(String(seharusnya - 5000))
   await expect(dialog.getByText(/Selisih/)).toContainText('5.000')
   await dialog.getByRole('button', { name: /Tutup Shift & Cetak/ }).click()

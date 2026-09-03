@@ -140,6 +140,8 @@ function FiscalForm() {
   const [receiptPaperSize, setReceiptPaperSize] = useState<ReceiptPaperSize>('58mm')
   const [receiptFooterNote, setReceiptFooterNote] = useState('')
   const [autoLockMinutes, setAutoLockMinutes] = useState(5)
+  const [blindClose, setBlindClose] = useState(false)
+  const [cashVarianceTolerance, setCashVarianceTolerance] = useState(5000)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -151,6 +153,8 @@ function FiscalForm() {
     setReceiptPaperSize(settings.receiptPaperSize)
     setReceiptFooterNote(settings.receiptFooterNote)
     setAutoLockMinutes(settings.autoLockMinutes)
+    setBlindClose(settings.blindClose)
+    setCashVarianceTolerance(settings.cashVarianceTolerance)
   }, [settings])
 
   if (!settings) return null
@@ -207,6 +211,25 @@ function FiscalForm() {
         <span className="mb-1 block text-sm text-ink-300">Kunci Layar Otomatis Setelah (menit, 0 = nonaktif)</span>
         <input type="number" min={0} className="input-field" value={autoLockMinutes} onChange={(e) => setAutoLockMinutes(Number(e.target.value))} />
       </label>
+
+      <div className="rounded-xl border border-ink-800 p-3">
+        <label className="flex items-center gap-2 text-sm text-ink-200">
+          <input type="checkbox" checked={blindClose} onChange={(e) => setBlindClose(e.target.checked)} />
+          Blind close — sembunyikan kas seharusnya sampai kasir mengisi hitungan fisik
+        </label>
+        <label className="mt-3 block">
+          <span className="mb-1 block text-sm text-ink-300">Toleransi Selisih Kas (Rp)</span>
+          <input
+            type="number"
+            min={0}
+            className="input-field"
+            value={cashVarianceTolerance}
+            onChange={(e) => setCashVarianceTolerance(Number(e.target.value))}
+          />
+          <span className="mt-1 block text-xs text-ink-500">Selisih di atas nilai ini butuh persetujuan supervisor saat tutup shift.</span>
+        </label>
+      </div>
+
       <button
         className="btn-primary"
         onClick={async () => {
@@ -218,6 +241,8 @@ function FiscalForm() {
             receiptPaperSize,
             receiptFooterNote,
             autoLockMinutes,
+            blindClose,
+            cashVarianceTolerance,
           })
           setSaved(true)
           setTimeout(() => setSaved(false), 2000)

@@ -27,7 +27,7 @@ async function typePin(dialog: ReturnType<Page['locator']>, pin: string) {
   await dialog.getByRole('button', { name: 'Masuk' }).click()
 }
 
-test('pembatalan transaksi via UI (PIN admin): status void, stok kembali, audit log', async ({ page }) => {
+test('pembatalan transaksi via UI (PIN admin): status void, pembayaran pembalik, audit log', async ({ page }) => {
   test.slow()
   await completeOnboarding(page, { pin: PIN })
   await openShift(page)
@@ -47,12 +47,16 @@ test('pembatalan transaksi via UI (PIN admin): status void, stok kembali, audit 
   await typePin(pinModal, PIN)
   await expect(pinModal).toBeHidden()
 
-  const orders = await idbAll<{ status: string; voidReason: string | null }>(page, 'orders')
+  const orders = await idbAll<{ status: string; lifecycleStatus: string; voidReason: string | null }>(page, 'orders')
   expect(orders).toHaveLength(1)
   expect(orders[0].status).toBe('void')
+  expect(orders[0].lifecycleStatus).toBe('VOIDED')
   expect(orders[0].voidReason).toContain('uji pembatalan')
 
-  expect((await idbAll<{ sku: string; stockQty: number }>(page, 'products')).find((p) => p.sku === 'SNACK-002')!.stockQty).toBe(60)
+  // Void TIDAK mengembalikan stok (makanan mungkin sudah dibuat) — koreksi lewat pembayaran pembalik.
+  expect((await idbAll<{ sku: string; stockQty: number }>(page, 'products')).find((p) => p.sku === 'SNACK-002')!.stockQty).toBe(59)
+  const pays = await idbAll<{ amount: number }>(page, 'payments')
+  expect(pays.some((p) => p.amount < 0)).toBe(true)
   const audit = await idbAll<{ action: string }>(page, 'auditLogs')
   expect(audit.some((a) => a.action === 'order.void')).toBe(true)
 })

@@ -8,11 +8,13 @@ export type Permission =
   | 'price.override'
   | 'order.void'
   | 'order.return'
+  | 'refund.restock'
   | 'stock.adjust'
   | 'reports.view'
   | 'settings.manage'
   | 'users.manage'
   | 'shift.manage'
+  | 'cash.variance.approve'
 
 export interface User {
   id: string
@@ -50,6 +52,10 @@ export interface CafeSettings {
   roundingIncrement: number
   transactionPrefix: string
   nextTransactionSequence: number
+  /** Blind closing: sembunyikan "kas seharusnya" sampai kasir mengisi hitungan fisik. */
+  blindClose: boolean
+  /** Selisih kas absolut di atas nilai ini butuh persetujuan supervisor saat tutup shift. */
+  cashVarianceTolerance: number
   qrisImageDataUrl: string | null
   qrisMerchantName: string | null
   receiptPaperSize: ReceiptPaperSize
@@ -158,6 +164,13 @@ export type StockMovementReason =
   | 'stock_in'
   | 'stock_out'
   | 'initial'
+  // Fase 2 — jenis lengkap (nilai lama tetap valid):
+  | 'purchase_receipt'
+  | 'transfer_in'
+  | 'transfer_out'
+  | 'stock_opname'
+  | 'production_consumption'
+  | 'production_output'
 
 export interface StockMovement {
   id: string
@@ -197,8 +210,42 @@ export interface Customer {
 }
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery'
+
+/**
+ * Status legacy — menggerakkan proteksi pembayaran, proteksi sync "final", dan
+ * laporan lama. Dipertahankan untuk kompatibilitas; UI/KDS memakai lifecycleStatus.
+ */
 export type OrderStatus = 'open' | 'paid' | 'void' | 'completed'
+
+/**
+ * Siklus hidup order gaya POS matang. Transisi divalidasi oleh lib/orderState.ts.
+ *   DRAFT → CONFIRMED → PREPARING → READY → SERVED → COMPLETED
+ *   + CANCELLED (batal sebelum konfirmasi) / VOIDED (dibatalkan setelah konfirmasi)
+ */
+export type OrderLifecycleStatus =
+  | 'DRAFT'
+  | 'CONFIRMED'
+  | 'PREPARING'
+  | 'READY'
+  | 'SERVED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'VOIDED'
+
 export type KitchenItemStatus = 'new' | 'in_progress' | 'ready' | 'done'
+
+export interface KitchenTicket {
+  id: string
+  orderId: string
+  /** Nomor urut tiket per order — tiket ke-2+ = pesanan tambahan setelah tiket pertama. */
+  sequenceNo: number
+  /** Station tujuan (mis. "kitchen", "bar"). Kafe kecil: "all". */
+  station: string
+  itemIds: string[]
+  printedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
 
 export interface OrderItemModifierSnapshot {
   groupId: string
@@ -220,6 +267,13 @@ export interface OrderItem {
   discountAmount: number
   lineTotal: number
   kitchenStatus: KitchenItemStatus
+  /** Soft-delete: item dihapus sebelum dikirim ke dapur (menggantikan hard delete). */
+  removed: boolean
+  ticketId: string | null
+  queuedAt: number | null
+  startedAt: number | null
+  readyAt: number | null
+  servedAt: number | null
   voided: boolean
   voidReason: string | null
   createdAt: number
@@ -237,6 +291,8 @@ export interface Order {
   queueNumber: number | null
   guestCount: number | null
   status: OrderStatus
+  /** Siklus hidup gaya POS matang. Backfill dari `status` pada migrasi v3. */
+  lifecycleStatus: OrderLifecycleStatus
   subtotal: number
   discountType: DiscountType | null
   discountValue: number
@@ -245,9 +301,13 @@ export interface Order {
   taxAmount: number
   serviceChargePercent: number
   serviceChargeAmount: number
+  /** Snapshot pembulatan saat order dibuat — agar setelan yang berubah tak menggeser total lama. */
+  roundingIncrementSnapshot: number
   roundingAdjustment: number
   grandTotal: number
   shiftId: string | null
+  /** Perangkat pembuat — untuk penomoran & antrean aman-offline dan atribusi shift. */
+  deviceId: string
   cashierId: string
   cashierName: string
   notes: string
@@ -267,10 +327,18 @@ export interface Payment {
   id: string
   orderId: string
   method: PaymentMethod
+  /** Positif = pembayaran, negatif = pengembalian/refund. */
   amount: number
   receivedAmount: number | null
   changeAmount: number | null
   reference: string | null
+  /**
+   * Kunci idempotensi bisnis — deterministik dari (orderId, method, amount, urutan).
+   * Dua perangkat yang memproses pembayaran yang sama menghasilkan id yang sama → LWW dedup.
+   */
+  idempotencyKey: string
+  /** Diisi bila pembayaran ini adalah pembalik (refund) dari pembayaran lain. */
+  reversalOfPaymentId: string | null
   confirmedByUserId: string
   createdAt: number
 }
@@ -279,12 +347,16 @@ export type ShiftStatus = 'open' | 'closed'
 
 export interface Shift {
   id: string
+  /** Perangkat pemilik shift — satu perangkat maksimum satu shift `open`. */
+  deviceId: string
   cashierId: string
   cashierName: string
   openingCash: number
   expectedCash: number
   closingCashActual: number | null
   variance: number | null
+  /** Diisi bila selisih melewati toleransi dan disetujui supervisor. */
+  varianceApprovedBy: string | null
   status: ShiftStatus
   openedAt: number
   closedAt: number | null
@@ -321,13 +393,17 @@ export interface ReturnRecord {
   reason: string
   refundAmount: number
   restocked: boolean
+  /** Pembayaran pembalik (amount negatif) yang dibuat untuk retur ini. */
+  reversalPaymentId: string | null
   userId: string
+  approverName: string
   createdAt: number
 }
 
 export type SyncEntity =
   | 'orders'
   | 'orderItems'
+  | 'kitchenTickets'
   | 'payments'
   | 'shifts'
   | 'cashMovements'

@@ -25,8 +25,9 @@ import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
+import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
-import type { OrderItem, OrderType, Product } from '@/types/domain'
+import type { OrderItem, OrderType, Product, User } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   dine_in: 'Dine-in',
@@ -49,6 +50,7 @@ export function CashierScreen() {
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [stockWarning, setStockWarning] = useState<string | null>(null)
   const [removeReasonFor, setRemoveReasonFor] = useState<OrderItem | null>(null)
+  const [voidItemApproval, setVoidItemApproval] = useState<{ item: OrderItem; reason: string } | null>(null)
   const [confirmClearCart, setConfirmClearCart] = useState(false)
 
   const openShift = useLiveQuery(() => getOpenShift(), [])
@@ -127,14 +129,16 @@ export function CashierScreen() {
 
   async function handleClearCart() {
     if (!activeOrderId) return
+    // Hanya item yang belum dikirim ke dapur yang bisa dikosongkan massal.
+    // Item yang sudah di dapur harus dibatalkan satu per satu (butuh approval supervisor).
     for (const item of activeItems) {
-      if (item.kitchenStatus === 'new') {
-        await removeOrderItem(item.id)
-      } else {
-        await voidOrderItem(item.id, 'Keranjang dikosongkan kasir')
-      }
+      if (item.kitchenStatus === 'new') await removeOrderItem(item.id)
     }
     setConfirmClearCart(false)
+    const stillHasKitchenItems = activeItems.some((i) => i.kitchenStatus !== 'new')
+    if (stillHasKitchenItems) {
+      setStockWarning('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
+    }
   }
 
   async function handleModifierConfirm(params: { qty: number; notes: string; modifiers: { groupId: string; groupName: string; optionId: string; optionName: string; priceDelta: number }[] }) {
@@ -387,12 +391,25 @@ export function CashierScreen() {
       {removeReasonFor && (
         <ReasonPromptModal
           title={`Batalkan ${removeReasonFor.productName}`}
-          description="Item ini sudah diteruskan ke dapur, alasan pembatalan wajib diisi."
-          confirmLabel="Batalkan Item"
+          description="Item ini sudah diteruskan ke dapur. Isi alasan, lalu minta persetujuan supervisor."
+          confirmLabel="Lanjut"
           onCancel={() => setRemoveReasonFor(null)}
           onConfirm={(reason) => {
-            void voidOrderItem(removeReasonFor.id, reason)
+            setVoidItemApproval({ item: removeReasonFor, reason })
             setRemoveReasonFor(null)
+          }}
+        />
+      )}
+      {voidItemApproval && (
+        <SupervisorPinModal
+          title="Konfirmasi Pembatalan Item"
+          onCancel={() => setVoidItemApproval(null)}
+          onApproved={(approver: User) => {
+            void voidOrderItem(voidItemApproval.item.id, voidItemApproval.reason, {
+              userId: approver.id,
+              userName: approver.name,
+            })
+            setVoidItemApproval(null)
           }}
         />
       )}

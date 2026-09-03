@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
-import { finalizePayment, InsufficientPaymentError, OrderAlreadyFinalizedError, type PaymentInput } from '@/db/repositories/checkout'
+import {
+  finalizePayment,
+  InsufficientPaymentError,
+  InsufficientStockError,
+  OrderAlreadyFinalizedError,
+  type PaymentInput,
+} from '@/db/repositories/checkout'
 import { useSessionStore } from '@/state/sessionStore'
 import { useSubmitGuard } from '@/lib/useSubmitGuard'
 import { formatRupiah } from '@/lib/currency'
@@ -10,8 +16,9 @@ import { CashPaymentModal } from '@/features/payments/CashPaymentModal'
 import { QrisPaymentModal } from '@/features/payments/QrisPaymentModal'
 import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal'
 import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
+import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
-import type { PaymentMethod } from '@/types/domain'
+import type { PaymentMethod, User } from '@/types/domain'
 
 interface PaymentLine extends PaymentInput {
   key: string
@@ -37,8 +44,9 @@ export function OrderPaymentScreen() {
   const [activeModal, setActiveModal] = useState<PaymentMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [completed, setCompleted] = useState(false)
+  const [stockOverride, setStockOverride] = useState<{ items: string[] } | null>(null)
 
-  const [isSubmitting, submitPayment] = useSubmitGuard(async () => {
+  async function runFinalize(allowNegativeStock?: { approverUserId: string; approverName: string }) {
     if (!order) return
     setError(null)
     try {
@@ -46,11 +54,16 @@ export function OrderPaymentScreen() {
         orderId: order.id,
         payments: lines.map(({ method, amount, receivedAmount, reference }) => ({ method, amount, receivedAmount, reference })),
         confirmedByUserId: currentUser.id,
+        allowNegativeStock,
       })
       setCompleted(true)
     } catch (e) {
       if (e instanceof OrderAlreadyFinalizedError) {
         setCompleted(true)
+        return
+      }
+      if (e instanceof InsufficientStockError) {
+        setStockOverride({ items: e.items })
         return
       }
       if (e instanceof InsufficientPaymentError) {
@@ -59,7 +72,9 @@ export function OrderPaymentScreen() {
       }
       setError(e instanceof Error ? e.message : 'Gagal menyelesaikan pembayaran')
     }
-  })
+  }
+
+  const [isSubmitting, submitPayment] = useSubmitGuard(() => runFinalize())
 
   if (!order) {
     return <div className="flex h-full items-center justify-center text-ink-400">Memuat pesanan...</div>
@@ -173,6 +188,18 @@ export function OrderPaymentScreen() {
           remaining={remaining}
           onCancel={() => setActiveModal(null)}
           onConfirm={({ amount, reference }) => addLine({ method: activeModal, amount, reference })}
+        />
+      )}
+
+      {stockOverride && (
+        <SupervisorPinModal
+          title="Stok Bahan Tidak Cukup"
+          description={`Stok tidak mencukupi untuk: ${stockOverride.items.join(', ')}. Lanjut menyelesaikan pembayaran (stok akan minus) butuh persetujuan supervisor.`}
+          onCancel={() => setStockOverride(null)}
+          onApproved={(approver: User) => {
+            setStockOverride(null)
+            void runFinalize({ approverUserId: approver.id, approverName: approver.name })
+          }}
         />
       )}
     </div>

@@ -7,6 +7,7 @@ import { z } from 'zod'
 export const SYNC_ENTITIES = [
   'orders',
   'orderItems',
+  'kitchenTickets',
   'payments',
   'shifts',
   'cashMovements',
@@ -83,6 +84,16 @@ export function shouldApply(params: {
   const { entity, currentPayload, currentUpdatedAt, incomingPayload, incomingUpdatedAt } = params
 
   if (!currentPayload || currentUpdatedAt == null) return { apply: true }
+
+  // Audit log: append-only. Sekali sebuah entri tercatat di server, tidak boleh diubah.
+  if (entity === 'auditLogs') {
+    return { apply: false, reason: 'Audit log bersifat append-only' }
+  }
+
+  // Payment: immutable setelah ada. Nominal & metode tak boleh berubah lewat sync.
+  if (entity === 'payments') {
+    return { apply: false, reason: 'Pembayaran bersifat immutable setelah tercatat' }
+  }
 
   if (entity === 'orders') {
     const currentStatus = String(currentPayload.status ?? '')

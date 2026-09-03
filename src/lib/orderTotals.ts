@@ -34,7 +34,7 @@ export interface OrderTotals {
 }
 
 export function computeOrderTotals(input: OrderTotalsInput): OrderTotals {
-  const activeItems = input.items.filter((item) => !item.voided)
+  const activeItems = input.items.filter((item) => !item.voided && !item.removed)
   const subtotal = activeItems.reduce((sum, item) => sum + item.lineTotal, 0)
 
   let discountAmount = 0

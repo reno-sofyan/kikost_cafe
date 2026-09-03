@@ -33,12 +33,13 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'return-select' | 'return-reason' | 'return-pin'>(null)
   const [reason, setReason] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
-  const [restock, setRestock] = useState(true)
+  const [restock, setRestock] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const canVoid = roleHasPermission(currentUser.role, 'order.void')
   const canReturn = roleHasPermission(currentUser.role, 'order.return')
-  const activeItems = items.filter((i) => !i.voided)
+  const canRestock = roleHasPermission(currentUser.role, 'refund.restock')
+  const activeItems = items.filter((i) => !i.voided && !i.removed)
 
   async function openPrintPreview() {
     const data = await prepareReceiptData(order)
@@ -154,10 +155,16 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
                   {item.qty}x {item.productName} • {formatRupiah(item.lineTotal)}
                 </label>
               ))}
-              <label className="mt-2 flex items-center gap-2 text-sm text-ink-300">
-                <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
-                Kembalikan stok
-              </label>
+              {canRestock ? (
+                <label className="mt-2 flex items-center gap-2 text-sm text-ink-300">
+                  <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
+                  Kembalikan bahan ke stok (hanya jika belum dibuat)
+                </label>
+              ) : (
+                <p className="mt-2 text-xs text-ink-500">
+                  Bahan tidak dikembalikan ke stok. Perlu izin supervisor untuk mengembalikan stok.
+                </p>
+              )}
               <div className="mt-3 flex gap-2">
                 <button className="btn-ghost flex-1" onClick={() => setFlow(null)}>
                   Batal

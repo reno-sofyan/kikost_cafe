@@ -46,8 +46,9 @@ test('retur sebagian: stok kembali, item ditandai voided, ada audit log', async 
   const panel = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'KKP-00001' }) })
   await panel.getByRole('button', { name: 'Retur', exact: true }).click()
 
-  // Pilih item + "Kembalikan stok" (default aktif) → Lanjut.
+  // Pilih item + centang "Kembalikan bahan ke stok" (default OFF, admin punya izin) → Lanjut.
   await panel.getByText(/Kentang Goreng/).locator('input[type=checkbox]').first().check()
+  await panel.getByRole('checkbox', { name: /Kembalikan bahan ke stok/ }).check()
   await panel.getByRole('button', { name: 'Lanjut' }).click()
 
   // Alasan retur.

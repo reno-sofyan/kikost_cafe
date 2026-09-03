@@ -1,5 +1,6 @@
 import { db } from '@/db/schema'
-import type { Order, SyncEntity } from '@/types/domain'
+import { reconcileTransactionSequence } from '@/db/repositories/settings'
+import type { Order, Payment, SyncEntity } from '@/types/domain'
 
 const IMMUTABLE_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
 
@@ -16,6 +17,9 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
       case 'orders':
         await applyOrders(rows as Order[])
         break
+      case 'payments':
+        await applyPayments(rows as Payment[])
+        break
       default:
         await applyGeneric(entity, rows)
     }
@@ -29,6 +33,24 @@ async function applyOrders(remoteOrders: Order[]): Promise<void> {
       if (local && IMMUTABLE_ORDER_STATUSES.has(local.status)) continue
       if (local && local.updatedAt > remote.updatedAt) continue
       await db.orders.put(remote)
+    }
+  })
+  // H11 — kejar penghitung nomor transaksi lokal agar tak bentrok dengan nomor
+  // dari perangkat lain setelah keduanya online kembali.
+  await reconcileTransactionSequence(remoteOrders.map((o) => o.orderNumber))
+}
+
+/**
+ * Payment bersifat immutable setelah dibuat: sekali ada baris dengan id yang sama
+ * secara lokal, jangan pernah ditimpa (mencegah nominal berubah lewat sync).
+ * Id pembayaran deterministik → perangkat berbeda menghasilkan id yang sama → dedup.
+ */
+async function applyPayments(remotePayments: Payment[]): Promise<void> {
+  await db.transaction('rw', db.payments, async () => {
+    for (const remote of remotePayments) {
+      const local = await db.payments.get(remote.id)
+      if (local) continue
+      await db.payments.put(remote)
     }
   })
 }

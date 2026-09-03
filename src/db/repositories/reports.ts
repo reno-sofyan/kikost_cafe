@@ -43,7 +43,7 @@ export async function buildSalesReport(range: DateRange): Promise<SalesReport> {
 
   const orderIds = orders.map((o) => o.id)
   const items = orderIds.length ? await db.orderItems.where('orderId').anyOf(orderIds).toArray() : []
-  const activeItems = items.filter((i) => !i.voided)
+  const activeItems = items.filter((i) => !i.voided && !i.removed)
   const payments = orderIds.length ? await db.payments.where('orderId').anyOf(orderIds).toArray() : []
   const returns = orderIds.length ? await db.returns.where('orderId').anyOf(orderIds).toArray() : []
   const voidOrdersInRange = await db.orders

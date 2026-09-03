@@ -141,7 +141,7 @@ describe('finalizePayment', () => {
 })
 
 describe('voidOrder & returnOrderItems', () => {
-  it('void pesanan yang sudah dibayar mengembalikan stok', async () => {
+  it('void pesanan dibayar: buat pembayaran pembalik, stok TIDAK kembali tanpa restock', async () => {
     await seedProduct({ id: 'p-own', stockQty: 10 })
     const { order } = await buildOpenOrder('p-own', 4)
     await finalizePayment({
@@ -153,9 +153,33 @@ describe('voidOrder & returnOrderItems', () => {
 
     await voidOrder({ orderId: order.id, reason: 'salah input', approverUserId: 'sup1', approverName: 'Supervisor' })
     expect((await db.orders.get(order.id))?.status).toBe('void')
-    expect((await db.products.get('p-own'))?.stockQty).toBe(10)
+    expect((await db.orders.get(order.id))?.lifecycleStatus).toBe('VOIDED')
+    // Stok tetap terpotong — makanan mungkin sudah dibuat.
+    expect((await db.products.get('p-own'))?.stockQty).toBe(6)
+    // Pembayaran pembalik (amount negatif) tercatat; pembayaran asli tetap ada.
+    const pays = await db.payments.where('orderId').equals(order.id).toArray()
+    expect(pays.filter((p) => p.amount > 0)).toHaveLength(1)
+    expect(pays.filter((p) => p.amount === -80000)).toHaveLength(1)
     const audit = await db.auditLogs.toArray()
     expect(audit.some((a) => a.action === 'order.void')).toBe(true)
+  })
+
+  it('void dengan restock=true mengembalikan stok', async () => {
+    await seedProduct({ id: 'p-own', stockQty: 10 })
+    const { order } = await buildOpenOrder('p-own', 4)
+    await finalizePayment({
+      orderId: order.id,
+      payments: [{ method: 'cash', amount: 80000, receivedAmount: 80000 }],
+      confirmedByUserId: 'u1',
+    })
+    await voidOrder({
+      orderId: order.id,
+      reason: 'batal, belum dibuat',
+      approverUserId: 'sup1',
+      approverName: 'Supervisor',
+      restock: true,
+    })
+    expect((await db.products.get('p-own'))?.stockQty).toBe(10)
   })
 
   it('retur sebagian mengembalikan stok item yang diretur saja', async () => {

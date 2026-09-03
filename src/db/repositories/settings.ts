@@ -13,6 +13,8 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   roundingIncrement: 100,
   transactionPrefix: 'KKP',
   nextTransactionSequence: 1,
+  blindClose: false,
+  cashVarianceTolerance: 5000,
   qrisImageDataUrl: null,
   qrisMerchantName: null,
   receiptPaperSize: '58mm',
@@ -67,4 +69,22 @@ export async function nextTransactionNumber(): Promise<string> {
     const padded = String(sequence).padStart(5, '0')
     return `${current.transactionPrefix}-${padded}`
   })
+}
+
+/**
+ * Rekonsiliasi penghitung nomor transaksi lokal terhadap nomor yang datang dari
+ * perangkat lain saat pull. Mencegah dua perangkat menghasilkan `KKP-00042` yang
+ * sama setelah keduanya online kembali. `settings` bukan entitas sync — jadi
+ * penghitung tetap lokal, hanya "dikejar" ke angka tertinggi yang pernah terlihat.
+ */
+export async function reconcileTransactionSequence(seenNumbers: string[]): Promise<void> {
+  const current = await getSettings()
+  let maxSeen = 0
+  for (const num of seenNumbers) {
+    const m = /-(\d+)$/.exec(num)
+    if (m) maxSeen = Math.max(maxSeen, Number.parseInt(m[1], 10))
+  }
+  if (maxSeen + 1 > current.nextTransactionSequence) {
+    await db.settings.put({ ...current, nextTransactionSequence: maxSeen + 1, updatedAt: Date.now() })
+  }
 }

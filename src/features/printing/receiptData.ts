@@ -89,7 +89,7 @@ export async function buildReceiptData(order: Order, settings: CafeSettings): Pr
   const table = order.tableId ? await db.cafeTables.get(order.tableId) : undefined
 
   const lines: ReceiptLine[] = items
-    .filter((item) => !item.voided)
+    .filter((item) => !item.voided && !item.removed)
     .map((item: OrderItem) => ({
       name: item.productName,
       qty: item.qty,

@@ -103,3 +103,38 @@ describe('shouldApply — proteksi pesanan final', () => {
     expect(d.apply).toBe(false)
   })
 })
+
+describe('shouldApply — audit log & payment immutable', () => {
+  it('audit log append-only: state yang sudah ada tak boleh ditimpa', () => {
+    const d = shouldApply({
+      entity: 'auditLogs',
+      currentPayload: { id: 'a1', details: 'asli' },
+      currentUpdatedAt: 100,
+      incomingPayload: { id: 'a1', details: 'diubah' },
+      incomingUpdatedAt: 999,
+    })
+    expect(d.apply).toBe(false)
+  })
+
+  it('audit log baru (belum ada state) tetap diterima', () => {
+    const d = shouldApply({
+      entity: 'auditLogs',
+      currentPayload: null,
+      currentUpdatedAt: null,
+      incomingPayload: { id: 'a2' },
+      incomingUpdatedAt: 100,
+    })
+    expect(d.apply).toBe(true)
+  })
+
+  it('pembayaran immutable: nominal tak boleh berubah lewat sync', () => {
+    const d = shouldApply({
+      entity: 'payments',
+      currentPayload: { id: 'p1', amount: 20000 },
+      currentUpdatedAt: 100,
+      incomingPayload: { id: 'p1', amount: 999999 },
+      incomingUpdatedAt: 999,
+    })
+    expect(d.apply).toBe(false)
+  })
+})
