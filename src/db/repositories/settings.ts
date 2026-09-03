@@ -1,4 +1,5 @@
 import { db } from '@/db/schema'
+import { enqueueSync } from '@/sync/outbox'
 import type { CafeSettings } from '@/types/domain'
 
 export const DEFAULT_SETTINGS: CafeSettings = {
@@ -58,7 +59,12 @@ export async function ensureDefaultSettings(): Promise<void> {
 export async function updateSettings(patch: Partial<Omit<CafeSettings, 'id'>>): Promise<CafeSettings> {
   const current = await getSettings()
   const next: CafeSettings = { ...current, ...patch, id: 'singleton', updatedAt: Date.now() }
-  await db.settings.put(next)
+  // Ikut disinkronkan supaya endpoint publik QR bisa membaca identitas kafe +
+  // pajak/service charge/pembulatan yang otoritatif (bukan dari perangkat pelanggan).
+  await db.transaction('rw', db.settings, db.syncQueue, async () => {
+    await db.settings.put(next)
+    await enqueueSync('settings', 'singleton', next)
+  })
   return next
 }
 

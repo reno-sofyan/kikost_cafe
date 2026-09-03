@@ -7,6 +7,7 @@ import { loadConfig } from './config.js'
 import { getPool } from './db/pool.js'
 import { authenticateDeviceKey } from './lib/deviceAuth.js'
 import { processPull, processPush, type PushItem } from './lib/syncService.js'
+import { registerPublicRoutes } from './routes/public.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -96,6 +97,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   })
 
   app.get('/api/health/live', async () => ({ status: 'ok' }))
+
+  // ---- Rute publik pemesanan mandiri via QR (tanpa device key) ----
+  await registerPublicRoutes(app)
 
   // ---- Auth hook untuk seluruh rute /api/sync ----
   app.addHook('onRequest', async (request, reply) => {

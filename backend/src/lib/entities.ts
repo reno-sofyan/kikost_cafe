@@ -28,6 +28,7 @@ export const SYNC_ENTITIES = [
   'cafeTables',
   'modifierGroups',
   'modifierOptions',
+  'settings',
   'auditLogs',
 ] as const
 

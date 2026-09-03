@@ -642,6 +642,7 @@ export type SyncEntity =
   | 'cafeTables'
   | 'modifierGroups'
   | 'modifierOptions'
+  | 'settings'
   | 'auditLogs'
 
 export type SyncOperation = 'upsert'

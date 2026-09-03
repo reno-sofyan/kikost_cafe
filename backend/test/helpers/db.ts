@@ -13,9 +13,11 @@ export async function setupDatabase(): Promise<void> {
 export async function resetDatabase(): Promise<void> {
   const pool = getPool()
   await pool.query(
-    'TRUNCATE sync_entity_state, sync_idempotency, sync_push_log, sync_devices RESTART IDENTITY CASCADE',
+    `TRUNCATE sync_entity_state, sync_idempotency, sync_push_log, sync_devices,
+              public_order_idempotency, public_request_log RESTART IDENTITY CASCADE`,
   )
   await pool.query("SELECT setval('sync_server_seq', 1, false)")
+  await pool.query("SELECT setval('qr_order_seq', 1, false)")
 }
 
 export async function teardownDatabase(): Promise<void> {
