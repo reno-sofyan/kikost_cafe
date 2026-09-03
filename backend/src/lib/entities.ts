@@ -28,6 +28,7 @@ export const SYNC_ENTITIES = [
   'categories',
   'customers',
   'cafeTables',
+  'outlets',
   'modifierGroups',
   'modifierOptions',
   'settings',

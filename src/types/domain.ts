@@ -22,6 +22,21 @@ export type Permission =
   | 'qr.manage'
   | 'qr.order.confirm'
 
+/**
+ * Outlet / cabang. Kafe satu-lokasi memakai satu outlet default; struktur ini
+ * memungkinkan pemisahan laporan & stok per cabang tanpa perubahan besar nanti.
+ */
+export interface Outlet {
+  id: string
+  name: string
+  address: string
+  phone: string
+  timezone: string
+  active: boolean
+  createdAt: number
+  updatedAt: number
+}
+
 export interface User {
   id: string
   name: string
@@ -68,6 +83,8 @@ export interface CafeSettings {
   qrisMerchantName: string | null
   /** Basis URL publik halaman pesan-mandiri (mis. https://pos.kikost.com). QR berisi `<base>/order/<token>`. */
   qrOrderBaseUrl: string
+  /** Outlet aktif di perangkat ini (Fase 3). */
+  activeOutletId?: string
   receiptPaperSize: ReceiptPaperSize
   receiptFooterNote: string
   autoLockMinutes: number
@@ -514,6 +531,8 @@ export interface Order {
   shiftId: string | null
   /** Perangkat pembuat — untuk penomoran & antrean aman-offline dan atribusi shift. */
   deviceId: string
+  /** Outlet asal pesanan (opsional; kafe satu-lokasi = outlet default). */
+  outletId?: string
   /** Asal pesanan. Default 'cashier'; 'qr_table' untuk pesanan mandiri via QR. */
   source: OrderSource
   cashierId: string
@@ -601,6 +620,8 @@ export interface Shift {
   id: string
   /** Perangkat pemilik shift — satu perangkat maksimum satu shift `open`. */
   deviceId: string
+  /** Outlet shift ini (opsional). */
+  outletId?: string
   cashierId: string
   cashierName: string
   openingCash: number
@@ -700,6 +721,7 @@ export type SyncEntity =
   | 'categories'
   | 'customers'
   | 'cafeTables'
+  | 'outlets'
   | 'modifierGroups'
   | 'modifierOptions'
   | 'settings'

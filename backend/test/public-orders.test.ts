@@ -3,7 +3,7 @@ import { buildMenu, priceOrder, PublicOrderError, sanitizeNote, type Catalog } f
 
 function catalog(over: Partial<Catalog> = {}): Catalog {
   return {
-    settings: { cafeName: 'Kikost', address: '', phone: '', taxPercent: 10, serviceChargePercent: 5, roundingIncrement: 100 },
+    settings: { cafeName: 'Kikost', address: '', phone: '', taxPercent: 10, serviceChargePercent: 5, roundingIncrement: 100, activeOutletId: null },
     categories: [
       { id: 'c1', name: 'Kopi', sortOrder: 0, active: true },
       { id: 'c2', name: 'Nonaktif', sortOrder: 1, active: false },

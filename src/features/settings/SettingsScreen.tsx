@@ -8,13 +8,14 @@ import { UserManager } from '@/features/settings/UserManager'
 import { BackupManager } from '@/features/settings/BackupManager'
 import { PrinterSettings } from '@/features/settings/PrinterSettings'
 import { TableQrSettings } from '@/features/settings/TableQrSettings'
+import { OutletSettings } from '@/features/settings/OutletSettings'
 import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
 import type { ReceiptPaperSize } from '@/types/domain'
 
-type Tab = 'profil' | 'pajak' | 'qris' | 'printer' | 'meja-qr' | 'pengguna' | 'sinkronisasi' | 'backup' | 'audit'
+type Tab = 'profil' | 'outlet' | 'pajak' | 'qris' | 'printer' | 'meja-qr' | 'pengguna' | 'sinkronisasi' | 'backup' | 'audit'
 
-const TAB_KEYS: Tab[] = ['profil', 'pajak', 'qris', 'printer', 'meja-qr', 'pengguna', 'sinkronisasi', 'backup', 'audit']
+const TAB_KEYS: Tab[] = ['profil', 'outlet', 'pajak', 'qris', 'printer', 'meja-qr', 'pengguna', 'sinkronisasi', 'backup', 'audit']
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -34,6 +35,7 @@ export function SettingsScreen() {
 
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
     { key: 'profil', label: 'Profil Kafe', visible: true },
+    { key: 'outlet', label: 'Outlet', visible: roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'pajak', label: 'Pajak & Struk', visible: true },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
@@ -61,6 +63,7 @@ export function SettingsScreen() {
 
       <div className="flex-1 overflow-y-auto p-6">
         {tab === 'profil' && <ProfileForm />}
+        {tab === 'outlet' && <OutletSettings />}
         {tab === 'pajak' && <FiscalForm />}
         {tab === 'qris' && <QrisForm />}
         {tab === 'printer' && <PrinterSettings />}

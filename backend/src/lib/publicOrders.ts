@@ -16,6 +16,7 @@ interface CatalogSettings {
   taxPercent: number
   serviceChargePercent: number
   roundingIncrement: number
+  activeOutletId: string | null
 }
 
 interface CatalogProduct {
@@ -81,6 +82,7 @@ const DEFAULT_SETTINGS: CatalogSettings = {
   taxPercent: 0,
   serviceChargePercent: 0,
   roundingIncrement: 100,
+  activeOutletId: null,
 }
 
 function num(v: unknown, fallback = 0): number {
@@ -112,6 +114,7 @@ export async function loadCatalog(client: PoolClient): Promise<Catalog> {
         taxPercent: num(s.taxPercent),
         serviceChargePercent: num(s.serviceChargePercent),
         roundingIncrement: num(s.roundingIncrement, 100) || 100,
+        activeOutletId: typeof s.activeOutletId === 'string' ? s.activeOutletId : null,
       }
     : { ...DEFAULT_SETTINGS }
 
@@ -429,6 +432,7 @@ export async function submitPublicOrder(params: {
       grandTotal: quote.grandTotal,
       shiftId: null,
       deviceId: 'qr-public',
+      outletId: catalog.settings.activeOutletId ?? undefined,
       source: 'qr_table',
       cashierId: 'qr-public',
       cashierName: 'Pesanan QR',

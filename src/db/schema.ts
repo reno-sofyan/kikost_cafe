@@ -13,6 +13,7 @@ import type {
   ModifierGroup,
   ModifierOption,
   Order,
+  Outlet,
   Refund,
   OrderItem,
   OrderLifecycleStatus,
@@ -70,6 +71,7 @@ export class KikostDatabase extends Dexie {
   expenses!: Table<Expense, string>
   returns!: Table<ReturnRecord, string>
   refunds!: Table<Refund, string>
+  outlets!: Table<Outlet, string>
   syncQueue!: Table<SyncQueueEntry, string>
 
   constructor() {
@@ -361,6 +363,39 @@ export class KikostDatabase extends Dexie {
           .modify((r: ReturnRecord & { refundId?: string | null }) => {
             r.refundId = r.refundId ?? null
           })
+      })
+
+    // v10 (Fase 3): entitas Outlet + pointer outlet aktif. Kafe satu-lokasi →
+    // satu outlet default dibuat dari `settings`. `order.outletId` / `shift.outletId`
+    // opsional; baris lama tak perlu di-backfill.
+    this.version(10)
+      .stores({
+        outlets: 'id, active',
+        orders:
+          'id, orderNumber, status, lifecycleStatus, type, tableId, shiftId, deviceId, outletId, cashierId, createdAt, idempotencyKey',
+        shifts: 'id, cashierId, deviceId, outletId, status, openedAt, [deviceId+status]',
+      })
+      .upgrade(async (tx) => {
+        const settings = await tx.table('settings').get('singleton')
+        const existing = await tx.table('outlets').count()
+        let outletId = settings?.activeOutletId
+        if (existing === 0) {
+          const now = Date.now()
+          outletId = outletId || `outlet_${now.toString(36)}`
+          await tx.table('outlets').add({
+            id: outletId,
+            name: settings?.cafeName || 'Kikost Cafe',
+            address: settings?.address || '',
+            phone: settings?.phone || '',
+            timezone: 'Asia/Jakarta',
+            active: true,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+        if (settings && !settings.activeOutletId && outletId) {
+          await tx.table('settings').put({ ...settings, activeOutletId: outletId })
+        }
       })
   }
 }

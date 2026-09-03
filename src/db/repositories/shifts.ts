@@ -30,9 +30,11 @@ export async function openShift(params: {
 }): Promise<Shift> {
   const existing = await getOpenShift()
   if (existing) throw new Error('Masih ada shift yang sedang berjalan di perangkat ini. Tutup shift tersebut terlebih dahulu.')
+  const settings = await getSettings()
   const shift: Shift = {
     id: newId(),
     deviceId: getDeviceId(),
+    outletId: settings.activeOutletId,
     cashierId: params.cashierId,
     cashierName: params.cashierName,
     openingCash: params.openingCash,

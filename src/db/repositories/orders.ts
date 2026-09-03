@@ -78,6 +78,7 @@ export async function startOrder(params: {
     grandTotal: 0,
     shiftId: params.shiftId,
     deviceId: getDeviceId(),
+    outletId: settings.activeOutletId,
     source: params.source ?? (params.type === 'takeaway' ? 'takeaway' : params.type === 'delivery' ? 'delivery' : 'cashier'),
     cashierId: params.cashierId,
     cashierName: params.cashierName,
