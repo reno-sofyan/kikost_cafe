@@ -8,6 +8,7 @@ import { getPool } from './db/pool.js'
 import { authenticateDeviceKey } from './lib/deviceAuth.js'
 import { processPull, processPush, type PushItem } from './lib/syncService.js'
 import { registerPublicRoutes } from './routes/public.js'
+import { registerDeviceRoutes } from './routes/devices.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -101,9 +102,9 @@ export async function buildServer(): Promise<FastifyInstance> {
   // ---- Rute publik pemesanan mandiri via QR (tanpa device key) ----
   await registerPublicRoutes(app)
 
-  // ---- Auth hook untuk seluruh rute /api/sync ----
+  // ---- Auth hook: rute /api/sync & /api/devices butuh kunci perangkat sah ----
   app.addHook('onRequest', async (request, reply) => {
-    if (!request.url.startsWith('/api/sync')) return
+    if (!request.url.startsWith('/api/sync') && !request.url.startsWith('/api/devices')) return
     const key = extractBearer(request)
     if (!key) {
       reply.code(401)
@@ -117,6 +118,9 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
     request.deviceId = device.deviceId
   })
+
+  // ---- Manajemen perangkat sinkronisasi ----
+  await registerDeviceRoutes(app)
 
   // ---- Sync push ----
   app.post('/api/sync/push', async (request, reply) => {

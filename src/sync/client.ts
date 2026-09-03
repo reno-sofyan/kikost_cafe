@@ -84,3 +84,36 @@ export async function pingBackend(): Promise<boolean> {
 export function isBackendConfigured(): boolean {
   return isConfigured()
 }
+
+// ---- Manajemen perangkat sinkronisasi ----
+
+export interface SyncDevice {
+  id: string
+  label: string
+  revoked: boolean
+  createdAt: number
+  lastSeenAt: number | null
+}
+
+async function deviceJson<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await authorizedFetch(path, init)
+  const body = (await response.json().catch(() => ({}))) as T & { error?: string }
+  if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+  return body
+}
+
+export async function listSyncDevices(): Promise<SyncDevice[]> {
+  return (await deviceJson<{ devices: SyncDevice[] }>('/api/devices', { method: 'GET' })).devices
+}
+
+export async function enrollSyncDevice(label: string, deviceKey: string): Promise<void> {
+  await deviceJson('/api/devices/enroll', { method: 'POST', body: JSON.stringify({ label, deviceKey }) })
+}
+
+export async function revokeSyncDevice(id: string): Promise<void> {
+  await deviceJson(`/api/devices/${id}/revoke`, { method: 'POST', body: '{}' })
+}
+
+export async function renameSyncDevice(id: string, label: string): Promise<void> {
+  await deviceJson(`/api/devices/${id}/rename`, { method: 'POST', body: JSON.stringify({ label }) })
+}
