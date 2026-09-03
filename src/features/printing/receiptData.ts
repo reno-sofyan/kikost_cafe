@@ -24,6 +24,7 @@ export interface ReceiptData {
   tableLabel: string | null
   queueLabel: string | null
   customerNote: string | null
+  isReprint: boolean
   lines: ReceiptLine[]
   subtotal: number
   discountAmount: number
@@ -65,6 +66,7 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
     tableLabel: null,
     queueLabel: 'Antrean #12',
     customerNote: 'Budi',
+    isReprint: false,
     lines: [
       { name: 'Kopi Susu Gula Aren', qty: 2, unitPrice: 22000, lineTotal: 44000, modifierLines: ['  Ukuran: Regular'], note: null },
       { name: 'Nasi Goreng Kikost', qty: 1, unitPrice: 28000, lineTotal: 28000, modifierLines: [], note: 'Tidak pedas' },
@@ -83,7 +85,11 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
   }
 }
 
-export async function buildReceiptData(order: Order, settings: CafeSettings): Promise<ReceiptData> {
+export async function buildReceiptData(
+  order: Order,
+  settings: CafeSettings,
+  opts: { isReprint?: boolean } = {},
+): Promise<ReceiptData> {
   const items = await db.orderItems.where('orderId').equals(order.id).toArray()
   const payments = await db.payments.where('orderId').equals(order.id).toArray()
   const table = order.tableId ? await db.cafeTables.get(order.tableId) : undefined
@@ -112,6 +118,7 @@ export async function buildReceiptData(order: Order, settings: CafeSettings): Pr
     tableLabel: table ? table.name : null,
     queueLabel: order.queueNumber ? `Antrean #${order.queueNumber}` : null,
     customerNote: order.notes.trim() || null,
+    isReprint: opts.isReprint ?? false,
     lines,
     subtotal: order.subtotal,
     discountAmount: order.discountAmount,

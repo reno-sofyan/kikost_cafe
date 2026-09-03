@@ -5,9 +5,11 @@ import { adjustIngredientStock, createIngredient, listIngredients, listLowStockI
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
+import { PurchasingPanel } from '@/features/inventory/PurchasingPanel'
+import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
 import type { Ingredient, StockMovementReason, UnitOfMeasure } from '@/types/domain'
 
-type Tab = 'bahan' | 'riwayat'
+type Tab = 'bahan' | 'pembelian' | 'opname' | 'riwayat'
 const UNITS: UnitOfMeasure[] = ['pcs', 'g', 'kg', 'ml', 'l']
 
 const REASON_LABELS: Record<StockMovementReason, string> = {
@@ -40,9 +42,9 @@ export function InventoryScreen() {
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Stok &amp; Bahan Baku</h1>
-        {(['bahan', 'riwayat'] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-0 !px-4 !py-2 text-sm capitalize ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
-            {t === 'bahan' ? 'Bahan Baku' : 'Riwayat Pergerakan'}
+        {(['bahan', 'pembelian', 'opname', 'riwayat'] as Tab[]).map((t) => (
+          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-0 !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
+            {{ bahan: 'Bahan Baku', pembelian: 'Pembelian', opname: 'Stok Opname', riwayat: 'Riwayat Pergerakan' }[t]}
           </button>
         ))}
       </div>
@@ -79,6 +81,9 @@ export function InventoryScreen() {
           </>
         )}
 
+        {tab === 'pembelian' && <PurchasingPanel userId={currentUser.id} userName={currentUser.name} />}
+        {tab === 'opname' && <StockOpnamePanel userId={currentUser.id} userName={currentUser.name} />}
+
         {tab === 'riwayat' && (
           <div className="space-y-2">
             {movements.map((m) => (
@@ -87,7 +92,10 @@ export function InventoryScreen() {
                   <p className="font-medium text-ink-100">
                     {m.itemName} • {REASON_LABELS[m.reason]}
                   </p>
-                  <p className="text-xs text-ink-500">{formatDateTime(m.createdAt)}</p>
+                  <p className="text-xs text-ink-500">
+                    {formatDateTime(m.createdAt)}
+                    {m.note ? ` • ${m.note}` : ''}
+                  </p>
                 </div>
                 <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-sage-500' : 'text-red-400'}`}>
                   {m.qtyDelta >= 0 ? '+' : ''}

@@ -11,6 +11,9 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   if (data.isVoided) {
     rows.push('<div class="voided">** TRANSAKSI DIBATALKAN **</div>')
   }
+  if (data.isReprint) {
+    rows.push('<div class="center bold">*** CETAK ULANG ***</div>')
+  }
   if (data.logoDataUrl) {
     rows.push(`<img class="logo" src="${data.logoDataUrl}" alt="logo" />`)
   }

@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { renderReceiptBodyHtml } from '@/features/printing/renderReceiptHtml'
-import { printOrderReceipt, saveReceiptAsPdf } from '@/features/printing/printReceipt'
+import { printReceiptData, saveReceiptAsPdf } from '@/features/printing/printReceipt'
 import type { ReceiptData } from '@/features/printing/receiptData'
-import type { Order } from '@/types/domain'
 
 interface Props {
-  order: Order
   data: ReceiptData
   onClose: () => void
 }
 
-export function PrintPreviewModal({ order, data, onClose }: Props) {
+export function PrintPreviewModal({ data, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -18,7 +16,7 @@ export function PrintPreviewModal({ order, data, onClose }: Props) {
     setBusy(true)
     setError(null)
     try {
-      await printOrderReceipt(order)
+      await printReceiptData(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal mencetak struk')
     } finally {
@@ -44,8 +42,8 @@ export function PrintPreviewModal({ order, data, onClose }: Props) {
           <button className="btn-primary" disabled={busy} onClick={() => void handlePrint()}>
             {busy ? 'Mencetak...' : 'Cetak'}
           </button>
-          <button className="btn-secondary" onClick={() => saveReceiptAsPdf(data)}>
-            Simpan PDF
+          <button className="btn-secondary" onClick={() => void saveReceiptAsPdf(data)}>
+            Struk Digital (PDF)
           </button>
           <button className="btn-ghost" onClick={onClose}>
             Tutup

@@ -61,7 +61,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         </button>
       </div>
 
-      {showPreview && <PrintPreviewModal order={order} data={receipt} onClose={() => setShowPreview(false)} />}
+      {showPreview && <PrintPreviewModal data={receipt} onClose={() => setShowPreview(false)} />}
     </div>
   )
 }

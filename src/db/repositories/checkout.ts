@@ -4,7 +4,8 @@ import { newId } from '@/lib/id'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { addExpectedCash } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
-import type { Order, OrderItem, Payment, PaymentMethod, Product, ReturnRecord } from '@/types/domain'
+import { recipeItemBaseQty } from '@/db/repositories/stock'
+import type { Order, OrderItem, Payment, PaymentMethod, Product, RecipeItem, ReturnRecord } from '@/types/domain'
 
 export class OrderAlreadyFinalizedError extends Error {
   constructor() {
@@ -156,7 +157,7 @@ async function findStockShortages(items: OrderItem[]): Promise<string[]> {
     const recipe = await db.recipes.where('productId').equals(product.id).first()
     if (!recipe) continue
     for (const ri of recipe.items) {
-      need.set(ri.ingredientId, (need.get(ri.ingredientId) ?? 0) + ri.qty * item.qty)
+      need.set(ri.ingredientId, (need.get(ri.ingredientId) ?? 0) + (await recipeItemBaseQty(ri)) * item.qty)
       names.set(ri.ingredientId, product.name)
     }
   }
@@ -186,7 +187,7 @@ async function deductStockForItem(item: OrderItem, orderId: string, userId: stri
   for (const recipeItem of recipe.items) {
     const ingredient = await db.ingredients.get(recipeItem.ingredientId)
     if (!ingredient) continue
-    await applyIngredientStockDelta(ingredient.id, -(recipeItem.qty * item.qty), 'sale', orderId, userId)
+    await applyIngredientStockDelta(ingredient.id, -((await recipeItemBaseQty(recipeItem)) * item.qty), 'sale', orderId, userId)
   }
 }
 
@@ -214,6 +215,8 @@ async function applyProductStockDelta(
     note: '',
     userId,
     refOrderId,
+    refType: 'order',
+    refId: refOrderId,
     createdAt: Date.now(),
   }
   await db.stockMovements.add(movement)
@@ -244,6 +247,8 @@ async function applyIngredientStockDelta(
     note: '',
     userId,
     refOrderId,
+    refType: 'order',
+    refId: refOrderId,
     createdAt: Date.now(),
   }
   await db.stockMovements.add(movement)
@@ -264,10 +269,10 @@ async function applyIngredientStockDelta(
   }
 }
 
-async function recipeCanFulfillOneUnit(items: { ingredientId: string; qty: number }[]): Promise<boolean> {
+async function recipeCanFulfillOneUnit(items: RecipeItem[]): Promise<boolean> {
   for (const item of items) {
     const ingredient = await db.ingredients.get(item.ingredientId)
-    if (!ingredient || ingredient.stockQty < item.qty) return false
+    if (!ingredient || ingredient.stockQty < (await recipeItemBaseQty(item))) return false
   }
   return true
 }
@@ -352,7 +357,7 @@ async function restockForItem(item: OrderItem, orderId: string, userId: string):
   const recipe = await db.recipes.where('productId').equals(product.id).first()
   if (!recipe) return
   for (const recipeItem of recipe.items) {
-    await applyIngredientStockDelta(recipeItem.ingredientId, recipeItem.qty * item.qty, 'return', orderId, userId)
+    await applyIngredientStockDelta(recipeItem.ingredientId, (await recipeItemBaseQty(recipeItem)) * item.qty, 'return', orderId, userId)
   }
 }
 

@@ -125,6 +125,9 @@ export interface Ingredient {
 export interface RecipeItem {
   ingredientId: string
   qty: number
+  /** Satuan qty ini. Bila kosong, diasumsikan satuan dasar bahan. Boleh beda
+   *  satuan sekeluarga (mis. resep "0.018 kg" untuk bahan ber-satuan g). */
+  unit?: UnitOfMeasure
 }
 
 export interface Recipe {
@@ -183,7 +186,62 @@ export interface StockMovement {
   note: string
   userId: string
   refOrderId: string | null
+  /** Dokumen sumber non-order: 'purchase' | 'opname' | 'transfer' | 'production'. */
+  refType: string | null
+  refId: string | null
   createdAt: number
+}
+
+export type PurchaseStatus = 'draft' | 'received'
+
+export interface PurchaseLine {
+  itemType: StockMovementItemType
+  itemId: string
+  itemName: string
+  qty: number
+  unit: UnitOfMeasure
+  unitCost: number
+  lineCost: number
+}
+
+/** Pembelian & penerimaan barang dari pemasok. Menerima = memposting stok. */
+export interface Purchase {
+  id: string
+  supplierName: string
+  invoiceNo: string
+  lines: PurchaseLine[]
+  totalCost: number
+  status: PurchaseStatus
+  note: string
+  createdBy: string
+  receivedBy: string | null
+  receivedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export type StockOpnameStatus = 'draft' | 'finalized'
+
+export interface OpnameLine {
+  itemType: StockMovementItemType
+  itemId: string
+  itemName: string
+  systemQty: number
+  countedQty: number | null
+  unit: UnitOfMeasure
+}
+
+/** Stok opname: hitung fisik → selisih diposting sebagai adjustment beralasan. */
+export interface StockOpname {
+  id: string
+  lines: OpnameLine[]
+  status: StockOpnameStatus
+  note: string
+  createdBy: string
+  finalizedBy: string | null
+  finalizedAt: number | null
+  createdAt: number
+  updatedAt: number
 }
 
 export type TableStatus = 'available' | 'occupied' | 'awaiting_payment' | 'needs_cleaning'
@@ -410,8 +468,11 @@ export type SyncEntity =
   | 'expenses'
   | 'returns'
   | 'stockMovements'
+  | 'purchases'
+  | 'stockOpnames'
   | 'products'
   | 'ingredients'
+  | 'recipes'
   | 'categories'
   | 'customers'
   | 'auditLogs'

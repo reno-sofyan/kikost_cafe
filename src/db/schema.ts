@@ -16,10 +16,12 @@ import type {
   OrderLifecycleStatus,
   Payment,
   Product,
+  Purchase,
   Recipe,
   ReturnRecord,
   Shift,
   StockMovement,
+  StockOpname,
   SyncQueueEntry,
   User,
 } from '@/types/domain'
@@ -42,6 +44,8 @@ export class KikostDatabase extends Dexie {
   modifierGroups!: Table<ModifierGroup, string>
   modifierOptions!: Table<ModifierOption, string>
   stockMovements!: Table<StockMovement, string>
+  purchases!: Table<Purchase, string>
+  stockOpnames!: Table<StockOpname, string>
   cafeTables!: Table<CafeTable, string>
   customers!: Table<Customer, string>
   orders!: Table<Order, string>
@@ -160,6 +164,24 @@ export class KikostDatabase extends Dexie {
           .modify((r: ReturnRecord) => {
             r.reversalPaymentId = r.reversalPaymentId ?? null
             r.approverName = r.approverName ?? ''
+          })
+      })
+
+    // v4 (Fase 2a): pembelian/penerimaan barang, stok opname, referensi dokumen
+    // pada pergerakan stok. Aditif.
+    this.version(4)
+      .stores({
+        purchases: 'id, status, supplierName, createdAt',
+        stockOpnames: 'id, status, createdAt',
+        stockMovements: 'id, itemType, itemId, createdAt, reason, refType',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('stockMovements')
+          .toCollection()
+          .modify((m: StockMovement) => {
+            m.refType = m.refType ?? (m.refOrderId ? 'order' : null)
+            m.refId = m.refId ?? m.refOrderId ?? null
           })
       })
   }

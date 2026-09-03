@@ -1,7 +1,23 @@
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
-import type { Ingredient, Product, StockMovementReason } from '@/types/domain'
+import { convertQty } from '@/lib/units'
+import type {
+  Ingredient,
+  Product,
+  RecipeItem,
+  StockMovement,
+  StockMovementItemType,
+  StockMovementReason,
+} from '@/types/domain'
+
+/** Jumlah bahan yang dibutuhkan sebuah item resep, dikonversi ke satuan dasar bahan. */
+export async function recipeItemBaseQty(item: RecipeItem): Promise<number> {
+  const ingredient = await db.ingredients.get(item.ingredientId)
+  if (!ingredient) return item.qty
+  const from = item.unit ?? ingredient.unit
+  return convertQty(item.qty, from, ingredient.unit)
+}
 
 export async function listIngredients(): Promise<Ingredient[]> {
   return db.ingredients.orderBy('name').toArray()
@@ -28,41 +44,85 @@ export async function updateIngredient(
   })
 }
 
+export interface StockPostInput {
+  itemType: StockMovementItemType
+  itemId: string
+  qtyDelta: number
+  reason: StockMovementReason
+  userId: string
+  note?: string
+  refType?: string
+  refId?: string
+}
+
 /**
- * Menyesuaikan stok bahan baku secara atomik dan mencatat riwayat pergerakan stok.
- * qtyDelta negatif = pengurangan (penjualan/waste/stok keluar), positif = penambahan (stok masuk/retur).
+ * Memposting satu pergerakan stok — sumber tunggal kebenaran untuk semua perubahan
+ * stok manual/dokumen (pembelian, opname, waste, transfer, adjustment). HARUS
+ * dipanggil di dalam transaksi yang mencakup ingredients, products, stockMovements,
+ * syncQueue. Menjaga histori: `stockMovements` tak pernah dihapus.
  */
+export async function postStockMovement(input: StockPostInput): Promise<void> {
+  const now = Date.now()
+  if (input.itemType === 'ingredient') {
+    const ingredient = await db.ingredients.get(input.itemId)
+    if (!ingredient) throw new Error('Bahan baku tidak ditemukan')
+    const resultingQty = roundQty(ingredient.stockQty + input.qtyDelta)
+    await db.ingredients.update(input.itemId, { stockQty: resultingQty, updatedAt: now })
+    await addMovement(input, ingredient.name, resultingQty, now)
+    const updated = await db.ingredients.get(input.itemId)
+    if (updated) await enqueueSync('ingredients', input.itemId, updated)
+    await recomputeAvailabilityForIngredient(input.itemId)
+  } else {
+    const product = await db.products.get(input.itemId)
+    if (!product) throw new Error('Produk tidak ditemukan')
+    const resultingQty = roundQty(product.stockQty + input.qtyDelta)
+    await db.products.update(input.itemId, {
+      stockQty: resultingQty,
+      isAvailable: resultingQty > 0 ? product.isAvailable : false,
+      updatedAt: now,
+    })
+    await addMovement(input, product.name, resultingQty, now)
+    const updated = await db.products.get(input.itemId)
+    if (updated) await enqueueSync('products', input.itemId, updated)
+  }
+}
+
+async function addMovement(input: StockPostInput, itemName: string, resultingQty: number, at: number): Promise<void> {
+  const movement: StockMovement = {
+    id: newId(),
+    itemType: input.itemType,
+    itemId: input.itemId,
+    itemName,
+    reason: input.reason,
+    qtyDelta: input.qtyDelta,
+    resultingQty,
+    note: input.note ?? '',
+    userId: input.userId,
+    refOrderId: input.refType === 'order' ? (input.refId ?? null) : null,
+    refType: input.refType ?? null,
+    refId: input.refId ?? null,
+    createdAt: at,
+  }
+  await db.stockMovements.add(movement)
+  await enqueueSync('stockMovements', movement.id, movement)
+}
+
 export async function adjustIngredientStock(params: {
   ingredientId: string
   qtyDelta: number
   reason: StockMovementReason
   userId: string
-  refOrderId?: string
   note?: string
 }): Promise<void> {
-  await db.transaction('rw', db.ingredients, db.stockMovements, db.syncQueue, db.products, async () => {
-    const ingredient = await db.ingredients.get(params.ingredientId)
-    if (!ingredient) throw new Error('Bahan baku tidak ditemukan')
-    const resultingQty = roundQty(ingredient.stockQty + params.qtyDelta)
-    await db.ingredients.update(params.ingredientId, { stockQty: resultingQty, updatedAt: Date.now() })
-    const movement = {
-      id: newId(),
-      itemType: 'ingredient' as const,
+  await db.transaction('rw', db.ingredients, db.stockMovements, db.syncQueue, db.products, db.recipes, async () => {
+    await postStockMovement({
+      itemType: 'ingredient',
       itemId: params.ingredientId,
-      itemName: ingredient.name,
-      reason: params.reason,
       qtyDelta: params.qtyDelta,
-      resultingQty,
-      note: params.note ?? '',
+      reason: params.reason,
       userId: params.userId,
-      refOrderId: params.refOrderId ?? null,
-      createdAt: Date.now(),
-    }
-    await db.stockMovements.add(movement)
-    await enqueueSync('stockMovements', movement.id, movement)
-    const updatedIngredient = await db.ingredients.get(params.ingredientId)
-    if (updatedIngredient) await enqueueSync('ingredients', params.ingredientId, updatedIngredient)
-    await recomputeAvailabilityForIngredient(params.ingredientId)
+      note: params.note,
+    })
   })
 }
 
@@ -71,36 +131,17 @@ export async function adjustProductStock(params: {
   qtyDelta: number
   reason: StockMovementReason
   userId: string
-  refOrderId?: string
   note?: string
 }): Promise<void> {
-  await db.transaction('rw', db.products, db.stockMovements, db.syncQueue, async () => {
-    const product = await db.products.get(params.productId)
-    if (!product) throw new Error('Produk tidak ditemukan')
-    const resultingQty = roundQty(product.stockQty + params.qtyDelta)
-    const isAvailable = resultingQty > 0 ? product.isAvailable : false
-    await db.products.update(params.productId, {
-      stockQty: resultingQty,
-      isAvailable,
-      updatedAt: Date.now(),
-    })
-    const movement = {
-      id: newId(),
-      itemType: 'product' as const,
+  await db.transaction('rw', db.products, db.ingredients, db.stockMovements, db.syncQueue, db.recipes, async () => {
+    await postStockMovement({
+      itemType: 'product',
       itemId: params.productId,
-      itemName: product.name,
-      reason: params.reason,
       qtyDelta: params.qtyDelta,
-      resultingQty,
-      note: params.note ?? '',
+      reason: params.reason,
       userId: params.userId,
-      refOrderId: params.refOrderId ?? null,
-      createdAt: Date.now(),
-    }
-    await db.stockMovements.add(movement)
-    await enqueueSync('stockMovements', movement.id, movement)
-    const updatedProduct = await db.products.get(params.productId)
-    if (updatedProduct) await enqueueSync('products', params.productId, updatedProduct)
+      note: params.note,
+    })
   })
 }
 
@@ -126,10 +167,11 @@ export async function recomputeProductAvailabilityByRecipe(productId: string): P
   }
 }
 
-async function hasEnoughIngredientsForOneUnit(items: { ingredientId: string; qty: number }[]): Promise<boolean> {
+async function hasEnoughIngredientsForOneUnit(items: RecipeItem[]): Promise<boolean> {
   for (const item of items) {
     const ingredient = await db.ingredients.get(item.ingredientId)
-    if (!ingredient || ingredient.stockQty < item.qty) return false
+    if (!ingredient) return false
+    if (ingredient.stockQty < (await recipeItemBaseQty(item))) return false
   }
   return true
 }
@@ -141,7 +183,7 @@ export async function canFulfillProductQty(product: Product, qty: number): Promi
   if (!recipe || recipe.items.length === 0) return true
   for (const item of recipe.items) {
     const ingredient = await db.ingredients.get(item.ingredientId)
-    if (!ingredient || ingredient.stockQty < item.qty * qty) return false
+    if (!ingredient || ingredient.stockQty < (await recipeItemBaseQty(item)) * qty) return false
   }
   return true
 }

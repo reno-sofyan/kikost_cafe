@@ -42,7 +42,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const activeItems = items.filter((i) => !i.voided && !i.removed)
 
   async function openPrintPreview() {
-    const data = await prepareReceiptData(order)
+    const data = await prepareReceiptData(order, { isReprint: true })
     setReceipt(data)
     setShowPrint(true)
   }
@@ -194,7 +194,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
         </div>
       </div>
 
-      {showPrint && receipt && <PrintPreviewModal order={order} data={receipt} onClose={() => setShowPrint(false)} />}
+      {showPrint && receipt && <PrintPreviewModal data={receipt} onClose={() => setShowPrint(false)} />}
 
       {flow === 'void-reason' && (
         <ReasonPromptModal

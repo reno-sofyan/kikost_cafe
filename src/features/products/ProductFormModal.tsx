@@ -5,6 +5,7 @@ import { listModifierGroups } from '@/db/repositories/modifiers'
 import { createProduct, getRecipeForProduct, saveRecipe, updateProduct } from '@/db/repositories/products'
 import { listIngredients } from '@/db/repositories/stock'
 import { parseRupiahInput, formatRupiah } from '@/lib/currency'
+import { compatibleUnits } from '@/lib/units'
 import { Icon } from '@/components/ui/Icon'
 import { db } from '@/db/schema'
 import type { Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
@@ -235,10 +236,26 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
               </select>
               <input
                 type="number"
-                className="input-field w-24"
+                step="any"
+                className="input-field w-20"
                 value={item.qty}
                 onChange={(e) => setRecipeItems((prev) => prev.map((it, i) => (i === index ? { ...it, qty: Number(e.target.value) } : it)))}
               />
+              <select
+                className="input-field w-20"
+                value={item.unit ?? ingredients.find((g) => g.id === item.ingredientId)?.unit ?? 'g'}
+                onChange={(e) =>
+                  setRecipeItems((prev) =>
+                    prev.map((it, i) => (i === index ? { ...it, unit: e.target.value as UnitOfMeasure } : it)),
+                  )
+                }
+              >
+                {compatibleUnits(ingredients.find((g) => g.id === item.ingredientId)?.unit ?? 'g').map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
               <button type="button" className="text-red-400" onClick={() => setRecipeItems((prev) => prev.filter((_, i) => i !== index))}>
                 <Icon name="close" size={16} />
               </button>
