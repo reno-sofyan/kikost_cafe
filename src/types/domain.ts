@@ -56,6 +56,8 @@ export interface CafeSettings {
   blindClose: boolean
   /** Selisih kas absolut di atas nilai ini butuh persetujuan supervisor saat tutup shift. */
   cashVarianceTolerance: number
+  /** Izinkan pembayaran sebagian (bill jadi PARTIALLY_PAID, order belum selesai). */
+  allowPartialPayment: boolean
   qrisImageDataUrl: string | null
   qrisMerchantName: string | null
   receiptPaperSize: ReceiptPaperSize
@@ -379,11 +381,53 @@ export interface Order {
   paidAt: number | null
 }
 
+export type BillPaymentStatus =
+  | 'UNPAID'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'PARTIALLY_REFUNDED'
+  | 'REFUNDED'
+  | 'VOIDED'
+
+/**
+ * Tagihan — entitas pembayaran yang terpisah dari Order. Satu order → 1..n bill
+ * (default 1 bill meliputi seluruh order; bisa dipecah per item / nominal).
+ * Total bill di-snapshot; pembayaran & refund direferensikan lewat billId.
+ */
+export interface Bill {
+  id: string
+  orderId: string
+  label: string
+  /** 'all' = seluruh item order; array = subset item; null + portionAmount = potongan nominal. */
+  itemIds: string[] | 'all'
+  portionAmount: number | null
+  subtotal: number
+  discountAmount: number
+  serviceChargeAmount: number
+  taxAmount: number
+  roundingAdjustment: number
+  grandTotal: number
+  amountPaid: number
+  amountRefunded: number
+  paymentStatus: BillPaymentStatus
+  createdAt: number
+  updatedAt: number
+}
+
 export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card'
+
+export interface PaymentInput {
+  method: PaymentMethod
+  amount: number
+  receivedAmount?: number
+  reference?: string
+}
 
 export interface Payment {
   id: string
   orderId: string
+  /** Bill yang dibayar. Untuk data lama / order tanpa split = bill implisit order. */
+  billId: string
   method: PaymentMethod
   /** Positif = pembayaran, negatif = pengembalian/refund. */
   amount: number
@@ -470,6 +514,7 @@ export type SyncEntity =
   | 'stockMovements'
   | 'purchases'
   | 'stockOpnames'
+  | 'bills'
   | 'products'
   | 'ingredients'
   | 'recipes'

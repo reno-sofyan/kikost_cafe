@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/db/schema'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
+import { getSettings } from '@/db/repositories/settings'
 import {
   finalizePayment,
   InsufficientPaymentError,
@@ -39,6 +41,17 @@ export function OrderPaymentScreen() {
 
   const order = useLiveQuery(() => (orderId ? getOrder(orderId) : undefined), [orderId])
   const items = useLiveQuery(() => (orderId ? listOrderItems(orderId) : []), [orderId]) ?? []
+  const allowPartial = useLiveQuery(async () => (await getSettings()).allowPartialPayment, []) ?? false
+  const priorPaid =
+    useLiveQuery(
+      async () =>
+        orderId
+          ? (await db.payments.where('orderId').equals(orderId).toArray())
+              .filter((p) => p.amount > 0)
+              .reduce((s, p) => s + p.amount, 0)
+          : 0,
+      [orderId],
+    ) ?? 0
 
   const [lines, setLines] = useState<PaymentLine[]>([])
   const [activeModal, setActiveModal] = useState<PaymentMethod | null>(null)
@@ -50,13 +63,19 @@ export function OrderPaymentScreen() {
     if (!order) return
     setError(null)
     try {
-      await finalizePayment({
+      const res = await finalizePayment({
         orderId: order.id,
         payments: lines.map(({ method, amount, receivedAmount, reference }) => ({ method, amount, receivedAmount, reference })),
         confirmedByUserId: currentUser.id,
+        allowPartial,
         allowNegativeStock,
       })
-      setCompleted(true)
+      if (res.order.lifecycleStatus === 'COMPLETED') {
+        setCompleted(true)
+      } else {
+        // Pembayaran sebagian tercatat — kembali ke kasir, order tetap terbuka.
+        navigate('/kasir')
+      }
     } catch (e) {
       if (e instanceof OrderAlreadyFinalizedError) {
         setCompleted(true)
@@ -84,8 +103,9 @@ export function OrderPaymentScreen() {
     return <PaymentSuccessScreen orderId={order.id} />
   }
 
-  const paidSoFar = lines.reduce((sum, l) => sum + l.amount, 0)
-  const remaining = Math.max(0, order.grandTotal - paidSoFar)
+  const linesTotal = lines.reduce((sum, l) => sum + l.amount, 0)
+  const remaining = Math.max(0, order.grandTotal - priorPaid - linesTotal)
+  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial)
 
   function addLine(line: Omit<PaymentLine, 'key' | 'methodLabel'>) {
     setLines((prev) => [...prev, { ...line, key: crypto.randomUUID(), methodLabel: METHOD_LABELS[line.method] }])
@@ -160,6 +180,12 @@ export function OrderPaymentScreen() {
           </div>
         )}
 
+        {priorPaid > 0 && (
+          <div className="mb-2 flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3 text-sm">
+            <span className="text-ink-400">Sudah dibayar sebelumnya</span>
+            <span className="font-semibold text-sage-500">{formatRupiah(priorPaid)}</span>
+          </div>
+        )}
         <div className="mb-4 flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3">
           <span className="text-ink-300">Sisa Tagihan</span>
           <span className={`text-lg font-bold ${remaining > 0 ? 'text-brew-400' : 'text-sage-500'}`}>{formatRupiah(remaining)}</span>
@@ -167,8 +193,12 @@ export function OrderPaymentScreen() {
 
         {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
-        <button className="btn-primary w-full" disabled={remaining > 0 || isSubmitting || lines.length === 0} onClick={() => submitPayment()}>
-          {isSubmitting ? 'Memproses...' : 'Selesaikan Pembayaran'}
+        <button className="btn-primary w-full" disabled={!canSettle || isSubmitting} onClick={() => submitPayment()}>
+          {isSubmitting
+            ? 'Memproses...'
+            : allowPartial && remaining > 0
+              ? `Bayar Sebagian • ${formatRupiah(linesTotal)}`
+              : 'Selesaikan Pembayaran'}
         </button>
       </div>
 

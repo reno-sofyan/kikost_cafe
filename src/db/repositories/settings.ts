@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   nextTransactionSequence: 1,
   blindClose: false,
   cashVarianceTolerance: 5000,
+  allowPartialPayment: false,
   qrisImageDataUrl: null,
   qrisMerchantName: null,
   receiptPaperSize: '58mm',

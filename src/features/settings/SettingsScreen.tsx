@@ -142,6 +142,7 @@ function FiscalForm() {
   const [autoLockMinutes, setAutoLockMinutes] = useState(5)
   const [blindClose, setBlindClose] = useState(false)
   const [cashVarianceTolerance, setCashVarianceTolerance] = useState(5000)
+  const [allowPartialPayment, setAllowPartialPayment] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -155,6 +156,7 @@ function FiscalForm() {
     setAutoLockMinutes(settings.autoLockMinutes)
     setBlindClose(settings.blindClose)
     setCashVarianceTolerance(settings.cashVarianceTolerance)
+    setAllowPartialPayment(settings.allowPartialPayment)
   }, [settings])
 
   if (!settings) return null
@@ -228,6 +230,10 @@ function FiscalForm() {
           />
           <span className="mt-1 block text-xs text-ink-500">Selisih di atas nilai ini butuh persetujuan supervisor saat tutup shift.</span>
         </label>
+        <label className="mt-3 flex items-center gap-2 text-sm text-ink-200">
+          <input type="checkbox" checked={allowPartialPayment} onChange={(e) => setAllowPartialPayment(e.target.checked)} />
+          Izinkan pembayaran sebagian (bayar DP / cicil; pesanan tetap terbuka sampai lunas)
+        </label>
       </div>
 
       <button
@@ -243,6 +249,7 @@ function FiscalForm() {
             autoLockMinutes,
             blindClose,
             cashVarianceTolerance,
+            allowPartialPayment,
           })
           setSaved(true)
           setTimeout(() => setSaved(false), 2000)

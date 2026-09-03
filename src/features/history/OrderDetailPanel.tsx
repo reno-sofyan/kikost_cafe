@@ -27,6 +27,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const items = useLiveQuery(() => listOrderItems(order.id), [order.id]) ?? []
   const payments = useLiveQuery(() => db.payments.where('orderId').equals(order.id).toArray(), [order.id]) ?? []
   const returns = useLiveQuery(() => db.returns.where('orderId').equals(order.id).toArray(), [order.id]) ?? []
+  const bills = useLiveQuery(() => db.bills.where('orderId').equals(order.id).toArray(), [order.id]) ?? []
 
   const [showPrint, setShowPrint] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
@@ -127,12 +128,35 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             </div>
           </div>
 
+          {bills.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {bills.map((b) => (
+                <span
+                  key={b.id}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    b.paymentStatus === 'PAID'
+                      ? 'bg-sage-600/20 text-sage-500'
+                      : b.paymentStatus === 'PARTIALLY_PAID'
+                        ? 'bg-yellow-900/30 text-yellow-400'
+                        : b.paymentStatus.includes('REFUND')
+                          ? 'bg-brown-600/20 text-brown-400'
+                          : 'bg-ink-800 text-ink-400'
+                  }`}
+                >
+                  {bills.length > 1 ? `${b.label}: ` : ''}
+                  {b.paymentStatus}
+                  {b.paymentStatus === 'PARTIALLY_PAID' ? ` (${formatRupiah(b.amountPaid)}/${formatRupiah(b.grandTotal)})` : ''}
+                </span>
+              ))}
+            </div>
+          )}
+
           {payments.length > 0 && (
             <div className="card mb-4 p-4">
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between text-sm">
                   <span className="text-ink-300">{p.method}</span>
-                  <span className="text-ink-100">{formatRupiah(p.amount)}</span>
+                  <span className={p.amount < 0 ? 'text-brown-400' : 'text-ink-100'}>{formatRupiah(p.amount)}</span>
                 </div>
               ))}
             </div>

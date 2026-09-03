@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie'
 import type {
   AuditLogEntry,
+  Bill,
   CafeSettings,
   CafeTable,
   CashMovement,
@@ -51,6 +52,7 @@ export class KikostDatabase extends Dexie {
   orders!: Table<Order, string>
   orderItems!: Table<OrderItem, string>
   kitchenTickets!: Table<KitchenTicket, string>
+  bills!: Table<Bill, string>
   payments!: Table<Payment, string>
   shifts!: Table<Shift, string>
   cashMovements!: Table<CashMovement, string>
@@ -182,6 +184,67 @@ export class KikostDatabase extends Dexie {
           .modify((m: StockMovement) => {
             m.refType = m.refType ?? (m.refOrderId ? 'order' : null)
             m.refId = m.refId ?? m.refOrderId ?? null
+          })
+      })
+
+    // v5 (Fase 2b): entitas Bill terpisah dari Order + pembayaran sebagian.
+    this.version(5)
+      .stores({
+        bills: 'id, orderId, paymentStatus, createdAt',
+        payments: 'id, orderId, billId, idempotencyKey, method, createdAt',
+      })
+      .upgrade(async (tx) => {
+        const settings = await tx.table('settings').get('singleton')
+        if (settings) {
+          await tx.table('settings').put({ ...settings, allowPartialPayment: settings.allowPartialPayment ?? false })
+        }
+
+        // Backfill bill implisit + billId pembayaran untuk order yang sudah terbayar/void.
+        const orders: Order[] = await tx.table('orders').toArray()
+        const allPayments: Payment[] = await tx.table('payments').toArray()
+        const paymentsByOrder = new Map<string, Payment[]>()
+        for (const p of allPayments) {
+          const list = paymentsByOrder.get(p.orderId) ?? []
+          list.push(p)
+          paymentsByOrder.set(p.orderId, list)
+        }
+
+        for (const o of orders) {
+          if (!['paid', 'void', 'completed'].includes(o.status)) continue
+          const billId = `bill_${o.id}`
+          const ps = paymentsByOrder.get(o.id) ?? []
+          const paid = ps.filter((p) => p.amount > 0).reduce((s, p) => s + p.amount, 0)
+          const refunded = ps.filter((p) => p.amount < 0).reduce((s, p) => s + Math.abs(p.amount), 0)
+          const status =
+            o.status === 'void' ? 'VOIDED' : refunded >= o.grandTotal && refunded > 0 ? 'REFUNDED' : refunded > 0 ? 'PARTIALLY_REFUNDED' : 'PAID'
+          const existing = await tx.table('bills').get(billId)
+          if (!existing) {
+            await tx.table('bills').put({
+              id: billId,
+              orderId: o.id,
+              label: 'Tagihan',
+              itemIds: 'all',
+              portionAmount: null,
+              subtotal: o.subtotal,
+              discountAmount: o.discountAmount,
+              serviceChargeAmount: o.serviceChargeAmount,
+              taxAmount: o.taxAmount,
+              roundingAdjustment: o.roundingAdjustment,
+              grandTotal: o.grandTotal,
+              amountPaid: paid,
+              amountRefunded: refunded,
+              paymentStatus: status,
+              createdAt: o.createdAt,
+              updatedAt: o.updatedAt,
+            })
+          }
+        }
+
+        await tx
+          .table('payments')
+          .toCollection()
+          .modify((p: Payment) => {
+            p.billId = p.billId ?? `bill_${p.orderId}`
           })
       })
   }

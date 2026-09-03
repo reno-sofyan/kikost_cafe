@@ -192,6 +192,88 @@ export async function listLowStockIngredients(): Promise<Ingredient[]> {
   return db.ingredients.filter((i) => i.stockQty <= i.lowStockThreshold).toArray()
 }
 
+// ---- Pergerakan stok akibat penjualan / retur (dipakai billing & checkout) ----
+
+interface SaleLine {
+  productId: string
+  qty: number
+}
+
+/** Nama produk yang stok/bahannya tidak cukup untuk memenuhi seluruh baris. */
+export async function findOrderStockShortages(lines: SaleLine[]): Promise<string[]> {
+  const ingNeed = new Map<string, number>()
+  const prodNeed = new Map<string, number>()
+  const names = new Map<string, string>()
+  for (const line of lines) {
+    const product = await db.products.get(line.productId)
+    if (!product) continue
+    if (product.trackOwnStock) {
+      prodNeed.set(product.id, (prodNeed.get(product.id) ?? 0) + line.qty)
+      names.set(product.id, product.name)
+      continue
+    }
+    const recipe = await db.recipes.where('productId').equals(product.id).first()
+    if (!recipe) continue
+    for (const ri of recipe.items) {
+      ingNeed.set(ri.ingredientId, (ingNeed.get(ri.ingredientId) ?? 0) + (await recipeItemBaseQty(ri)) * line.qty)
+      names.set(ri.ingredientId, product.name)
+    }
+  }
+  const short = new Set<string>()
+  for (const [pid, qty] of prodNeed) {
+    const p = await db.products.get(pid)
+    if (!p || p.stockQty < qty) short.add(names.get(pid) ?? pid)
+  }
+  for (const [iid, qty] of ingNeed) {
+    const ing = await db.ingredients.get(iid)
+    if (!ing || ing.stockQty < qty) short.add(names.get(iid) ?? iid)
+  }
+  return [...short]
+}
+
+async function applySaleDelta(lines: SaleLine[], orderId: string, userId: string, sign: -1 | 1): Promise<void> {
+  const reason = sign < 0 ? 'sale' : 'return'
+  for (const line of lines) {
+    const product = await db.products.get(line.productId)
+    if (!product) continue
+    if (product.trackOwnStock) {
+      await postStockMovement({
+        itemType: 'product',
+        itemId: product.id,
+        qtyDelta: sign * line.qty,
+        reason,
+        userId,
+        refType: 'order',
+        refId: orderId,
+      })
+      continue
+    }
+    const recipe = await db.recipes.where('productId').equals(product.id).first()
+    if (!recipe) continue
+    for (const ri of recipe.items) {
+      await postStockMovement({
+        itemType: 'ingredient',
+        itemId: ri.ingredientId,
+        qtyDelta: sign * (await recipeItemBaseQty(ri)) * line.qty,
+        reason,
+        userId,
+        refType: 'order',
+        refId: orderId,
+      })
+    }
+  }
+}
+
+/** Memotong stok untuk penjualan (di dalam transaksi pemanggil). */
+export function deductSaleStock(lines: SaleLine[], orderId: string, userId: string): Promise<void> {
+  return applySaleDelta(lines, orderId, userId, -1)
+}
+
+/** Mengembalikan stok (retur/void yang di-restock). */
+export function restockSaleStock(lines: SaleLine[], orderId: string, userId: string): Promise<void> {
+  return applySaleDelta(lines, orderId, userId, 1)
+}
+
 export async function listLowStockProducts(): Promise<Product[]> {
   return db.products.filter((p) => p.trackOwnStock && p.stockQty <= p.lowStockThreshold).toArray()
 }

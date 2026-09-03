@@ -8,6 +8,7 @@ export const SYNC_ENTITIES = [
   'orders',
   'orderItems',
   'kitchenTickets',
+  'bills',
   'payments',
   'shifts',
   'cashMovements',
