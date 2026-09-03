@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { buildOperationsReport, buildSalesReport, buildStockReport } from '@/db/repositories/reports'
 import { formatRupiah, formatNumber } from '@/lib/currency'
 import { startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
-import { exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
+import { exportAccountingJournalCsv, exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
 
 type Preset = 'today' | 'week' | 'month' | 'custom'
 
@@ -48,12 +48,21 @@ export function ReportsScreen() {
           </>
         )}
         {report && (
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <button className="btn-secondary" onClick={() => void exportSalesReportCsv(report)}>
               Ekspor CSV
             </button>
             <button className="btn-secondary" onClick={() => void exportSalesReportPdf(report)}>
               Ekspor PDF
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={async () => {
+                const { balanced } = await exportAccountingJournalCsv(range)
+                if (!balanced) alert('Peringatan: jurnal tidak seimbang. Periksa data transaksi.')
+              }}
+            >
+              Jurnal Akuntansi
             </button>
           </div>
         )}

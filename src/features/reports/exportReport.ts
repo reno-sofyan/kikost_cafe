@@ -2,7 +2,14 @@ import jsPDF from 'jspdf'
 import { formatRupiah } from '@/lib/currency'
 import { formatDate } from '@/lib/datetime'
 import { saveFile, saveTextFile } from '@/lib/saveFile'
-import type { SalesReport } from '@/db/repositories/reports'
+import type { SalesReport, DateRange } from '@/db/repositories/reports'
+import { accountingExportToCsv, buildAccountingExport } from '@/db/repositories/accounting'
+
+export async function exportAccountingJournalCsv(range: DateRange): Promise<{ balanced: boolean }> {
+  const exp = await buildAccountingExport(range)
+  await saveTextFile(`jurnal-akuntansi-${formatDate(range.from)}.csv`, accountingExportToCsv(exp), 'text/csv')
+  return { balanced: exp.totals.balanced }
+}
 
 export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   const lines: string[] = []
