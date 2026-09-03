@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { buildSalesReport, buildStockReport } from '@/db/repositories/reports'
-import { formatRupiah } from '@/lib/currency'
+import { buildOperationsReport, buildSalesReport, buildStockReport } from '@/db/repositories/reports'
+import { formatRupiah, formatNumber } from '@/lib/currency'
 import { startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
 
@@ -29,6 +29,7 @@ export function ReportsScreen() {
 
   const report = useLiveQuery(() => buildSalesReport(range), [range.from, range.to])
   const stockReport = useLiveQuery(() => buildStockReport(), [])
+  const ops = useLiveQuery(() => buildOperationsReport(range), [range.from, range.to])
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -123,6 +124,42 @@ export function ReportsScreen() {
               </table>
             </div>
           </div>
+
+          {ops && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard label="Nilai Waste" value={formatRupiah(ops.wasteTotalCost)} accent="text-red-400" />
+                <StatCard label="Rata-rata Waktu Dapur" value={`${ops.avgKitchenMinutes} mnt`} />
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <ReportTable
+                  title="Waste per Item"
+                  rows={ops.wasteByItem.map((r) => [r.itemName, `${formatNumber(r.qty)} ${r.unit}`, formatRupiah(r.estCost)])}
+                  headers={['Item', 'Jumlah', 'Est. Biaya']}
+                />
+                <ReportTable
+                  title="Hasil Produksi"
+                  rows={ops.productionOutput.map((r) => [r.itemName, `${formatNumber(r.qty)} ${r.unit}`, formatRupiah(r.estCost)])}
+                  headers={['Item', 'Jumlah', 'Est. Biaya']}
+                />
+                <ReportTable
+                  title="Pemakaian Bahan"
+                  rows={ops.ingredientUsage.map((u) => [
+                    `${u.itemName} (${u.unit})`,
+                    formatNumber(u.sale),
+                    formatNumber(u.production),
+                    formatNumber(u.waste),
+                  ])}
+                  headers={['Bahan', 'Penjualan', 'Produksi', 'Waste']}
+                />
+                <ReportTable
+                  title="Durasi Penyiapan Dapur"
+                  rows={ops.kitchenDuration.map((k) => [k.productName, `${k.count}x`, `${k.avgPrepMinutes} mnt`])}
+                  headers={['Produk', 'Porsi', 'Rata-rata']}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

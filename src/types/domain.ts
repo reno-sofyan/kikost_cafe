@@ -337,6 +337,40 @@ export interface StockOpname {
   updatedAt: number
 }
 
+export type ProductionStatus = 'draft' | 'completed'
+
+/** Satu baris bahan yang dikonsumsi dalam sebuah produksi. */
+export interface ProductionInputLine {
+  itemType: StockMovementItemType
+  itemId: string
+  itemName: string
+  qty: number
+  unit: UnitOfMeasure
+}
+
+/**
+ * Satu produksi/olahan: mengubah beberapa bahan input menjadi satu output
+ * (bahan olahan atau produk ber-stok sendiri). Contoh: gula + air → simple syrup;
+ * biji kopi → batch cold brew. Menghasilkan pergerakan stok
+ * `production_consumption` (input, negatif) + `production_output` (output, positif).
+ */
+export interface ProductionRun {
+  id: string
+  outputItemType: StockMovementItemType
+  outputItemId: string
+  outputItemName: string
+  outputQty: number
+  outputUnit: UnitOfMeasure
+  inputs: ProductionInputLine[]
+  note: string
+  status: ProductionStatus
+  createdBy: string
+  completedBy: string | null
+  completedAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
 export type TableStatus = 'available' | 'occupied' | 'awaiting_payment' | 'needs_cleaning'
 
 export interface CafeTable {
@@ -630,6 +664,7 @@ export type SyncEntity =
   | 'stockMovements'
   | 'purchases'
   | 'stockOpnames'
+  | 'productions'
   | 'bills'
   | 'printers'
   | 'printRoutes'

@@ -19,6 +19,7 @@ import type {
   Printer,
   PrintJob,
   PrintRoute,
+  ProductionRun,
   Product,
   Purchase,
   Recipe,
@@ -51,6 +52,7 @@ export class KikostDatabase extends Dexie {
   stockMovements!: Table<StockMovement, string>
   purchases!: Table<Purchase, string>
   stockOpnames!: Table<StockOpname, string>
+  productions!: Table<ProductionRun, string>
   cafeTables!: Table<CafeTable, string>
   customers!: Table<Customer, string>
   orders!: Table<Order, string>
@@ -339,6 +341,11 @@ export class KikostDatabase extends Dexie {
             o.rejectedReason = o.rejectedReason ?? null
           })
       })
+
+    // v8 (Fase 2c): modul produksi (bahan → olahan / produk ber-stok).
+    this.version(8).stores({
+      productions: 'id, status, createdAt',
+    })
   }
 }
 

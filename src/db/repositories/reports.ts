@@ -144,6 +144,107 @@ export interface StockReportRow {
   isLow: boolean
 }
 
+export interface StockMovementReportRow {
+  itemName: string
+  unit: string
+  qty: number
+  estCost: number
+}
+
+export interface KitchenDurationRow {
+  productName: string
+  count: number
+  avgPrepMinutes: number
+}
+
+export interface OperationsReport {
+  range: DateRange
+  wasteByItem: StockMovementReportRow[]
+  wasteTotalCost: number
+  ingredientUsage: { itemName: string; unit: string; sale: number; production: number; waste: number; adjustment: number }[]
+  productionOutput: StockMovementReportRow[]
+  kitchenDuration: KitchenDurationRow[]
+  avgKitchenMinutes: number
+}
+
+/**
+ * Laporan operasional untuk rentang tanggal: waste (jumlah + estimasi biaya),
+ * pemakaian bahan per alasan, hasil produksi, dan durasi penyiapan dapur.
+ */
+export async function buildOperationsReport(range: DateRange): Promise<OperationsReport> {
+  const moves = await db.stockMovements.where('createdAt').between(range.from, range.to, true, true).toArray()
+  const ingredients = new Map((await db.ingredients.toArray()).map((i) => [i.id, i]))
+  const products = new Map((await db.products.toArray()).map((p) => [p.id, p]))
+
+  const costOf = (m: (typeof moves)[number]): number => {
+    if (m.itemType === 'ingredient') return (ingredients.get(m.itemId)?.costPerUnit ?? 0) * Math.abs(m.qtyDelta)
+    return (products.get(m.itemId)?.costPrice ?? 0) * Math.abs(m.qtyDelta)
+  }
+  const unitOf = (m: (typeof moves)[number]): string =>
+    m.itemType === 'ingredient' ? (ingredients.get(m.itemId)?.unit ?? '') : (products.get(m.itemId)?.unit ?? 'pcs')
+
+  const wasteMap = new Map<string, StockMovementReportRow>()
+  const usageMap = new Map<string, { itemName: string; unit: string; sale: number; production: number; waste: number; adjustment: number }>()
+  const outputMap = new Map<string, StockMovementReportRow>()
+
+  for (const m of moves) {
+    const key = `${m.itemType}:${m.itemId}`
+    const abs = Math.abs(m.qtyDelta)
+
+    if (m.reason === 'waste') {
+      const row = wasteMap.get(key) ?? { itemName: m.itemName, unit: unitOf(m), qty: 0, estCost: 0 }
+      row.qty += abs
+      row.estCost += costOf(m)
+      wasteMap.set(key, row)
+    }
+    if (m.reason === 'production_output') {
+      const row = outputMap.get(key) ?? { itemName: m.itemName, unit: unitOf(m), qty: 0, estCost: 0 }
+      row.qty += abs
+      row.estCost += costOf(m)
+      outputMap.set(key, row)
+    }
+    if (['sale', 'production_consumption', 'waste', 'adjustment'].includes(m.reason)) {
+      const u = usageMap.get(key) ?? { itemName: m.itemName, unit: unitOf(m), sale: 0, production: 0, waste: 0, adjustment: 0 }
+      if (m.reason === 'sale') u.sale += abs
+      else if (m.reason === 'production_consumption') u.production += abs
+      else if (m.reason === 'waste') u.waste += abs
+      else if (m.reason === 'adjustment') u.adjustment += abs
+      usageMap.set(key, u)
+    }
+  }
+
+  // Durasi dapur: item pesanan yang di-serve dalam rentang, queuedAt → servedAt.
+  const servedItems = (await db.orderItems.toArray()).filter(
+    (it) => it.servedAt != null && it.queuedAt != null && it.servedAt >= range.from && it.servedAt <= range.to,
+  )
+  const durMap = new Map<string, { count: number; totalMs: number }>()
+  for (const it of servedItems) {
+    const ms = (it.servedAt as number) - (it.queuedAt as number)
+    if (ms <= 0) continue
+    const d = durMap.get(it.productName) ?? { count: 0, totalMs: 0 }
+    d.count++
+    d.totalMs += ms
+    durMap.set(it.productName, d)
+  }
+  const kitchenDuration = [...durMap.entries()]
+    .map(([productName, d]) => ({ productName, count: d.count, avgPrepMinutes: Math.round((d.totalMs / d.count / 60_000) * 10) / 10 }))
+    .sort((a, b) => b.avgPrepMinutes - a.avgPrepMinutes)
+  const allMs = [...durMap.values()].reduce((s, d) => s + d.totalMs, 0)
+  const allCount = [...durMap.values()].reduce((s, d) => s + d.count, 0)
+
+  const wasteByItem = [...wasteMap.values()].sort((a, b) => b.estCost - a.estCost)
+
+  return {
+    range,
+    wasteByItem,
+    wasteTotalCost: wasteByItem.reduce((s, r) => s + r.estCost, 0),
+    ingredientUsage: [...usageMap.values()].sort((a, b) => b.sale + b.production - (a.sale + a.production)),
+    productionOutput: [...outputMap.values()].sort((a, b) => b.qty - a.qty),
+    kitchenDuration,
+    avgKitchenMinutes: allCount ? Math.round((allMs / allCount / 60_000) * 10) / 10 : 0,
+  }
+}
+
 export async function buildStockReport(): Promise<StockReportRow[]> {
   const products = await db.products.filter((p) => p.trackOwnStock).toArray()
   const ingredients = await db.ingredients.toArray()

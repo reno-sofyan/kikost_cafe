@@ -7,9 +7,10 @@ import { formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
 import { PurchasingPanel } from '@/features/inventory/PurchasingPanel'
 import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
+import { ProductionPanel } from '@/features/inventory/ProductionPanel'
 import type { Ingredient, StockMovementReason, UnitOfMeasure } from '@/types/domain'
 
-type Tab = 'bahan' | 'pembelian' | 'opname' | 'riwayat'
+type Tab = 'bahan' | 'pembelian' | 'produksi' | 'opname' | 'riwayat'
 const UNITS: UnitOfMeasure[] = ['pcs', 'g', 'kg', 'ml', 'l']
 
 const REASON_LABELS: Record<StockMovementReason, string> = {
@@ -42,9 +43,9 @@ export function InventoryScreen() {
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Stok &amp; Bahan Baku</h1>
-        {(['bahan', 'pembelian', 'opname', 'riwayat'] as Tab[]).map((t) => (
+        {(['bahan', 'pembelian', 'produksi', 'opname', 'riwayat'] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`btn !min-h-0 !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
-            {{ bahan: 'Bahan Baku', pembelian: 'Pembelian', opname: 'Stok Opname', riwayat: 'Riwayat Pergerakan' }[t]}
+            {{ bahan: 'Bahan Baku', pembelian: 'Pembelian', produksi: 'Produksi', opname: 'Stok Opname', riwayat: 'Riwayat Pergerakan' }[t]}
           </button>
         ))}
       </div>
@@ -82,6 +83,7 @@ export function InventoryScreen() {
         )}
 
         {tab === 'pembelian' && <PurchasingPanel userId={currentUser.id} userName={currentUser.name} />}
+        {tab === 'produksi' && <ProductionPanel userId={currentUser.id} userName={currentUser.name} />}
         {tab === 'opname' && <StockOpnamePanel userId={currentUser.id} userName={currentUser.name} />}
 
         {tab === 'riwayat' && (
