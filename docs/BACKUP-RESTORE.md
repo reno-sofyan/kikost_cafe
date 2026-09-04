@@ -34,16 +34,36 @@ file JSON seluruh data lokal perangkat itu.
 
 ## Off-site (disarankan)
 
-Set di `deploy/.env`:
+`rclone` sudah terpasang di image `cafe-pos-backup`. Isi kredensial S3-kompatibel
+di `deploy/.env` (atau env Coolify) — berlaku untuk **Backblaze B2, Cloudflare R2,
+Wasabi, AWS S3, MinIO**:
 
 ```bash
-BACKUP_OFFSITE_CMD=rclone copy "$1" remote:cafe-pos-backups
+BACKUP_S3_BUCKET=nama-bucket
+BACKUP_S3_ACCESS_KEY=xxxxx
+BACKUP_S3_SECRET_KEY=xxxxx
+# Non-AWS wajib endpoint, mis:
+#   Backblaze B2 : https://s3.us-west-004.backblazeb2.com
+#   Cloudflare R2: https://<accountid>.r2.cloudflarestorage.com
+BACKUP_S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+# Opsional:
+# BACKUP_S3_REGION=us-west-004
+# BACKUP_S3_PROVIDER=Backblaze   # atau Cloudflare, Wasabi, AWS, Minio, Other
+# BACKUP_S3_PREFIX=cafe-pos      # folder dalam bucket
 ```
 
-`$1` = path arsip yang baru dibuat. Pasang `rclone` + konfigurasi di image backup
-(atau mount config). Kegagalan hook off-site tidak menggagalkan backup lokal.
+Tiap backup harian lalu diunggah: `<bucket>/<prefix>/cafe-pos-<db>-<ts>.sql.gz`
++ `cafe-pos-latest.sql.gz`. Retensi off-site = `BACKUP_RETENTION_DAYS`. Kegagalan
+unggah **tidak** menggagalkan backup lokal (dicatat di log container).
 
-Alternatif sederhana: `scp`/`rsync` volume `cafe-pos-backups` ke storage lain lewat cron host.
+Uji: `docker compose -p cafe-pos exec cafe-pos-backup sh /usr/local/bin/backup.sh`
+lalu cek log — harus muncul `[backup] off-site sukses`.
+
+Butuh target non-S3 (SFTP/Google Drive/dsb)? Pakai `BACKUP_OFFSITE_CMD` — sebuah
+perintah shell dengan `$1` = path arsip baru, mis.
+`BACKUP_OFFSITE_CMD=rclone --config /cfg/rclone.conf copy "$1" gdrive:cafe-pos`
+(mount config-nya). Alternatif paling sederhana: `rsync` volume `cafe-pos-backups`
+dari cron host.
 
 ## Uji restore (WAJIB berkala, mis. bulanan)
 

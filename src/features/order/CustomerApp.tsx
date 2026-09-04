@@ -326,8 +326,28 @@ interface OrderStatus {
   status: string
   queueNumber: number | null
   rejectedReason: string | null
+  customerName: string
+  subtotal: number
+  discountAmount: number
+  serviceChargeAmount: number
+  taxAmount: number
+  roundingAdjustment: number
   grandTotal: number
-  items: { name: string; qty: number }[]
+  paid: boolean
+  paidAmount: number
+  paymentMethods: string[]
+  items: { name: string; qty: number; modifiers: string[]; note: string; lineTotal: number }[]
+}
+
+const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu' }
+
+function Line({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex justify-between">
+      <span>{label}</span>
+      <span>{value < 0 ? '−' : ''}{rupiah(Math.abs(value))}</span>
+    </div>
+  )
 }
 
 function StatusPage() {
@@ -414,14 +434,36 @@ function StatusPage() {
       )}
 
       <div className="mt-5 card p-4">
-        <p className="mb-2 text-sm font-semibold text-ink-200">Pesanan Anda</p>
+        <p className="mb-2 text-sm font-semibold text-ink-200">{data.paid ? 'Struk' : 'Pesanan Anda'}</p>
         {data.items.map((it, i) => (
-          <p key={i} className="text-sm text-ink-300">
-            {it.qty}× {it.name}
-          </p>
+          <div key={i} className="mb-1 text-sm">
+            <div className="flex justify-between text-ink-300">
+              <span>{it.qty}× {it.name}</span>
+              <span>{rupiah(it.lineTotal)}</span>
+            </div>
+            {it.modifiers.length > 0 && <div className="text-xs text-ink-400">{it.modifiers.join(', ')}</div>}
+            {it.note && <div className="text-xs italic text-ink-400">"{it.note}"</div>}
+          </div>
         ))}
-        <p className="mt-2 border-t border-ink-800 pt-2 text-sm">Total {rupiah(data.grandTotal)}</p>
-        <p className="text-xs text-ink-400">Bayar di kasir.</p>
+        <div className="mt-2 space-y-0.5 border-t border-ink-800 pt-2 text-sm text-ink-300">
+          <Line label="Subtotal" value={data.subtotal} />
+          {data.discountAmount > 0 && <Line label="Diskon" value={-data.discountAmount} />}
+          {data.serviceChargeAmount > 0 && <Line label="Layanan" value={data.serviceChargeAmount} />}
+          {data.taxAmount > 0 && <Line label="Pajak" value={data.taxAmount} />}
+          {data.roundingAdjustment !== 0 && <Line label="Pembulatan" value={data.roundingAdjustment} />}
+          <div className="flex justify-between border-t border-ink-800 pt-1 font-bold text-ink-100">
+            <span>Total</span>
+            <span>{rupiah(data.grandTotal)}</span>
+          </div>
+        </div>
+        {data.paid ? (
+          <p className="mt-2 text-xs text-sage-400">
+            LUNAS — {rupiah(data.paidAmount)}
+            {data.paymentMethods.length > 0 && ` (${data.paymentMethods.map((m) => METHOD_LABEL[m] ?? m).join(', ')})`}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-ink-400">Bayar di kasir.</p>
+        )}
       </div>
 
       {!rejected && (

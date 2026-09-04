@@ -508,8 +508,17 @@ export interface PublicOrderStatus {
   status: string
   queueNumber: number | null
   rejectedReason: string | null
+  customerName: string
+  subtotal: number
+  discountAmount: number
+  serviceChargeAmount: number
+  taxAmount: number
+  roundingAdjustment: number
   grandTotal: number
-  items: { name: string; qty: number }[]
+  paid: boolean
+  paidAmount: number
+  paymentMethods: string[]
+  items: { name: string; qty: number; modifiers: string[]; note: string; lineTotal: number }[]
 }
 
 export async function getPublicOrderStatus(
@@ -530,16 +539,40 @@ export async function getPublicOrderStatus(
     "SELECT payload FROM sync_entity_state WHERE entity = 'orderItems' AND payload->>'orderId' = $1",
     [orderId],
   )
+  const paysRes = await client.query<{ payload: Record<string, unknown> }>(
+    "SELECT payload FROM sync_entity_state WHERE entity = 'payments' AND payload->>'orderId' = $1",
+    [orderId],
+  )
+  const positivePays = paysRes.rows.map((r) => r.payload).filter((p) => num(p.amount) > 0)
+  const status = String(order.lifecycleStatus ?? '')
+
   return {
     orderNumber: String(order.orderNumber ?? ''),
-    status: String(order.lifecycleStatus ?? ''),
+    status,
     queueNumber: typeof order.queueNumber === 'number' ? order.queueNumber : null,
     rejectedReason: typeof order.rejectedReason === 'string' ? order.rejectedReason : null,
+    customerName: typeof order.notes === 'string' ? order.notes : '',
+    subtotal: num(order.subtotal),
+    discountAmount: num(order.discountAmount),
+    serviceChargeAmount: num(order.serviceChargeAmount),
+    taxAmount: num(order.taxAmount),
+    roundingAdjustment: num(order.roundingAdjustment),
     grandTotal: num(order.grandTotal),
+    paid: status === 'COMPLETED',
+    paidAmount: positivePays.reduce((s, p) => s + num(p.amount), 0),
+    paymentMethods: [...new Set(positivePays.map((p) => String(p.method ?? '')).filter(Boolean))],
     items: itemsRes.rows
       .map((r) => r.payload)
       .filter((i) => i.voided !== true && i.removed !== true)
-      .map((i) => ({ name: String(i.productName ?? ''), qty: num(i.qty, 1) })),
+      .map((i) => ({
+        name: String(i.productName ?? ''),
+        qty: num(i.qty, 1),
+        modifiers: Array.isArray(i.modifiers)
+          ? (i.modifiers as Record<string, unknown>[]).map((m) => String(m.optionName ?? ''))
+          : [],
+        note: typeof i.notes === 'string' ? i.notes : '',
+        lineTotal: num(i.lineTotal),
+      })),
   }
 }
 

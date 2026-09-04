@@ -48,6 +48,11 @@ CORS_ORIGINS=https://pos.kikost.com
 RUN_MIGRATIONS_ON_BOOT=true
 BACKUP_CRON=15 18 * * *
 BACKUP_RETENTION_DAYS=14
+# Off-site backup (disarankan) — S3-kompatibel (B2/R2/Wasabi/AWS/MinIO):
+# BACKUP_S3_BUCKET=... BACKUP_S3_ACCESS_KEY=... BACKUP_S3_SECRET_KEY=...
+# BACKUP_S3_ENDPOINT=https://...   (wajib non-AWS)
+# Pembayaran online QRIS/gateway (opsional):
+# PAYMENT_WEBHOOK_SECRET=<openssl rand -hex 24>
 # batas resource sudah default di compose (PG 512M / API 384M / web 128M)
 ```
 

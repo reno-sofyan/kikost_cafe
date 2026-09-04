@@ -187,6 +187,15 @@ services:
       BACKUP_CRON: ${BACKUP_CRON:-15 18 * * *}   # 01:15 WIB (VPS UTC) — di luar jam operasional
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_ON_START: ${BACKUP_ON_START:-true}
+      # Off-site opsional (S3-kompatibel: Backblaze B2 / Cloudflare R2 / Wasabi / AWS / MinIO).
+      # Isi ketiganya untuk mengaktifkan; kosong = hanya backup lokal.
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-}
+      BACKUP_S3_PROVIDER: ${BACKUP_S3_PROVIDER:-Other}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-cafe-pos}
     volumes:
       - cafe-pos-backups:/backups
     healthcheck:

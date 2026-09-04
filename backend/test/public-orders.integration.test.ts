@@ -103,8 +103,13 @@ suite('public QR order API (integrasi)', () => {
     const orderId = created.json().orderId
     const st = await app.inject({ method: 'GET', url: `/api/t/${TOKEN}/orders/${orderId}` })
     expect(st.statusCode).toBe(200)
-    expect(st.json().status).toBe('PENDING_CONFIRMATION')
-    expect(st.json().items[0]).toEqual({ name: 'Latte', qty: 1 })
+    const body = st.json()
+    expect(body.status).toBe('PENDING_CONFIRMATION')
+    expect(body.paid).toBe(false)
+    expect(body.items[0]).toMatchObject({ name: 'Latte', qty: 1, lineTotal: 25000 })
+    expect(body.subtotal).toBe(25000)
+    expect(body.serviceChargeAmount).toBe(1250) // 5%
+    expect(body.taxAmount).toBe(2625) // 10% dari (subtotal + SC)
   })
 
   it('POST calls → tableCalls entity', async () => {
