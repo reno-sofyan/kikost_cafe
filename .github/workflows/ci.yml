@@ -25,6 +25,8 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -51,16 +53,31 @@ jobs:
       - run: npm run lint
       - run: npm run migrate
       - name: Test
+        id: test
         shell: bash
         run: |
           set +e
-          node ./node_modules/vitest/vitest.mjs run --reporter=dot --no-color > out.txt 2>&1
+          node -e "console.log('node',process.version,process.platform,process.arch); console.log('cwd',process.cwd())" > out.txt 2>&1
+          node ./node_modules/vitest/vitest.mjs run --reporter=verbose --no-color >> out.txt 2>&1
           rc=$?
           cat out.txt
-          if [ "$rc" != "0" ]; then
-            { echo "## backend test (exit $rc)"; echo '```'; tail -n 120 out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "EXIT=$rc"
           exit $rc
+      - name: Publish debug output on failure
+        if: failure() && steps.test.outcome == 'failure'
+        working-directory: .
+        shell: bash
+        run: |
+          cp backend/out.txt /tmp/vitest.txt
+          git config user.email "ci@kikost.local"
+          git config user.name "kikost-ci"
+          git checkout --orphan ci-debug
+          git reset --hard >/dev/null 2>&1 || true
+          rm -rf ./* 2>/dev/null || true
+          cp /tmp/vitest.txt "backend-vitest-${GITHUB_RUN_ID}.txt"
+          git add -A
+          git commit -m "ci debug: backend vitest output (run ${GITHUB_RUN_ID})" || true
+          git push -f origin ci-debug || true
 
   e2e:
     runs-on: ubuntu-latest
