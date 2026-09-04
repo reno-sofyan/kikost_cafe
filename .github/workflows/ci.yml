@@ -50,30 +50,17 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run migrate
-      - name: Test (unit)
+      - name: Test
         shell: bash
         run: |
           set +e
-          node -e "console.log('node', process.version, process.platform, process.arch)"
-          node ./node_modules/vitest/vitest.mjs run --reporter=verbose --no-color \
-            test/entities.test.ts test/public-orders.test.ts test/auth-throttle.test.ts > u.txt 2>&1
-          rc=$?; echo "----- unit vitest (exit $rc) -----"; cat u.txt
-          { echo "## backend unit ($rc)"; echo '```'; tail -n 80 u.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          node ./node_modules/vitest/vitest.mjs run --reporter=dot --no-color > out.txt 2>&1
+          rc=$?
+          cat out.txt
+          if [ "$rc" != "0" ]; then
+            { echo "## backend test (exit $rc)"; echo '```'; tail -n 120 out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit $rc
-      - name: Test (integration)
-        shell: bash
-        continue-on-error: true
-        run: |
-          set +e
-          node ./node_modules/vitest/vitest.mjs run --reporter=verbose --no-color \
-            test/sync.integration.test.ts test/public-orders.integration.test.ts \
-            test/devices.integration.test.ts test/events.integration.test.ts \
-            test/payment-webhook.integration.test.ts > i.txt 2>&1
-          rc=$?; echo "----- integration vitest (exit $rc) -----"; cat i.txt
-          { echo "## backend integration ($rc)"; echo '```'; tail -n 120 i.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: backend-vitest-out, path: "backend/*.txt", retention-days: 7 }
 
   e2e:
     runs-on: ubuntu-latest

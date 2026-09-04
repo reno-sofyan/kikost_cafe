@@ -1,7 +1,12 @@
 import pg from 'pg'
 import { loadConfig } from '../config.js'
 
-const { Pool } = pg
+// `pg` adalah paket CommonJS. Interop ESM di sebagian bundler / test runner
+// menempatkan `module.exports` di properti `default` alih-alih langsung —
+// `const { Pool } = pg` lalu melempar "Cannot destructure ... undefined" saat
+// modul di-load. Buka lapisan `.default` bila ada.
+const pgLib = ((pg as unknown as { default?: typeof pg }).default ?? pg) as typeof pg
+const { Pool } = pgLib
 
 let pool: pg.Pool | null = null
 
