@@ -50,11 +50,37 @@ Kasir/waiter **Terima** (nomor antrean keluar, tiket dapur/bar tercetak) atau
   **Pesanan QR**; tekan **Selesai** setelah ditangani.
 - Nonaktifkan QR sebuah meja kapan saja tanpa kehilangan data meja.
 
-## Batasan v1 (rencana lanjutan)
+## Real-time (SSE)
 
-- Pembayaran online (QRIS/gateway) belum ada — bayar di kasir.
-- Harga di-lock saat **submit**; jika harga menu berubah sebelum kasir menerima,
-  kasir menerima dengan harga saat submit (recompute-on-confirm menyusul).
-- Real-time pakai poll 10 dtk; SSE menyusul.
-- Belum ada sesi meja (tiap pesanan QR = order tersendiri; kasir menggabungkan
-  tagihan lewat alur bill yang sudah ada bila perlu).
+Tablet membuka `GET /api/events?key=<kunci perangkat>` (SSE). Server menyiarkan
+sinyal saat ada perubahan → tarik-sync seketika (pesanan QR baru muncul < 3 dtk).
+Poll 20 dtk tetap jalan sebagai jaring pengaman. Tak perlu konfigurasi; melewati
+Traefik seperti request `/api` lain.
+
+## Pembayaran online (opsional)
+
+`POST /api/payments/webhook` — generik. Adaptor gateway apa pun memetakan
+notifikasinya ke `{ orderId, billId, amount, method, reference }` + header
+`X-Signature` = HMAC-SHA256 hex dari string `orderId.billId.amount.reference`
+memakai env **`PAYMENT_WEBHOOK_SECRET`** (kosong → endpoint 503/nonaktif).
+
+Efek: menulis entitas `onlinePayments` (append-only, idempoten per `reference`).
+**Tablet** yang menjalankan `payBill` lokal saat menariknya — potong stok,
+selesaikan order — jadi jalur kasir offline tak berubah. Bila order belum
+dikonfirmasi kasir, pelunasan ditunda sampai dikonfirmasi.
+
+## Gabung pesanan meja
+
+Bila pelanggan menambah pesanan via QR di meja yang **sudah punya pesanan aktif**,
+layar Pesanan QR menampilkan tombol **"Gabung ke &lt;no pesanan&gt;"** — item pindah
+ke pesanan itu, order QR di-void, item baru dikirim ke dapur.
+
+## Harga di-lock saat submit, dihitung ulang saat diterima
+
+Saat kasir **Terima**, tiap baris dihitung ulang dengan harga menu terkini; item
+yang jadi tak tersedia dikeluarkan. Selisih ditampilkan + masuk audit log.
+
+## Belum ada (butuh keputusan)
+
+- Sesi meja formal + penggabungan tagihan lintas order otomatis.
+- Adaptor gateway QRIS spesifik (Midtrans/Xendit/dll) — tinggal petakan ke webhook.
