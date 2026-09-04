@@ -32,6 +32,10 @@ const schema = z.object({
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
+  // Secret HMAC-SHA256 untuk memverifikasi webhook pembayaran online (QRIS/gateway).
+  // Kosong = endpoint webhook nonaktif (503).
+  PAYMENT_WEBHOOK_SECRET: z.string().default(''),
+
   // Aktifkan endpoint backup snapshot (JSON penuh state server). Default nonaktif.
   ENABLE_BACKUP_ENDPOINT: z
     .string()

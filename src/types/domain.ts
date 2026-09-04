@@ -580,8 +580,25 @@ export interface Bill {
   amountPaid: number
   amountRefunded: number
   paymentStatus: BillPaymentStatus
+  /** Referensi pembayaran online (QRIS/gateway) bila tagihan dilunasi lewat webhook. */
+  onlinePaymentRef?: string | null
   createdAt: number
   updatedAt: number
+}
+
+/**
+ * Notifikasi pembayaran online dari gateway (via webhook backend). Ringan &
+ * append-only — tablet-lah yang menjalankan `payBill` lokal (potong stok,
+ * selesaikan order) saat menariknya, jadi kebenaran bisnis tetap di klien.
+ */
+export interface OnlinePayment {
+  id: string
+  orderId: string
+  billId: string
+  amount: number
+  method: PaymentMethod
+  reference: string
+  createdAt: number
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card'
@@ -712,6 +729,7 @@ export type SyncEntity =
   | 'stockOpnames'
   | 'productions'
   | 'refunds'
+  | 'onlinePayments'
   | 'bills'
   | 'printers'
   | 'printRoutes'

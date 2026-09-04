@@ -19,6 +19,7 @@ export const SYNC_ENTITIES = [
   'stockOpnames',
   'productions',
   'refunds',
+  'onlinePayments',
   'printers',
   'printRoutes',
   'tableCalls',
@@ -112,6 +113,11 @@ export function shouldApply(params: {
   // Refund: dokumen append-only, sama seperti payment.
   if (entity === 'refunds') {
     return { apply: false, reason: 'Refund bersifat immutable setelah tercatat' }
+  }
+
+  // Notifikasi pembayaran online: append-only.
+  if (entity === 'onlinePayments') {
+    return { apply: false, reason: 'Notifikasi pembayaran online bersifat immutable' }
   }
 
   if (entity === 'orders') {

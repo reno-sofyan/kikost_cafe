@@ -1,7 +1,8 @@
 import { db } from '@/db/schema'
 import { reconcileTransactionSequence } from '@/db/repositories/settings'
 import { playNewOrderChime } from '@/lib/kitchenSound'
-import type { Order, Payment, SyncEntity } from '@/types/domain'
+import { enqueueSync } from '@/sync/outbox'
+import type { OnlinePayment, Order, Payment, SyncEntity } from '@/types/domain'
 
 const IMMUTABLE_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
 
@@ -27,8 +28,54 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
       case 'auditLogs':
         await applyAppendOnly('auditLogs', rows as { id: string }[])
         break
+      case 'onlinePayments':
+        await applyAppendOnly('onlinePayments', rows as { id: string }[])
+        await applyOnlinePayments(rows as OnlinePayment[])
+        break
       default:
         await applyGeneric(entity, rows)
+    }
+  }
+}
+
+/**
+ * Notifikasi pembayaran online (dari webhook gateway): jalankan `payBill` lokal
+ * supaya potong stok + selesaikan order tetap lewat jalur bisnis klien.
+ * `payBill` idempoten → aman diproses ulang.
+ */
+async function applyOnlinePayments(rows: OnlinePayment[]): Promise<void> {
+  const { payOrderBill } = await import('@/db/repositories/checkout')
+  const { ensureOrderBill, implicitBillId } = await import('@/db/repositories/billing')
+  for (const op of rows) {
+    try {
+      const order = await db.orders.get(op.orderId)
+      // Belum dikonfirmasi kasir / order belum ada → coba lagi siklus berikutnya.
+      if (!order || order.status === 'void' || order.lifecycleStatus === 'PENDING_CONFIRMATION') continue
+
+      let bill = await db.bills.get(op.billId)
+      if (!bill && op.billId === implicitBillId(op.orderId)) {
+        await db.transaction('rw', db.orders, db.bills, db.syncQueue, async () => {
+          await ensureOrderBill(order)
+        })
+        bill = await db.bills.get(op.billId)
+      }
+      if (!bill || bill.paymentStatus === 'PAID' || bill.paymentStatus === 'VOIDED') continue
+      await payOrderBill({
+        billId: op.billId,
+        payments: [{ method: op.method, amount: op.amount, reference: op.reference }],
+        confirmedByUserId: 'online',
+        allowPartial: true,
+      })
+      await db.transaction('rw', db.bills, db.syncQueue, async () => {
+        const fresh = await db.bills.get(op.billId)
+        if (fresh && fresh.onlinePaymentRef !== op.reference) {
+          const updated = { ...fresh, onlinePaymentRef: op.reference, updatedAt: Date.now() }
+          await db.bills.put(updated)
+          await enqueueSync('bills', op.billId, updated)
+        }
+      })
+    } catch {
+      /* akan dicoba lagi pada siklus sync berikutnya */
     }
   }
 }

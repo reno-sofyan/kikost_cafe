@@ -12,6 +12,7 @@ import type {
   KitchenTicket,
   ModifierGroup,
   ModifierOption,
+  OnlinePayment,
   Order,
   Outlet,
   Refund,
@@ -72,6 +73,7 @@ export class KikostDatabase extends Dexie {
   returns!: Table<ReturnRecord, string>
   refunds!: Table<Refund, string>
   outlets!: Table<Outlet, string>
+  onlinePayments!: Table<OnlinePayment, string>
   syncQueue!: Table<SyncQueueEntry, string>
 
   constructor() {
@@ -397,6 +399,11 @@ export class KikostDatabase extends Dexie {
           await tx.table('settings').put({ ...settings, activeOutletId: outletId })
         }
       })
+
+    // v11 (Fase 3): notifikasi pembayaran online (QRIS/gateway via webhook).
+    this.version(11).stores({
+      onlinePayments: 'id, orderId, billId, createdAt',
+    })
   }
 }
 
