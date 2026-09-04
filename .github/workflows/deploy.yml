@@ -1,0 +1,87 @@
+name: Deploy
+
+# Redeploy pos.kikost.com (Coolify app `cafe-pos`) after CI passes on main.
+# Runs on GitHub's runner — triggers Coolify's own deploy, which pulls the new
+# commit, rebuilds cafe-pos-web + cafe-pos-api and runs migration 002 on API boot.
+#
+# One-time setup: add repo secret COOLIFY_TOKEN
+#   (Coolify UI -> Keys & Tokens -> API tokens, write scope; value is in
+#    deploy/.env.coolify locally).
+# Optional override secret COOLIFY_APP_UUID (defaults to the known cafe-pos uuid).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pos
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # workflow_dispatch: always. workflow_run: only when CI went green.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    env:
+      COOLIFY_BASE: https://coolify.kikost.com
+      APP_UUID: ${{ secrets.COOLIFY_APP_UUID || 'qilynan1p0jvsiqjkkins6ot' }}
+    steps:
+      - name: Guard — token present
+        run: |
+          if [ -z "${{ secrets.COOLIFY_TOKEN }}" ]; then
+            echo "::error::Secret COOLIFY_TOKEN is not set. Add it in repo Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Trigger Coolify redeploy
+        run: |
+          set -eu
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+            "${COOLIFY_BASE}/api/v1/deploy?uuid=${APP_UUID}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}")
+          echo "HTTP $code"
+          cat /tmp/resp.json || true
+          echo
+          case "$code" in
+            2*) : ;;
+            *) echo "::error::Coolify deploy trigger failed (HTTP $code)"; exit 1 ;;
+          esac
+
+      - name: Wait for the new build to go live
+        run: |
+          set -u
+          # A route that only exists in the new build: /api/devices returns 401
+          # (needs a device key) once deployed, 404 on the old build.
+          for i in $(seq 1 90); do
+            health=$(curl -s -m 10 "https://pos.kikost.com/api/health" || true)
+            dev=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "https://pos.kikost.com/api/devices" || true)
+            echo "[$i] health=${health:-none} /api/devices=$dev"
+            if echo "$health" | grep -q '"db":"ok"' && [ "$dev" != "404" ] && [ "$dev" != "000" ]; then
+              echo "New build is live and healthy."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for the new build (15 min). Check the Coolify dashboard."
+          exit 1
+
+      - name: Smoke-check new routes
+        run: |
+          set -u
+          fail=0
+          check() { # path  expected-not  label
+            c=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "https://pos.kikost.com$1" || echo 000)
+            if [ "$c" = "404" ] || [ "$c" = "000" ]; then
+              echo "::warning::$3 ($1) returned $c — expected it to be registered"
+              fail=1
+            else
+              echo "OK  $3 ($1) -> $c"
+            fi
+          }
+          check "/api/events?key=x"        "" "SSE events"
+          check "/api/t/0000000000000000"  "" "QR public menu"
+          curl -s -m 10 -o /dev/null -w 'payments webhook -> %{http_code}\n' -X POST "https://pos.kikost.com/api/payments/webhook" || true
+          exit $fail
