@@ -210,6 +210,81 @@ export async function rejectQrOrder(
   })
 }
 
+/** Pesanan aktif (belum bayar/batal) di sebuah meja — kandidat penggabungan QR. */
+export async function activeOrderOnTable(tableId: string): Promise<Order | null> {
+  if (!tableId) return null
+  const orders = await db.orders.where('tableId').equals(tableId).toArray()
+  const open = orders.find(
+    (o) =>
+      o.status === 'open' &&
+      o.lifecycleStatus !== 'PENDING_CONFIRMATION' &&
+      o.lifecycleStatus !== 'DRAFT' &&
+      !['COMPLETED', 'VOIDED', 'CANCELLED', 'REJECTED'].includes(o.lifecycleStatus),
+  )
+  return open ?? null
+}
+
+/**
+ * Menerima pesanan QR dengan MENGGABUNGKANNYA ke pesanan meja yang sedang aktif
+ * (pelanggan menambah pesanan di meja yang sama). Item QR dipindah ke pesanan
+ * target, order QR di-void ("digabung"), lalu item baru dikirim ke dapur/bar.
+ */
+export async function mergeQrOrderIntoTable(
+  qrOrderId: string,
+  targetOrderId: string,
+  actor: { userId: string; userName: string },
+): Promise<void> {
+  const qrOrder = await db.orders.get(qrOrderId)
+  if (!qrOrder) throw new Error('Pesanan QR tidak ditemukan')
+  if (qrOrder.lifecycleStatus !== 'PENDING_CONFIRMATION') throw new Error('Pesanan ini sudah diproses.')
+  const target = await db.orders.get(targetOrderId)
+  if (!target || target.status !== 'open') throw new Error('Pesanan meja tujuan tidak aktif.')
+
+  await db.transaction(
+    'rw',
+    [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.syncQueue, db.auditLogs],
+    async () => {
+      const removed = await repriceQrItems(qrOrderId)
+      const now = Date.now()
+      const items = await db.orderItems.where('orderId').equals(qrOrderId).filter((i) => !i.removed).toArray()
+      for (const item of items) {
+        await db.orderItems.update(item.id, { orderId: targetOrderId, kitchenPrintedAt: null, ticketId: null, updatedAt: now })
+        const moved = await db.orderItems.get(item.id)
+        if (moved) await enqueueSync('orderItems', item.id, moved)
+      }
+      await db.orders.update(qrOrderId, {
+        lifecycleStatus: 'VOIDED',
+        status: 'void',
+        voidReason: `Digabung ke ${target.orderNumber}`,
+        voidedBy: actor.userId,
+        voidedAt: now,
+        rejectedReason: null,
+        updatedAt: now,
+      })
+      const voided = await db.orders.get(qrOrderId)
+      if (voided) await enqueueSync('orders', qrOrderId, voided)
+      await recalcOrderTotals(targetOrderId)
+
+      await recordAuditLog({
+        userId: actor.userId,
+        userName: actor.userName,
+        action: 'qr.order.merge',
+        entityType: 'order',
+        entityId: qrOrderId,
+        details:
+          `Pesanan QR ${qrOrder.orderNumber} digabung ke ${target.orderNumber} (${items.length} item)` +
+          (removed.length ? `. Dikeluarkan: ${removed.join(', ')}.` : '.'),
+      })
+    },
+  )
+
+  try {
+    await sendOrderToKitchen(targetOrderId, actor)
+  } catch {
+    /* diabaikan — item sudah tergabung; job cetak tersimpan untuk retry */
+  }
+}
+
 /** Menandai satu permintaan pelanggan (panggil waiter / minta tagihan) selesai. */
 export async function resolveTableCall(callId: string): Promise<void> {
   await db.transaction('rw', db.tableCalls, db.syncQueue, async () => {

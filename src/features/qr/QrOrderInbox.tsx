@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import {
+  activeOrderOnTable,
   confirmQrOrder,
   listPendingQrOrders,
   listPendingTableCalls,
+  mergeQrOrderIntoTable,
   rejectQrOrder,
   resolveTableCall,
 } from '@/db/repositories/qrOrders'
@@ -30,6 +32,20 @@ export function QrOrderInbox() {
   const calls = useLiveQuery(() => listPendingTableCalls(), []) ?? []
   const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
   const tableName = useMemo(() => new Map(tables.map((t) => [t.id, t.name])), [tables])
+
+  const pendingTableIds = useMemo(
+    () => Array.from(new Set(pending.map((o) => o.tableId).filter((id): id is string => !!id))),
+    [pending],
+  )
+  const mergeTargets =
+    useLiveQuery(async () => {
+      const map = new Map<string, { id: string; orderNumber: string }>()
+      for (const tid of pendingTableIds) {
+        const active = await activeOrderOnTable(tid)
+        if (active) map.set(tid, { id: active.id, orderNumber: active.orderNumber })
+      }
+      return map
+    }, [pendingTableIds.join(',')]) ?? new Map<string, { id: string; orderNumber: string }>()
 
   const [now, setNow] = useState(Date.now())
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -179,20 +195,35 @@ export function QrOrderInbox() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <button
-                        className="btn-primary flex-1 !min-h-0 !py-2 text-sm"
-                        disabled={busyId === order.id}
-                        onClick={() => void accept(order.id)}
-                      >
-                        {busyId === order.id ? 'Memproses...' : 'Terima & Kirim ke Dapur'}
-                      </button>
-                      <button
-                        className="btn-secondary !min-h-0 !px-3 !py-2 text-sm"
-                        onClick={() => setRejecting(order.id)}
-                      >
-                        Tolak
-                      </button>
+                    <div className="space-y-2">
+                      {order.tableId && mergeTargets.get(order.tableId) && (
+                        <button
+                          className="btn-secondary w-full !min-h-0 !py-2 text-sm"
+                          disabled={busyId === order.id}
+                          onClick={() =>
+                            void run(order.id, () =>
+                              mergeQrOrderIntoTable(order.id, mergeTargets.get(order.tableId!)!.id, actor),
+                            )
+                          }
+                        >
+                          Gabung ke {mergeTargets.get(order.tableId)!.orderNumber} (pesanan meja aktif)
+                        </button>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          className="btn-primary flex-1 !min-h-0 !py-2 text-sm"
+                          disabled={busyId === order.id}
+                          onClick={() => void accept(order.id)}
+                        >
+                          {busyId === order.id ? 'Memproses...' : 'Terima sbg. pesanan baru'}
+                        </button>
+                        <button
+                          className="btn-secondary !min-h-0 !px-3 !py-2 text-sm"
+                          onClick={() => setRejecting(order.id)}
+                        >
+                          Tolak
+                        </button>
+                      </div>
                     </div>
                   )
                 ) : null

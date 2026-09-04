@@ -10,7 +10,8 @@ import {
 } from '@/db/repositories/production'
 import { compatibleUnits } from '@/lib/units'
 import { formatDateTime } from '@/lib/datetime'
-import type { StockMovementItemType, UnitOfMeasure } from '@/types/domain'
+import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
+import type { StockMovementItemType, UnitOfMeasure, User } from '@/types/domain'
 
 interface DraftInput {
   key: string
@@ -44,6 +45,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [shortId, setShortId] = useState<{ productionId: string; items: string[] } | null>(null)
 
   const outputUnits = outputRef ? compatibleUnits(itemByRef.get(outputRef)?.unit ?? 'ml') : []
 
@@ -78,21 +80,29 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
         note,
         createdBy: userId,
       })
-      await completeProduction({ productionId: run.id, completedBy: userId, completedByName: userName })
-      setDone(`Produksi ${outputQty} ${outputUnit} ${itemByRef.get(outputRef)?.name} dicatat.`)
-      setOutputRef('')
-      setOutputQty(0)
-      setNote('')
-      setInputs([])
-    } catch (e) {
-      if (e instanceof InsufficientProductionStockError) {
-        setError(`${e.message} Draf disimpan — sesuaikan stok lalu selesaikan dari daftar di bawah.`)
-      } else {
-        setError(e instanceof Error ? e.message : 'Gagal mencatat produksi.')
+      try {
+        await completeProduction({ productionId: run.id, completedBy: userId, completedByName: userName })
+      } catch (e) {
+        if (e instanceof InsufficientProductionStockError) {
+          setShortId({ productionId: run.id, items: e.items })
+          return
+        }
+        throw e
       }
+      setDone(`Produksi ${outputQty} ${outputUnit} ${itemByRef.get(outputRef)?.name} dicatat.`)
+      resetForm()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal mencatat produksi.')
     } finally {
       setBusy(false)
     }
+  }
+
+  function resetForm() {
+    setOutputRef('')
+    setOutputQty(0)
+    setNote('')
+    setInputs([])
   }
 
   return (
@@ -167,6 +177,32 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
           {busy ? 'Menyimpan…' : 'Catat & Potong Stok'}
         </button>
       </div>
+
+      {shortId && (
+        <SupervisorPinModal
+          title="Stok Bahan Tidak Cukup"
+          description={`Stok tidak mencukupi untuk: ${shortId.items.join(', ')}. Lanjut produksi (stok bahan bisa minus) butuh persetujuan supervisor.`}
+          onCancel={() => {
+            setShortId(null)
+            setError('Draf produksi disimpan — sesuaikan stok lalu selesaikan dari daftar di bawah, atau ulangi.')
+          }}
+          onApproved={(approver: User) => {
+            const { productionId } = shortId
+            setShortId(null)
+            void completeProduction({
+              productionId,
+              completedBy: userId,
+              completedByName: userName,
+              allowNegative: { approverUserId: approver.id, approverName: approver.name },
+            })
+              .then(() => {
+                setDone('Produksi dicatat (stok bahan minus, disetujui supervisor).')
+                resetForm()
+              })
+              .catch((e) => setError(e instanceof Error ? e.message : 'Gagal.'))
+          }}
+        />
+      )}
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-ink-200">Riwayat Produksi</h3>

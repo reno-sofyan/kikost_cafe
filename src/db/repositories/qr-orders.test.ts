@@ -2,8 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db/schema'
 import { resetLocalDb } from '@/test/db'
 import { setEscPosSender, resetEscPosSender } from '@/features/printing/printerDrivers'
-import { confirmQrOrder, listPendingQrOrders, rejectQrOrder } from './qrOrders'
+import {
+  activeOrderOnTable,
+  confirmQrOrder,
+  listPendingQrOrders,
+  mergeQrOrderIntoTable,
+  rejectQrOrder,
+} from './qrOrders'
 import { createTable, issueQrToken, listTables, setQrActive } from './tables'
+import { addOrderItem, startOrder } from './orders'
+import { openShift } from './shifts'
 import type { Order, OrderItem } from '@/types/domain'
 
 const actor = { userId: 'u1', userName: 'Admin' }
@@ -141,6 +149,25 @@ describe('QR order inbox', () => {
     await seedQrOrder()
     await confirmQrOrder('qr-1', actor)
     await expect(confirmQrOrder('qr-1', actor)).rejects.toThrow(/sudah diproses/i)
+  })
+
+  it('gabung ke pesanan meja aktif: item pindah, QR order di-void, total target ter-update', async () => {
+    await seedProduct()
+    const table = await createTable({ name: 'Meja 3', area: '', capacity: 4 })
+    // pesanan meja aktif (via kasir)
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'A', openingCash: 0 })
+    const tableOrder = await startOrder({ type: 'dine_in', tableId: table.id, cashierId: 'u1', cashierName: 'A', shiftId: shift.id })
+    await addOrderItem({ orderId: tableOrder.id, productId: 'p1', productName: 'Kopi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+
+    expect((await activeOrderOnTable(table.id))?.id).toBe(tableOrder.id)
+
+    await seedQrOrder({ tableId: table.id })
+    await mergeQrOrderIntoTable('qr-1', tableOrder.id, actor)
+
+    expect((await db.orders.get('qr-1'))?.lifecycleStatus).toBe('VOIDED')
+    expect((await db.orderItems.where('orderId').equals(tableOrder.id).count())).toBe(2)
+    expect((await db.orders.get(tableOrder.id))?.grandTotal).toBe(40000)
+    expect(await db.auditLogs.where('action').equals('qr.order.merge').count()).toBe(1)
   })
 
   it('reject: wajib alasan, pindah ke REJECTED, bebaskan meja', async () => {
