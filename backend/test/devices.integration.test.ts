@@ -16,6 +16,8 @@ suite('device management API (integrasi)', () => {
   let app: FastifyInstance
   beforeAll(async () => {
     await setupDatabase()
+    const { resetConfigCache } = await import('../src/config.js')
+    resetConfigCache()
     const { buildServer } = await import('../src/server.js')
     app = await buildServer()
     await app.ready()

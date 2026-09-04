@@ -26,9 +26,11 @@ function parseRef(ref: string): { itemType: StockMovementItemType; itemId: strin
 }
 
 export function ProductionPanel({ userId, userName }: { userId: string; userName: string }) {
-  const ingredients = useLiveQuery(() => db.ingredients.orderBy('name').toArray(), []) ?? []
-  const products = useLiveQuery(() => db.products.filter((p) => p.trackOwnStock).toArray(), []) ?? []
+  const ingredientsRaw = useLiveQuery(() => db.ingredients.orderBy('name').toArray(), [])
+  const productsRaw = useLiveQuery(() => db.products.filter((p) => p.trackOwnStock).toArray(), [])
   const runs = useLiveQuery(() => listProductions(), []) ?? []
+  const ingredients = useMemo(() => ingredientsRaw ?? [], [ingredientsRaw])
+  const products = useMemo(() => productsRaw ?? [], [productsRaw])
 
   const itemByRef = useMemo(() => {
     const m = new Map<string, { name: string; unit: UnitOfMeasure }>()

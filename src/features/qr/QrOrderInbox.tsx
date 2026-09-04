@@ -28,9 +28,12 @@ export function QrOrderInbox() {
   const canConfirm = roleHasPermission(currentUser.role, 'qr.order.confirm')
   const actor = { userId: currentUser.id, userName: currentUser.name }
 
-  const pending = useLiveQuery(() => listPendingQrOrders(), []) ?? []
-  const calls = useLiveQuery(() => listPendingTableCalls(), []) ?? []
-  const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
+  const pendingRaw = useLiveQuery(() => listPendingQrOrders(), [])
+  const callsRaw = useLiveQuery(() => listPendingTableCalls(), [])
+  const tablesRaw = useLiveQuery(() => db.cafeTables.toArray(), [])
+  const pending = useMemo(() => pendingRaw ?? [], [pendingRaw])
+  const calls = useMemo(() => callsRaw ?? [], [callsRaw])
+  const tables = useMemo(() => tablesRaw ?? [], [tablesRaw])
   const tableName = useMemo(() => new Map(tables.map((t) => [t.id, t.name])), [tables])
 
   const pendingTableIds = useMemo(

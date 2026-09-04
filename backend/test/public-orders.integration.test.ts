@@ -38,6 +38,8 @@ suite('public QR order API (integrasi)', () => {
 
   beforeAll(async () => {
     await setupDatabase()
+    const { resetConfigCache } = await import('../src/config.js')
+    resetConfigCache()
     const { buildServer } = await import('../src/server.js')
     app = await buildServer()
     await app.ready()
