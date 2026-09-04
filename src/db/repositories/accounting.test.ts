@@ -91,4 +91,19 @@ describe('buildAccountingExport', () => {
     expect(bal(exp, ACCOUNTS.CASH).credit).toBe(150000)
     expect(exp.totals.balanced).toBe(true)
   })
+
+  it('selisih kas shift → akun selisih kas; nilai persediaan dilaporkan', async () => {
+    await db.ingredients.put({ id: 'gula', name: 'Gula', unit: 'g', stockQty: 1000, lowStockThreshold: 0, costPerUnit: 3, createdAt: 1, updatedAt: 1 })
+    await db.shifts.put({
+      id: 's1', deviceId: 'd', cashierId: 'u1', cashierName: 'Budi', openingCash: 100000, expectedCash: 500000,
+      closingCashActual: 495000, variance: -5000, varianceApprovedBy: null, status: 'closed',
+      openedAt: 1000, closedAt: Date.now(), notes: '',
+    })
+    const exp = await buildAccountingExport(RANGE)
+    expect(bal(exp, ACCOUNTS.CASH_VARIANCE).debit).toBe(5000) // kurang → kerugian
+    expect(bal(exp, ACCOUNTS.CASH).credit).toBe(5000)
+    expect(exp.totals.balanced).toBe(true)
+    expect(exp.inventoryValueNow).toBe(3000) // 1000 g * 3
+    expect(exp.cashVariance).toHaveLength(1)
+  })
 })

@@ -21,6 +21,7 @@ export const ACCOUNTS = {
   COGS: '5-50001 Harga Pokok Penjualan',
   WASTE: '5-59001 Beban Susut / Waste',
   OPEX: '6-60001 Beban Operasional',
+  CASH_VARIANCE: '6-69001 Selisih Kas',
 } as const
 
 export interface JournalLine {
@@ -37,6 +38,10 @@ export interface AccountingExport {
   lines: JournalLine[]
   trialBalance: { account: string; debit: number; credit: number }[]
   totals: { debit: number; credit: number; balanced: boolean }
+  /** Nilai persediaan saat ini (semua bahan + produk ber-stok, di harga biaya). */
+  inventoryValueNow: number
+  /** Ringkasan selisih kas shift yang ditutup dalam rentang. */
+  cashVariance: { shiftId: string; closedAt: number; cashierName: string; variance: number }[]
 }
 
 /** Tanggal lokal Asia/Jakarta (UTC+7) dari epoch ms. */
@@ -149,6 +154,34 @@ export async function buildAccountingExport(range: DateRange): Promise<Accountin
     }
   }
 
+  // ---- Selisih kas shift (ditutup dalam rentang) ----
+  const shifts = (await db.shifts.toArray()).filter(
+    (s) => s.status === 'closed' && s.closedAt != null && s.closedAt >= range.from && s.closedAt <= range.to,
+  )
+  const cashVariance = shifts
+    .filter((s) => typeof s.variance === 'number' && s.variance !== 0)
+    .map((s) => ({ shiftId: s.id, closedAt: s.closedAt as number, cashierName: s.cashierName, variance: s.variance as number }))
+  for (const s of cashVariance) {
+    const date = ymd(s.closedAt)
+    const ref = `SHIFT-${s.shiftId.slice(0, 6)}`
+    const v = Math.round(Math.abs(s.variance))
+    if (s.variance < 0) {
+      // kas fisik kurang dari seharusnya → kerugian
+      add({ date, ref, account: ACCOUNTS.CASH_VARIANCE, description: `Selisih kas kurang (${s.cashierName})`, debit: v })
+      add({ date, ref, account: ACCOUNTS.CASH, description: 'Koreksi kas', credit: v })
+    } else {
+      add({ date, ref, account: ACCOUNTS.CASH, description: `Selisih kas lebih (${s.cashierName})`, debit: v })
+      add({ date, ref, account: ACCOUNTS.CASH_VARIANCE, description: 'Koreksi kas', credit: v })
+    }
+  }
+
+  // ---- Nilai persediaan saat ini ----
+  const ingList = await db.ingredients.toArray()
+  const stockedProducts = (await db.products.toArray()).filter((p) => p.trackOwnStock)
+  const inventoryValueNow =
+    Math.round(ingList.reduce((s, i) => s + i.stockQty * i.costPerUnit, 0)) +
+    Math.round(stockedProducts.reduce((s, p) => s + p.stockQty * p.costPrice, 0))
+
   // ---- Neraca saldo (trial balance) ----
   const balMap = new Map<string, { debit: number; credit: number }>()
   for (const l of lines) {
@@ -170,6 +203,8 @@ export async function buildAccountingExport(range: DateRange): Promise<Accountin
     lines,
     trialBalance,
     totals: { debit: totalDebit, credit: totalCredit, balanced: totalDebit === totalCredit },
+    inventoryValueNow,
+    cashVariance,
   }
 }
 
@@ -189,5 +224,14 @@ export function accountingExportToCsv(exp: AccountingExport): string {
   for (const r of exp.trialBalance) rows.push([r.account, r.debit, r.credit].map(esc).join(','))
   rows.push(['TOTAL', exp.totals.debit, exp.totals.credit].map(esc).join(','))
   rows.push(`Seimbang,${exp.totals.balanced ? 'YA' : 'TIDAK'}`)
+  rows.push('')
+  rows.push('INFORMASI TAMBAHAN')
+  rows.push(`Nilai persediaan saat ini (biaya),${exp.inventoryValueNow}`)
+  if (exp.cashVariance.length) {
+    rows.push('Selisih kas per shift,,')
+    for (const c of exp.cashVariance) {
+      rows.push([new Date(c.closedAt + 7 * 3600_000).toISOString().slice(0, 10), c.cashierName, c.variance].map(esc).join(','))
+    }
+  }
   return rows.join('\n')
 }
