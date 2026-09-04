@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { loadConfig } from './config.js'
 import { getPool } from './db/pool.js'
 import { authenticateDeviceKey } from './lib/deviceAuth.js'
+import { isAuthBlocked, pruneAuthThrottle, recordAuthFailure, recordAuthSuccess } from './lib/authThrottle.js'
 import { processPull, processPush, type PushItem } from './lib/syncService.js'
 import { registerPublicRoutes } from './routes/public.js'
 import { registerDeviceRoutes } from './routes/devices.js'
@@ -110,9 +111,18 @@ export async function buildServer(): Promise<FastifyInstance> {
   // ---- Webhook pembayaran online (auth = HMAC) ----
   await registerPaymentWebhook(app)
 
+  // Bersihkan tabel throttle berkala.
+  const pruneTimer = setInterval(pruneAuthThrottle, 5 * 60_000)
+  if (typeof pruneTimer.unref === 'function') pruneTimer.unref()
+  app.addHook('onClose', async () => clearInterval(pruneTimer))
+
   // ---- Auth hook: rute /api/sync & /api/devices butuh kunci perangkat sah ----
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/sync') && !request.url.startsWith('/api/devices')) return
+    if (isAuthBlocked(request.ip)) {
+      reply.code(429)
+      throw new Error('Terlalu banyak percobaan gagal. Coba lagi nanti.')
+    }
     const key = extractBearer(request)
     if (!key) {
       reply.code(401)
@@ -120,10 +130,12 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
     const device = await authenticateDeviceKey(key)
     if (!device) {
+      recordAuthFailure(request.ip)
       request.log.warn({ ip: request.ip }, 'device key ditolak')
       reply.code(401)
       throw new Error('Kunci perangkat tidak sah')
     }
+    recordAuthSuccess(request.ip)
     request.deviceId = device.deviceId
   })
 

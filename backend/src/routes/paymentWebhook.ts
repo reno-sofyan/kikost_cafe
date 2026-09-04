@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { loadConfig } from '../config.js'
 import { getPool } from '../db/pool.js'
+import { isAuthBlocked, recordAuthFailure, recordAuthSuccess } from '../lib/authThrottle.js'
 
 /**
  * Webhook pembayaran online (QRIS / payment gateway). Bersifat generik:
@@ -32,6 +33,10 @@ export async function registerPaymentWebhook(app: FastifyInstance): Promise<void
       reply.code(503)
       return { error: 'Webhook pembayaran online belum dikonfigurasi.' }
     }
+    if (isAuthBlocked(request.ip)) {
+      reply.code(429)
+      return { error: 'Terlalu banyak percobaan gagal.' }
+    }
     const parsed = bodySchema.safeParse(request.body)
     if (!parsed.success) {
       reply.code(400)
@@ -45,10 +50,12 @@ export async function registerPaymentWebhook(app: FastifyInstance): Promise<void
       provided.length === expected.length &&
       timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(expected, 'hex'))
     if (!ok) {
+      recordAuthFailure(request.ip)
       request.log.warn({ ip: request.ip, reference }, 'webhook pembayaran: tanda tangan salah')
       reply.code(401)
       return { error: 'Tanda tangan tidak sah.' }
     }
+    recordAuthSuccess(request.ip)
 
     const now = Date.now()
     const payload = { id: reference, orderId, billId, amount, method, reference, createdAt: now }

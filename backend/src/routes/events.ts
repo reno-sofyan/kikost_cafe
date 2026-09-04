@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { getPool } from '../db/pool.js'
 import { authenticateDeviceKey } from '../lib/deviceAuth.js'
+import { isAuthBlocked, recordAuthFailure, recordAuthSuccess } from '../lib/authThrottle.js'
 
 /**
  * SSE "ada perubahan" — mendorong sinyal ringan ke perangkat sehingga tarik-sync
@@ -48,12 +49,18 @@ export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
   }
 
   app.get('/api/events', async (request, reply) => {
+    if (isAuthBlocked(request.ip)) {
+      reply.code(429)
+      return { error: 'Terlalu banyak percobaan gagal.' }
+    }
     const key = String((request.query as { key?: string }).key ?? '')
     const device = await authenticateDeviceKey(key)
     if (!device) {
+      recordAuthFailure(request.ip)
       reply.code(401)
       return { error: 'Kunci perangkat tidak sah' }
     }
+    recordAuthSuccess(request.ip)
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
