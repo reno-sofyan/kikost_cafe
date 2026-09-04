@@ -50,7 +50,13 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run migrate
-      - run: npm test
+      - name: Test
+        run: |
+          node -e "console.log('node', process.version, 'platform', process.platform, process.arch)"
+          npx vitest run --reporter=verbose 2>&1 | tee vitest-out.txt
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != "0" ]; then echo "::group::vitest full output"; cat vitest-out.txt; echo "::endgroup::"; fi
+          exit $rc
 
   e2e:
     runs-on: ubuntu-latest

@@ -6,10 +6,11 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     hookTimeout: 30_000,
     testTimeout: 20_000,
-    // Fork per file (isolasi modul penuh: config cache, pool pg, dsb tak bocor
-    // antar file) TAPI serial — file uji integrasi berbagi satu database uji.
-    pool: 'forks',
+    // `threads` (bukan `forks`) — hindari child_process fork sepenuhnya; lebih
+    // tahan di runner CI. `singleThread` + `fileParallelism:false` menjaga file
+    // uji integrasi mengakses satu database uji secara serial.
+    pool: 'threads',
     fileParallelism: false,
-    poolOptions: { forks: { minForks: 1, maxForks: 1 } },
+    poolOptions: { threads: { singleThread: true } },
   },
 })
