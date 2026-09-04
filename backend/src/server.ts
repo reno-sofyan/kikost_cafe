@@ -9,6 +9,7 @@ import { authenticateDeviceKey } from './lib/deviceAuth.js'
 import { processPull, processPush, type PushItem } from './lib/syncService.js'
 import { registerPublicRoutes } from './routes/public.js'
 import { registerDeviceRoutes } from './routes/devices.js'
+import { registerEventRoutes } from './routes/events.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -101,6 +102,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // ---- Rute publik pemesanan mandiri via QR (tanpa device key) ----
   await registerPublicRoutes(app)
+
+  // ---- SSE "ada perubahan" (auth kunci lewat query, EventSource tak bisa header) ----
+  await registerEventRoutes(app)
 
   // ---- Auth hook: rute /api/sync & /api/devices butuh kunci perangkat sah ----
   app.addHook('onRequest', async (request, reply) => {

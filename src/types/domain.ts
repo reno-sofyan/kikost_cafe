@@ -1,7 +1,7 @@
 // Tipe domain inti aplikasi Kikost Cafe POS.
 // Semua entitas memakai UUID sebagai id agar aman untuk sinkronisasi offline-first.
 
-export type Role = 'administrator' | 'supervisor' | 'kasir' | 'dapur'
+export type Role = 'pemilik' | 'administrator' | 'supervisor' | 'kasir' | 'pramusaji' | 'dapur'
 
 export type Permission =
   | 'discount.apply'
@@ -21,6 +21,7 @@ export type Permission =
   | 'kitchen.ticket.cancel'
   | 'qr.manage'
   | 'qr.order.confirm'
+  | 'tablesession.manage'
 
 /**
  * Outlet / cabang. Kafe satu-lokasi memakai satu outlet default; struktur ini

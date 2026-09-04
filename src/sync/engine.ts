@@ -123,12 +123,13 @@ export function startSyncEngine(): () => void {
   void refreshPendingCounts()
   if (navigator.onLine) void runSyncCycle()
 
-  // 10 dtk: cukup responsif untuk memunculkan pesanan QR baru di kasir tanpa
-  // membebani backend (single-tablet, payload kecil). Push tetap segera saat online.
+  // 20 dtk fallback: SSE (`startEventStream`) yang memicu tarik-sync seketika saat
+  // ada perubahan; poll ini hanya jaring pengaman bila SSE putus. Push tetap
+  // segera saat online.
   intervalHandle = setInterval(() => {
     void runSyncCycle()
     void refreshPendingCounts()
-  }, 10_000)
+  }, 20_000)
 
   return () => {
     window.removeEventListener('online', handleOnline)

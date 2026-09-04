@@ -13,27 +13,28 @@ import { countActivePrintFailures } from '@/db/repositories/printQueue'
 import { countPendingQrOrders } from '@/db/repositories/qrOrders'
 import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
+import type { Role } from '@/types/domain'
 
 interface NavItem {
   to: string
   label: string
   icon: IconName
   permission?: Parameters<typeof roleHasPermission>[1]
-  roles?: Array<'administrator' | 'supervisor' | 'kasir' | 'dapur'>
+  roles?: Role[]
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['administrator', 'supervisor', 'kasir'] },
-  { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['administrator', 'supervisor', 'kasir'] },
+  { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
+  { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'] },
   { to: '/dapur', label: 'Dapur', icon: 'chef' },
-  { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['administrator', 'supervisor', 'kasir', 'dapur'] },
-  { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['administrator', 'supervisor', 'kasir'] },
-  { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['administrator', 'supervisor', 'kasir'] },
-  { to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', roles: ['administrator', 'supervisor', 'kasir'] },
+  { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji', 'dapur'] },
+  { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
+  { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
+  { to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
   { to: '/laporan', label: 'Laporan', icon: 'chart', permission: 'reports.view' },
   { to: '/produk', label: 'Produk', icon: 'coffee', permission: 'settings.manage' },
   { to: '/stok', label: 'Stok', icon: 'box', permission: 'stock.adjust' },
-  { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: ['administrator', 'supervisor', 'kasir'] },
+  { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
   { to: '/pengaturan', label: 'Pengaturan', icon: 'settings', permission: 'settings.manage' },
 ]
 

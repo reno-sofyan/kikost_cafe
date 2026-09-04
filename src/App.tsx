@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
 import { startSyncEngine } from '@/sync/engine'
+import { startEventStream } from '@/sync/events'
 import { startPrintEngine } from '@/features/printing/printEngine'
 import { AppShell } from '@/app/AppShell'
 import { AutoLockWatcher } from '@/app/AutoLockWatcher'
@@ -31,9 +32,11 @@ export default function App() {
 
   useEffect(() => {
     const stopSync = startSyncEngine()
+    const stopEvents = startEventStream()
     const stopPrint = startPrintEngine()
     return () => {
       stopSync()
+      stopEvents()
       stopPrint()
     }
   }, [])

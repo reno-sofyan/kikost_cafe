@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { permissionsForRole, roleHasPermission, SUPERVISOR_APPROVAL_ROLES } from './permissions'
+import { ALL_PERMISSIONS, permissionsForRole, roleHasPermission, SUPERVISOR_APPROVAL_ROLES } from './permissions'
 
 describe('roleHasPermission', () => {
   it('administrator memiliki semua izin sensitif', () => {
@@ -36,7 +36,20 @@ describe('roleHasPermission', () => {
     expect(roleHasPermission('supervisor', 'settings.manage')).toBe(false)
   })
 
-  it('hanya administrator & supervisor yang bisa jadi approver', () => {
-    expect(SUPERVISOR_APPROVAL_ROLES).toEqual(['administrator', 'supervisor'])
+  it('pemilik, administrator & supervisor bisa jadi approver', () => {
+    expect(SUPERVISOR_APPROVAL_ROLES).toEqual(['pemilik', 'administrator', 'supervisor'])
+  })
+
+  it('pemilik punya akses penuh', () => {
+    expect(permissionsForRole('pemilik')).toEqual(ALL_PERMISSIONS)
+  })
+
+  it('pramusaji: terima/tolak QR + sesi meja + retry cetak, tanpa kas/diskon/void', () => {
+    expect(roleHasPermission('pramusaji', 'qr.order.confirm')).toBe(true)
+    expect(roleHasPermission('pramusaji', 'tablesession.manage')).toBe(true)
+    expect(roleHasPermission('pramusaji', 'print.retry')).toBe(true)
+    expect(roleHasPermission('pramusaji', 'discount.apply')).toBe(false)
+    expect(roleHasPermission('pramusaji', 'order.void')).toBe(false)
+    expect(roleHasPermission('pramusaji', 'qr.manage')).toBe(false)
   })
 })
