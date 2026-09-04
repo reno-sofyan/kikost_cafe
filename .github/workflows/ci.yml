@@ -54,12 +54,16 @@ jobs:
         shell: bash
         run: |
           set +e
-          node -e "console.log('node', process.version, process.platform, process.arch)"
+          node -e "console.log('node', process.version, process.platform, process.arch)" | tee -a "$GITHUB_STEP_SUMMARY"
           node ./node_modules/vitest/vitest.mjs run --reporter=verbose --no-color > vitest-out.txt 2>&1
           rc=$?
           echo "----- vitest output (exit $rc) -----"
           cat vitest-out.txt
+          { echo '```'; tail -n 120 vitest-out.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: backend-vitest-out, path: backend/vitest-out.txt, retention-days: 7 }
 
   e2e:
     runs-on: ubuntu-latest
