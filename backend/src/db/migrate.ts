@@ -5,19 +5,37 @@ import { fileURLToPath } from 'node:url'
 import type { PoolClient } from 'pg'
 import { closePool, getPool, withTransaction } from './pool.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+/**
+ * Direktori file ini. Dibungkus try/catch: di beberapa test runner `import.meta.url`
+ * bukan URL `file:` sehingga `fileURLToPath` melempar saat modul di-load — jangan
+ * sampai itu menjatuhkan seluruh proses. `resolveMigrationsDir` tetap punya
+ * fallback ke `process.cwd()`.
+ */
+function selfDir(): string | null {
+  try {
+    return dirname(fileURLToPath(import.meta.url))
+  } catch {
+    return null
+  }
+}
 
 /** Cari folder `migrations` dengan menaiki direktori dari lokasi file ini. */
 function resolveMigrationsDir(): string {
+  const here = selfDir()
   const candidates = [
-    join(__dirname, '..', '..', 'migrations'), // dev: src/db -> backend/migrations
-    join(__dirname, '..', '..', '..', 'migrations'), // build: dist/src/db -> backend/migrations
+    ...(here
+      ? [
+          join(here, '..', '..', 'migrations'), // dev: src/db -> backend/migrations
+          join(here, '..', '..', '..', 'migrations'), // build: dist/src/db -> backend/migrations
+        ]
+      : []),
     join(process.cwd(), 'migrations'),
+    join(process.cwd(), 'backend', 'migrations'),
   ]
   for (const dir of candidates) {
     if (existsSync(dir)) return dir
   }
-  return candidates[0]
+  return candidates[candidates.length - 1]
 }
 
 const MIGRATIONS_DIR = resolveMigrationsDir()
@@ -139,6 +157,13 @@ async function main(): Promise<void> {
 }
 
 // Jalankan hanya bila dieksekusi langsung (bukan saat di-import).
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+function isDirectRun(): boolean {
+  try {
+    return !!process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
+  } catch {
+    return false
+  }
+}
+if (isDirectRun()) {
   void main()
 }
