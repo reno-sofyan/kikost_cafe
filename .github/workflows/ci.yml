@@ -51,11 +51,14 @@ jobs:
       - run: npm run lint
       - run: npm run migrate
       - name: Test
+        shell: bash
         run: |
-          node -e "console.log('node', process.version, 'platform', process.platform, process.arch)"
-          npx vitest run --reporter=verbose 2>&1 | tee vitest-out.txt
-          rc=${PIPESTATUS[0]}
-          if [ "$rc" != "0" ]; then echo "::group::vitest full output"; cat vitest-out.txt; echo "::endgroup::"; fi
+          set +e
+          node -e "console.log('node', process.version, process.platform, process.arch)"
+          node ./node_modules/vitest/vitest.mjs run --reporter=verbose --no-color > vitest-out.txt 2>&1
+          rc=$?
+          echo "----- vitest output (exit $rc) -----"
+          cat vitest-out.txt
           exit $rc
 
   e2e:
