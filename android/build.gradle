@@ -21,6 +21,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // usb-serial-for-android (plugin UsbSerial → base station pager Retekess)
+        maven { url 'https://jitpack.io' }
     }
 }
 

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
+import { markAwaitingPayment } from '@/db/repositories/tables'
 import { getSettings } from '@/db/repositories/settings'
 import { listOrderBills, unsplitBills } from '@/db/repositories/billing'
 import {
@@ -48,6 +49,13 @@ export function OrderPaymentScreen() {
 
   const [completed, setCompleted] = useState(false)
   const [showSplit, setShowSplit] = useState(false)
+
+  // Meja dine-in ditandai "menunggu pembayaran" begitu kasir membuka layar bayar.
+  const tableId = order?.type === 'dine_in' ? order.tableId : null
+  const orderDone = order?.lifecycleStatus === 'COMPLETED'
+  useEffect(() => {
+    if (tableId && !orderDone) void markAwaitingPayment(tableId)
+  }, [tableId, orderDone])
 
   if (!order || !orderId) {
     return <div className="flex h-full items-center justify-center text-ink-400">Memuat pesanan...</div>
@@ -288,7 +296,7 @@ function BillPayCard({
     <div className={`card p-4 ${paid ? 'opacity-60' : ''}`}>
       <div className="mb-2 flex items-center justify-between">
         <span className="font-bold text-ink-50">{bill.label}</span>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${paid ? 'bg-sage-600/20 text-sage-400' : 'bg-brew-600/20 text-brew-300'}`}>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${paid ? 'bg-sage-600/15 text-sage-600' : 'bg-brew-600/15 text-brew-700'}`}>
           {paid ? 'Lunas' : bill.paymentStatus === 'PARTIALLY_PAID' ? `Kurang ${formatRupiah(bill.grandTotal - bill.amountPaid)}` : formatRupiah(bill.grandTotal)}
         </span>
       </div>

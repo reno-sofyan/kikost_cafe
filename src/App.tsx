@@ -6,6 +6,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { startSyncEngine } from '@/sync/engine'
 import { startEventStream } from '@/sync/events'
 import { startPrintEngine } from '@/features/printing/printEngine'
+import { startPagerEngine } from '@/features/pager/pagerEngine'
 import { AppShell } from '@/app/AppShell'
 import { AutoLockWatcher } from '@/app/AutoLockWatcher'
 import { OnboardingWizard } from '@/features/onboarding/OnboardingWizard'
@@ -22,6 +23,7 @@ import { ReportsScreen } from '@/features/reports/ReportsScreen'
 import { ProductsScreen } from '@/features/products/ProductsScreen'
 import { InventoryScreen } from '@/features/inventory/InventoryScreen'
 import { SettingsScreen } from '@/features/settings/SettingsScreen'
+import { TablesScreen } from '@/features/tables/TablesScreen'
 import { ShiftScreen } from '@/features/shifts/ShiftScreen'
 import { OrderPaymentScreen } from '@/features/payments/OrderPaymentScreen'
 
@@ -34,10 +36,12 @@ export default function App() {
     const stopSync = startSyncEngine()
     const stopEvents = startEventStream()
     const stopPrint = startPrintEngine()
+    const stopPager = startPagerEngine()
     return () => {
       stopSync()
       stopEvents()
       stopPrint()
+      stopPager()
     }
   }, [])
 
@@ -76,6 +80,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/kasir" replace />} />
           <Route path="/kasir" element={<CashierScreen />} />
+          <Route path="/meja" element={<TablesScreen />} />
           <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
           <Route path="/dapur" element={<KitchenDisplayScreen />} />
           <Route path="/pesanan-qr" element={<QrOrderInbox />} />

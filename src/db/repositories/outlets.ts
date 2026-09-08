@@ -19,7 +19,7 @@ export async function getActiveOutlet(): Promise<Outlet> {
   const now = Date.now()
   const outlet: Outlet = {
     id: `outlet_${now.toString(36)}`,
-    name: settings.cafeName || 'Kikost Cafe',
+    name: settings.cafeName || 'Kinara Coffee',
     address: settings.address || '',
     phone: settings.phone || '',
     timezone: 'Asia/Jakarta',

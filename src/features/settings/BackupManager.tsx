@@ -49,7 +49,7 @@ export function BackupManager() {
       const text = await file.text()
       const data = JSON.parse(text) as unknown
       if (!validateBackupFile(data)) {
-        setError('File backup tidak valid. Pastikan file berasal dari ekspor Kikost Cafe POS.')
+        setError('File backup tidak valid. Pastikan file berasal dari ekspor Kinara Coffee POS.')
         return
       }
       await restoreBackup(data)

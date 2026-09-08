@@ -1,3 +1,5 @@
+@import './fonts.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,47 +13,75 @@
 
   body {
     @apply bg-ink-950 text-ink-50 antialiased;
-    font-family:
-      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, 'Helvetica Neue', Arial,
-      sans-serif;
+    font-family: theme('fontFamily.sans');
+    font-feature-settings: 'cv05', 'ss01';
+    line-height: 1.5;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
   }
 
+  /* Judul memakai Fraunces (serif) — memberi nuansa kedai kopi yang hangat. */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: theme('fontFamily.display');
+    letter-spacing: -0.01em;
+    font-feature-settings: 'opsz' 40;
+  }
+
   input,
-  textarea {
+  textarea,
+  select {
     user-select: text;
+    font-family: inherit;
   }
 
   * {
     box-sizing: border-box;
   }
+
+  ::selection {
+    background: theme('colors.brew.500');
+    color: #fff;
+  }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100;
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl font-sans font-semibold tracking-[0.01em] transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn:focus-visible {
+    @apply outline-none ring-2 ring-brew-500/50 ring-offset-2 ring-offset-ink-950;
   }
   .btn-primary {
-    @apply btn bg-brew-600 text-white hover:bg-brew-500 min-h-touch px-5;
+    @apply btn min-h-touch bg-brew-600 px-5 text-cream-50 shadow-sm hover:bg-brew-700;
   }
   .btn-secondary {
-    @apply btn bg-ink-800 text-ink-50 hover:bg-ink-700 min-h-touch px-5;
+    @apply btn min-h-touch border border-ink-600 bg-ink-900 px-5 text-ink-100 hover:bg-ink-800;
   }
   .btn-danger {
-    @apply btn bg-red-700 text-white hover:bg-red-600 min-h-touch px-5;
+    @apply btn min-h-touch bg-red-700 px-5 text-white hover:bg-red-600;
   }
   .btn-ghost {
-    @apply btn bg-transparent text-ink-100 hover:bg-ink-800 min-h-touch px-4;
+    @apply btn min-h-touch bg-transparent px-4 text-ink-200 hover:bg-ink-800 hover:text-ink-50;
   }
   .card {
-    @apply rounded-2xl bg-ink-900 border border-ink-800 shadow-lg;
+    @apply rounded-2xl border border-ink-700 bg-ink-900 shadow-card;
   }
   .input-field {
-    @apply w-full rounded-xl bg-ink-800 border border-ink-700 px-4 py-3 text-ink-50 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-brew-500 min-h-touch;
+    @apply min-h-touch w-full rounded-xl border border-ink-600 bg-ink-900 px-4 py-3 text-ink-50 transition-colors placeholder:text-ink-400 focus:border-brew-500 focus:outline-none focus:ring-2 focus:ring-brew-500/25;
   }
   .numpad-key {
-    @apply btn bg-ink-800 text-2xl font-bold hover:bg-ink-700 aspect-square w-full;
+    @apply btn aspect-square w-full border border-ink-700 bg-ink-900 text-2xl font-bold text-ink-50 hover:bg-ink-800;
+  }
+  /* Lencana status kecil (Terisi, LUNAS, dsb). */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+  /* Label kategori/section di atas grup konten. */
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-ink-300;
   }
 }
 
@@ -63,16 +93,20 @@
   background: theme('colors.ink.600');
   border-radius: 999px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.ink.500');
+}
 
-/* Aplikasi kasir hanya didesain untuk lanskap (tablet). Di potret, tampilkan
-   pesan "putar perangkat" alih-alih layout yang berantakan. Di Android APK
-   orientasi sudah dikunci lewat AndroidManifest; ini jaring pengaman untuk
-   iPad/PWA/perangkat yang lock-nya gagal. */
+/* Aplikasi kasir hanya didesain untuk lanskap (tablet). Di potret tampilkan
+   pesan "putar perangkat". Di Android APK orientasi sudah dikunci lewat
+   AndroidManifest; ini jaring pengaman untuk iPad/PWA.
+   Halaman pesan-mandiri pelanggan (/order/*) memang untuk HP potret —
+   `body.customer-view` (di-set di main.tsx) menonaktifkannya. */
 #portrait-lock {
   display: none;
 }
 @media (orientation: portrait), (max-width: 760px) {
-  #portrait-lock {
+  body:not(.customer-view) #portrait-lock {
     position: fixed;
     inset: 0;
     z-index: 9999;
@@ -90,18 +124,23 @@
     flex-direction: column;
     align-items: center;
     gap: 0.75rem;
-    color: theme('colors.brew.500');
+  }
+  #portrait-lock .portrait-lock__logo {
+    width: 4.5rem;
+    height: auto;
+    margin-bottom: 0.25rem;
   }
   #portrait-lock .portrait-lock__title {
-    font-size: 1.05rem;
-    font-weight: 700;
+    font-family: theme('fontFamily.display');
+    font-size: 1.15rem;
+    font-weight: 600;
     color: theme('colors.ink.50');
   }
   #portrait-lock .portrait-lock__sub {
     font-size: 0.85rem;
     color: theme('colors.ink.300');
   }
-  #root {
+  body:not(.customer-view) #root {
     display: none;
   }
 }

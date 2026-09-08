@@ -100,6 +100,8 @@ export async function occupyTable(id: string, orderId: string, guestCount: numbe
 }
 
 export async function markAwaitingPayment(id: string): Promise<void> {
+  const table = await db.cafeTables.get(id)
+  if (!table || table.status !== 'occupied') return
   await updateTable(id, { status: 'awaiting_payment' })
 }
 

@@ -50,4 +50,8 @@
         android:usesPermissionFlags="neverForLocation" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
+    <!-- USB-OTG untuk base station pager Retekess (plugin UsbSerial). Izin runtime
+         diminta lewat dialog sistem UsbManager, bukan <uses-permission>. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 </manifest>

@@ -40,7 +40,12 @@ const rupiah = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
 function Screen({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-full bg-ink-950 text-ink-50">
-      <div className="mx-auto max-w-md px-4 pb-40 pt-5">{children}</div>
+      <div
+        className="mx-auto max-w-md px-4 pt-5"
+        style={{ paddingBottom: 'calc(11rem + env(safe-area-inset-bottom))' }}
+      >
+        {children}
+      </div>
     </div>
   )
 }
@@ -48,7 +53,10 @@ function Screen({ children }: { children: ReactNode }) {
 function Center({ children }: { children: ReactNode }) {
   return (
     <Screen>
-      <div className="mt-24 text-center text-ink-200">{children}</div>
+      <div className="mx-auto mt-24 flex max-w-xs flex-col items-center gap-3 text-center text-ink-200">
+        <img src="/brand/mark.png" alt="Kinara Coffee" className="h-12 w-12 opacity-70" />
+        {children}
+      </div>
     </Screen>
   )
 }
@@ -142,23 +150,33 @@ function MenuPage() {
 
   return (
     <Screen>
-      <header className="mb-4">
-        <h1 className="text-xl font-bold">{menu.cafe.name}</h1>
-        <p className="text-sm text-ink-300">{menu.table.name} · pesan langsung dari meja</p>
+      <header className="mb-5 flex flex-col items-center pt-2 text-center">
+        <img src="/brand/logo-full.png" alt={menu.cafe.name} className="h-16 w-auto" />
+        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-900 px-3 py-1 text-xs font-semibold text-ink-200">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M4 8h16M6 8v10M18 8v10M9 3l1 5M15 3l-1 5" />
+          </svg>
+          {menu.table.name}
+        </span>
+        <p className="mt-2 text-xs text-ink-400">Pesan langsung dari meja Anda</p>
       </header>
 
       <label className="mb-4 block">
-        <span className="mb-1 block text-sm text-ink-300">Nama Anda (opsional)</span>
+        <span className="eyebrow mb-1.5 block">Nama Anda (opsional)</span>
         <input className="input-field" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="mis. Budi" />
       </label>
 
       {menu.categories.length > 1 && (
-        <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+        <div className="sticky top-0 z-10 -mx-4 mb-3 flex gap-2 overflow-x-auto bg-ink-950/95 px-4 py-2 backdrop-blur">
           {menu.categories.map((c) => (
             <button
               key={c.id}
               onClick={() => setActiveCat(c.id)}
-              className={`btn !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-sm ${activeCat === c.id ? 'btn-primary' : 'btn-secondary'}`}
+              className={`whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                activeCat === c.id
+                  ? 'border-brew-600 bg-brew-600 text-cream-50'
+                  : 'border-ink-600 bg-ink-900 text-ink-300'
+              }`}
             >
               {c.name}
             </button>
@@ -166,19 +184,24 @@ function MenuPage() {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {itemsByCat.map((item) => (
           <button
             key={item.id}
             onClick={() => (item.modifierGroups.length ? setEditing(item) : addLine({ key: crypto.randomUUID(), item, qty: 1, optionIds: [], note: '' }))}
-            className="card flex w-full items-center gap-3 p-3 text-left active:scale-[0.99]"
+            className="card flex w-full items-center gap-3 p-3 text-left transition-transform active:scale-[0.99]"
           >
-            {item.photoDataUrl && <img src={item.photoDataUrl} alt="" className="h-14 w-14 flex-none rounded-lg object-cover" />}
+            {item.photoDataUrl && <img src={item.photoDataUrl} alt="" className="h-16 w-16 flex-none rounded-xl object-cover" />}
             <span className="min-w-0 flex-1">
-              <span className="block font-semibold">{item.name}</span>
-              <span className="block text-sm text-ink-300">{rupiah(item.price)}</span>
+              <span className="block font-semibold text-ink-50">{item.name}</span>
+              <span className="mt-0.5 block text-sm font-medium text-brew-500">{rupiah(item.price)}</span>
+              {item.modifierGroups.length > 0 && (
+                <span className="mt-0.5 block text-xs text-ink-400">Ada pilihan varian</span>
+              )}
             </span>
-            <span className="flex-none rounded-full bg-brew-600 px-2 py-1 text-xs font-bold text-white">+</span>
+            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-brew-600 text-lg font-bold leading-none text-cream-50">
+              +
+            </span>
           </button>
         ))}
         {itemsByCat.length === 0 && <p className="py-8 text-center text-sm text-ink-400">Tidak ada item di kategori ini.</p>}
@@ -196,27 +219,33 @@ function MenuPage() {
       )}
 
       {cart.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-700 bg-ink-900 p-4">
+        <div
+          className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-700 bg-ink-900/95 p-4 shadow-[0_-8px_24px_-12px_rgba(70,40,22,0.25)] backdrop-blur"
+          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        >
           <div className="mx-auto max-w-md">
-            <div className="mb-2 max-h-32 space-y-1 overflow-y-auto">
+            <div className="mb-2.5 max-h-28 space-y-1.5 overflow-y-auto">
               {cart.map((l) => (
                 <div key={l.key} className="flex items-center justify-between text-sm">
-                  <span className="min-w-0 flex-1 truncate">
-                    {l.qty}× {l.item.name}
+                  <span className="min-w-0 flex-1 truncate text-ink-100">
+                    <span className="font-semibold text-brew-500">{l.qty}×</span> {l.item.name}
                     {l.optionIds.length > 0 && <span className="text-ink-400"> · varian</span>}
                   </span>
-                  <button className="ml-2 flex-none text-red-400" onClick={() => removeLine(l.key)}>
-                    hapus
+                  <button className="ml-3 flex-none text-xs font-medium text-red-400 hover:text-red-500" onClick={() => removeLine(l.key)}>
+                    Hapus
                   </button>
                 </div>
               ))}
             </div>
-            {err && <p className="mb-2 text-sm text-red-400">{err}</p>}
-            <p className="mb-2 text-xs text-ink-400">
-              Subtotal {rupiah(subtotal)}
-              {(menu.fiscal.taxPercent > 0 || menu.fiscal.serviceChargePercent > 0) && ' · pajak & layanan dihitung kasir'}
+            {err && <p className="mb-2 rounded-lg bg-red-900 px-3 py-2 text-sm text-red-500">{err}</p>}
+            <p className="mb-2.5 flex items-center justify-between text-xs text-ink-400">
+              <span>Subtotal</span>
+              <span className="font-semibold text-ink-200">{rupiah(subtotal)}</span>
             </p>
-            <button className="btn-primary w-full" disabled={submitting} onClick={() => void submit()}>
+            {(menu.fiscal.taxPercent > 0 || menu.fiscal.serviceChargePercent > 0) && (
+              <p className="mb-2.5 text-[0.7rem] text-ink-400">Pajak &amp; layanan dihitung saat bayar di kasir.</p>
+            )}
+            <button className="btn-primary w-full text-base" disabled={submitting} onClick={() => void submit()}>
               {submitting ? 'Mengirim…' : `Kirim Pesanan · ${rupiah(subtotal)}`}
             </button>
           </div>
@@ -361,6 +390,7 @@ function StatusPage() {
       const r = await fetch(`${API}/api/t/${encodeURIComponent(token)}/orders/${encodeURIComponent(id)}`)
       const body = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(body.error || 'Status tidak dapat dimuat.')
+      if (!Array.isArray(body.items)) throw new Error('Status tidak dapat dimuat.')
       setData(body)
       setErr(null)
     } catch (e) {
@@ -397,31 +427,36 @@ function StatusPage() {
 
   return (
     <Screen>
-      <header className="mb-5">
-        <h1 className="text-xl font-bold">Pesanan {data.orderNumber}</h1>
-        {data.queueNumber != null && <p className="text-sm text-ink-300">Nomor antrean #{data.queueNumber}</p>}
+      <header className="mb-5 flex flex-col items-center pt-2 text-center">
+        <img src="/brand/mark.png" alt="Kinara Coffee" className="h-9 w-9" />
+        <h1 className="mt-2 text-xl font-bold">Pesanan {data.orderNumber}</h1>
+        {data.queueNumber != null && (
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brew-600 px-3 py-1 text-sm font-semibold text-cream-50">
+            Antrean #{data.queueNumber}
+          </span>
+        )}
       </header>
 
       {rejected ? (
-        <div className="card border-red-500/40 p-4">
-          <p className="font-semibold text-red-400">Pesanan ditolak</p>
+        <div className="card border-red-300/50 p-4">
+          <p className="font-semibold text-red-500">Pesanan ditolak</p>
           <p className="mt-1 text-sm text-ink-200">{data.rejectedReason || 'Hubungi kasir untuk info lebih lanjut.'}</p>
         </div>
       ) : (
-        <ol className="space-y-2">
+        <ol className="card space-y-1 p-2">
           {STATUS_STEPS.map((s, i) => {
             const done = activeIdx >= 0 && i < activeIdx
             const now = i === activeIdx
             return (
               <li
                 key={s.key}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${
-                  now ? 'bg-brew-600/15 font-semibold' : done ? 'text-ink-400' : 'text-ink-500'
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${
+                  now ? 'bg-brew-600/12 font-semibold text-ink-50' : done ? 'text-ink-300' : 'text-ink-400'
                 }`}
               >
                 <span
-                  className={`flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs ${
-                    done ? 'bg-sage-500 text-white' : now ? 'bg-brew-600 text-white' : 'bg-ink-800'
+                  className={`flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs font-bold ${
+                    done ? 'bg-sage-500 text-white' : now ? 'bg-brew-600 text-cream-50' : 'bg-ink-800 text-ink-400'
                   }`}
                 >
                   {done ? '✓' : i + 1}

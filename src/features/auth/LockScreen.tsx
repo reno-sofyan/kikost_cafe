@@ -52,27 +52,29 @@ export function LockScreen() {
   const isLocked = lockoutMs > 0
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 bg-ink-950 p-6">
-      <div className="text-center">
-        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-ink-800 text-ink-200">
-          <Icon name="lock" size={28} />
+    <div className="flex h-full items-center justify-center bg-ink-950 p-6">
+      <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
+        <div className="text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-brew-600/12 text-brew-600">
+            <Icon name="lock" size={24} />
+          </div>
+          <h1 className="text-xl font-bold text-ink-50">Layar Terkunci</h1>
+          <p className="mt-1 text-sm text-ink-300">
+            {currentUser ? `Masukkan PIN untuk melanjutkan sebagai ${currentUser.name}` : 'Masukkan PIN'}
+          </p>
         </div>
-        <h1 className="text-xl font-bold text-ink-50">Layar Terkunci</h1>
-        <p className="mt-1 text-sm text-ink-400">
-          {currentUser ? `Masukkan PIN untuk melanjutkan sebagai ${currentUser.name}` : 'Masukkan PIN'}
-        </p>
+
+        {error && <p className="text-center text-sm font-medium text-red-500">{error}</p>}
+        {isLocked && (
+          <p className="text-center text-sm font-medium text-red-500">Coba lagi dalam {Math.ceil(lockoutMs / 1000)} detik</p>
+        )}
+
+        <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} disabled={busy || isLocked} />
+
+        <button onClick={logout} className="btn-ghost text-sm text-ink-300">
+          Keluar dari akun ini
+        </button>
       </div>
-
-      {error && <p className="text-sm font-medium text-red-400">{error}</p>}
-      {isLocked && (
-        <p className="text-sm font-medium text-red-400">Coba lagi dalam {Math.ceil(lockoutMs / 1000)} detik</p>
-      )}
-
-      <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} disabled={busy || isLocked} />
-
-      <button onClick={logout} className="btn-ghost text-sm text-ink-400">
-        Keluar dari akun ini
-      </button>
     </div>
   )
 }

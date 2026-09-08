@@ -34,7 +34,7 @@ export async function saveFile(filename: string, blob: Blob): Promise<string | n
   })
 
   try {
-    await Share.share({ title: filename, text: `Berkas ${filename} dari Kikost Cafe POS`, url: written.uri })
+    await Share.share({ title: filename, text: `Berkas ${filename} dari Kinara Coffee POS`, url: written.uri })
   } catch (err) {
     // Pengguna membatalkan lembar bagikan bukan kegagalan — berkas tetap tersimpan.
     if (err instanceof Error && /cancell?ed/i.test(err.message)) return written.uri

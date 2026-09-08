@@ -69,7 +69,7 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
     isReprint: false,
     lines: [
       { name: 'Kopi Susu Gula Aren', qty: 2, unitPrice: 22000, lineTotal: 44000, modifierLines: ['  Ukuran: Regular'], note: null },
-      { name: 'Nasi Goreng Kikost', qty: 1, unitPrice: 28000, lineTotal: 28000, modifierLines: [], note: 'Tidak pedas' },
+      { name: 'Nasi Goreng Kinara', qty: 1, unitPrice: 28000, lineTotal: 28000, modifierLines: [], note: 'Tidak pedas' },
     ],
     subtotal: 72000,
     discountAmount: 0,

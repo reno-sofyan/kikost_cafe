@@ -34,6 +34,7 @@ function order(partial: Partial<Order>): Order {
     notes: '',
     idempotencyKey: 'k1',
     parentOrderId: null,
+    pagerCalledAt: null,
     rejectedReason: null,
     voidReason: null,
     voidedBy: null,

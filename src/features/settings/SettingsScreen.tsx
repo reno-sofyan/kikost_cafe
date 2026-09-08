@@ -7,15 +7,27 @@ import { roleHasPermission } from '@/lib/permissions'
 import { UserManager } from '@/features/settings/UserManager'
 import { BackupManager } from '@/features/settings/BackupManager'
 import { PrinterSettings } from '@/features/settings/PrinterSettings'
+import { PagerSettings } from '@/features/settings/PagerSettings'
 import { TableQrSettings } from '@/features/settings/TableQrSettings'
 import { OutletSettings } from '@/features/settings/OutletSettings'
 import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
 import type { ReceiptPaperSize } from '@/types/domain'
 
-type Tab = 'profil' | 'outlet' | 'pajak' | 'qris' | 'printer' | 'meja-qr' | 'pengguna' | 'sinkronisasi' | 'backup' | 'audit'
+type Tab =
+  | 'profil'
+  | 'outlet'
+  | 'pajak'
+  | 'qris'
+  | 'printer'
+  | 'pager'
+  | 'meja-qr'
+  | 'pengguna'
+  | 'sinkronisasi'
+  | 'backup'
+  | 'audit'
 
-const TAB_KEYS: Tab[] = ['profil', 'outlet', 'pajak', 'qris', 'printer', 'meja-qr', 'pengguna', 'sinkronisasi', 'backup', 'audit']
+const TAB_KEYS: Tab[] = ['profil', 'outlet', 'pajak', 'qris', 'printer', 'pager', 'meja-qr', 'pengguna', 'sinkronisasi', 'backup', 'audit']
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -39,6 +51,7 @@ export function SettingsScreen() {
     { key: 'pajak', label: 'Pajak & Struk', visible: true },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
+    { key: 'pager', label: 'Pager', visible: roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'meja-qr', label: 'Meja & QR', visible: roleHasPermission(currentUser.role, 'qr.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'sinkronisasi', label: 'Sinkronisasi', visible: true },
@@ -67,6 +80,7 @@ export function SettingsScreen() {
         {tab === 'pajak' && <FiscalForm />}
         {tab === 'qris' && <QrisForm />}
         {tab === 'printer' && <PrinterSettings />}
+        {tab === 'pager' && <PagerSettings />}
         {tab === 'meja-qr' && <TableQrSettings />}
         {tab === 'pengguna' && <UserManager />}
         {tab === 'sinkronisasi' && <SyncPanel />}

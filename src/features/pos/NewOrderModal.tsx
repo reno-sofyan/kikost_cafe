@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { searchCustomers } from '@/db/repositories/customers'
+import { listTables, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
 import type { Customer, OrderType } from '@/types/domain'
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
     customerId?: string
     guestCount?: number
     notes?: string
+    tableId?: string
   }) => void
 }
 
@@ -25,8 +27,11 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
   const [notes, setNotes] = useState('')
   const [customerQuery, setCustomerQuery] = useState('')
   const [customer, setCustomer] = useState<Customer | null>(null)
+  const [tableId, setTableId] = useState<string | null>(null)
 
   const customerResults = useLiveQuery(() => searchCustomers(customerQuery), [customerQuery]) ?? []
+  const tables = useLiveQuery(() => listTables(), []) ?? []
+  const selectableTables = tables.filter((t) => t.status === 'available' || t.id === tableId)
 
   function handleConfirm() {
     onConfirm({
@@ -34,6 +39,7 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
       customerId: customer?.id,
       guestCount: type === 'dine_in' ? guestCount : undefined,
       notes: notes.trim() || undefined,
+      tableId: type === 'dine_in' && tableId ? tableId : undefined,
     })
   }
 
@@ -55,16 +61,49 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
         </div>
 
         {type === 'dine_in' && (
-          <div className="mb-4 flex items-center gap-3">
-            <span className="text-sm text-ink-300">Jumlah Tamu</span>
-            <button className="btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setGuestCount((g) => Math.max(1, g - 1))}>
-              −
-            </button>
-            <span className="w-6 text-center font-bold">{guestCount}</span>
-            <button className="btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setGuestCount((g) => g + 1)}>
-              +
-            </button>
-          </div>
+          <>
+            <div className="mb-4 flex items-center gap-3">
+              <span className="text-sm text-ink-300">Jumlah Tamu</span>
+              <button className="btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setGuestCount((g) => Math.max(1, g - 1))}>
+                −
+              </button>
+              <span className="w-6 text-center font-bold">{guestCount}</span>
+              <button className="btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setGuestCount((g) => g + 1)}>
+                +
+              </button>
+            </div>
+
+            {tables.length > 0 && (
+              <div className="mb-4">
+                <h3 className="mb-2 text-sm font-semibold text-ink-300">Meja (opsional)</h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={`btn !min-h-0 !px-3 !py-1.5 text-sm ${tableId === null ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setTableId(null)}
+                  >
+                    Tanpa meja
+                  </button>
+                  {selectableTables.map((t) => (
+                    <button
+                      key={t.id}
+                      className={`btn !min-h-0 !px-3 !py-1.5 text-sm ${tableId === t.id ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setTableId(t.id)}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+                {selectableTables.length === 0 && (
+                  <p className="mt-1 text-xs text-ink-500">Semua meja sedang terisi — pesanan dibuat tanpa meja.</p>
+                )}
+                {tableId && tables.find((t) => t.id === tableId)?.status !== 'available' && (
+                  <p className="mt-1 text-xs text-yellow-400">
+                    Meja ini berstatus {TABLE_STATUS_LABELS[tables.find((t) => t.id === tableId)!.status].toLowerCase()}.
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         <div className="mb-4">

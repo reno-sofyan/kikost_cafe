@@ -8,6 +8,8 @@ const rootEl = document.getElementById('root')!
 // Halaman pesan-mandiri pelanggan: publik, tanpa login, tanpa Dexie/sync.
 // Dipisah dari aplikasi POS supaya HP pelanggan tidak memuat state kasir.
 if (window.location.pathname.startsWith('/order/')) {
+  // Halaman pelanggan dipakai di HP (potret) — matikan portrait-lock kasir.
+  document.body.classList.add('customer-view')
   void import('@/features/order/CustomerApp').then(({ CustomerApp }) => {
     ReactDOM.createRoot(rootEl).render(
       <React.StrictMode>

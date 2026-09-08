@@ -75,12 +75,13 @@ export function CashierScreen() {
     )
   }
 
-  async function handleStartOrder(params: { type: OrderType; customerId?: string; guestCount?: number; notes?: string }) {
+  async function handleStartOrder(params: { type: OrderType; customerId?: string; guestCount?: number; notes?: string; tableId?: string }) {
     const newOrder = await startOrder({
       type: params.type,
       customerId: params.customerId,
       guestCount: params.guestCount,
       notes: params.notes,
+      tableId: params.tableId,
       cashierId: currentUser.id,
       cashierName: currentUser.name,
       shiftId: openShift!.id,

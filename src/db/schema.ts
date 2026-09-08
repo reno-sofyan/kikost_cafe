@@ -386,7 +386,7 @@ export class KikostDatabase extends Dexie {
           outletId = outletId || `outlet_${now.toString(36)}`
           await tx.table('outlets').add({
             id: outletId,
-            name: settings?.cafeName || 'Kikost Cafe',
+            name: settings?.cafeName || 'Kinara Coffee',
             address: settings?.address || '',
             phone: settings?.phone || '',
             timezone: 'Asia/Jakarta',
@@ -403,6 +403,34 @@ export class KikostDatabase extends Dexie {
     // v11 (Fase 3): notifikasi pembayaran online (QRIS/gateway via webhook).
     this.version(11).stores({
       onlinePayments: 'id, orderId, billId, createdAt',
+    })
+
+    // v12: integrasi pager restoran Retekess. `order.pagerCalledAt` untuk
+    // idempotensi panggilan (lintas-perangkat, ikut sync). `settings.pagerConfig`
+    // di-backfill dengan default (fitur nonaktif sampai dikonfigurasi).
+    this.version(12).upgrade(async (tx) => {
+      await tx
+        .table('orders')
+        .toCollection()
+        .modify((o: { pagerCalledAt?: number | null }) => {
+          if (o.pagerCalledAt === undefined) o.pagerCalledAt = null
+        })
+      const settings = await tx.table('settings').get('singleton')
+      if (settings && !settings.pagerConfig) {
+        await tx.table('settings').put({
+          ...settings,
+          pagerConfig: {
+            connectionType: 'none',
+            autoCallOnReady: true,
+            baudRate: 9600,
+            commandTemplateHex: '',
+            maxPagerNumber: 30,
+            interCharDelayMs: 0,
+            usbDeviceId: null,
+            usbDeviceLabel: null,
+          },
+        })
+      }
     })
   }
 }

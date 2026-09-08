@@ -1,0 +1,16 @@
+/* Font Kinara Coffee — self-host woff2 (subset latin) agar tetap tampil di mode offline / APK.
+   Keduanya variable font: satu berkas melayani semua bobot. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/inter.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/fraunces.woff2') format('woff2');
+}

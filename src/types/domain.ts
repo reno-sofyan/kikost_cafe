@@ -1,4 +1,4 @@
-// Tipe domain inti aplikasi Kikost Cafe POS.
+// Tipe domain inti aplikasi Kinara Coffee POS.
 // Semua entitas memakai UUID sebagai id agar aman untuk sinkronisasi offline-first.
 
 export type Role = 'pemilik' | 'administrator' | 'supervisor' | 'kasir' | 'pramusaji' | 'dapur'
@@ -90,6 +90,7 @@ export interface CafeSettings {
   receiptFooterNote: string
   autoLockMinutes: number
   printerConfig: PrinterConfig
+  pagerConfig: PagerConfig
   currency: 'IDR'
   timezone: 'Asia/Jakarta'
   updatedAt: number
@@ -106,6 +107,37 @@ export interface PrinterConfig {
   networkPort: number | null
   autoPrintOnPayment: boolean
   autoPrintKitchenOrder: boolean
+}
+
+// ---- Integrasi pager restoran Retekess (Wireless Calling System) ----
+
+export type PagerConnectionType = 'none' | 'usb-serial'
+
+/**
+ * Setelan jembatan ke base station pager Retekess yang dicolok ke tablet lewat
+ * USB-OTG (butuh kabel USB-to-RS232 FTDI/CP2102/CH340/PL2303 untuk model DB9).
+ * Nomor antrean order (`Order.queueNumber`) dipakai sebagai nomor pager.
+ */
+export interface PagerConfig {
+  connectionType: PagerConnectionType
+  /** Bunyikan pager otomatis begitu semua item order berstatus siap (lifecycle READY). */
+  autoCallOnReady: boolean
+  /** Baud rate port serial base station. Umumnya 9600. */
+  baudRate: number
+  /**
+   * Template frame yang dikirim ke base station. Karakter dianggap hex; token
+   * `{n}` / `{nn}` / `{nnn}` / `{nnnn}` diganti digit ASCII nomor pager
+   * (zero-pad sesuai panjang token). Kosong = belum dikonfigurasi.
+   * Contoh: `"AA{nnn}55"` untuk pager 12 → byte `AA 30 31 32 55`.
+   */
+  commandTemplateHex: string
+  /** Nomor pager tertinggi yang valid (= jumlah coaster fisik). */
+  maxPagerNumber: number
+  /** Jeda antar byte saat menulis ke port (ms). Kebanyakan base station: 0. */
+  interCharDelayMs: number
+  /** USB deviceId terakhir yang dipilih (opsional; kosong = pakai device pertama yang dikenali). */
+  usbDeviceId: number | null
+  usbDeviceLabel: string | null
 }
 
 // ---- Printer multi-station (Fitur B) ----
@@ -541,6 +573,8 @@ export interface Order {
   notes: string
   idempotencyKey: string
   parentOrderId: string | null
+  /** Waktu (epoch ms) pager Retekess dibunyikan untuk order ini; null = belum. */
+  pagerCalledAt: number | null
   /** Alasan penolakan pesanan QR oleh kasir/waiter (lifecycle REJECTED). */
   rejectedReason: string | null
   voidReason: string | null

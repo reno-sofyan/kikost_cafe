@@ -26,7 +26,7 @@ export function OnboardingWizard() {
   const [error, setError] = useState<string | null>(null)
   const login = useSessionStore((s) => s.login)
 
-  const [cafeName, setCafeName] = useState('Kikost Cafe')
+  const [cafeName, setCafeName] = useState('Kinara Coffee')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
@@ -80,7 +80,7 @@ export function OnboardingWizard() {
 
     setStep('finishing')
     await updateSettings({
-      cafeName: cafeName.trim() || 'Kikost Cafe',
+      cafeName: cafeName.trim() || 'Kinara Coffee',
       address,
       phone,
       logoDataUrl,
@@ -119,30 +119,46 @@ export function OnboardingWizard() {
 
   return (
     <div className="flex h-full flex-col bg-ink-950 text-ink-50">
-      <div className="flex-none border-b border-ink-800 px-6 py-4">
-        <h1 className="text-lg font-bold">Pengaturan Awal Kikost Cafe POS</h1>
-        <div className="mt-3 flex gap-1">
+      <div className="flex-none border-b border-ink-700 bg-ink-900 px-6 py-4">
+        <div className="mx-auto flex max-w-xl items-center gap-3">
+          <img src="/brand/mark.png" alt="Kinara Coffee" className="h-7 w-7" />
+          <h1 className="text-base font-bold">Pengaturan Awal · Kinara Coffee</h1>
+          <span className="ml-auto text-xs font-medium text-ink-400">
+            Langkah {stepIndex + 1} / {STEP_ORDER.length}
+          </span>
+        </div>
+        <div className="mx-auto mt-3 flex max-w-xl gap-1">
           {STEP_ORDER.map((s, i) => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full ${i <= stepIndex ? 'bg-brew-500' : 'bg-ink-800'}`} />
+            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= stepIndex ? 'bg-brew-600' : 'bg-ink-700'}`} />
           ))}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-xl">
           {error && (
-            <div className="mb-4 rounded-lg bg-red-900/40 px-4 py-3 text-sm text-red-300">{error}</div>
+            <div className="mb-4 rounded-xl border border-red-300/50 bg-red-900 px-4 py-3 text-sm font-medium text-red-500">{error}</div>
           )}
 
           {step === 'welcome' && (
-            <div className="space-y-4 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brew-600/15 text-brew-600">
-                <Icon name="coffee" size={32} />
+            <div className="flex flex-col items-center gap-5 pt-8 text-center">
+              <img src="/brand/logo-full.png" alt="Kinara Coffee" className="h-28 w-auto" />
+              <div>
+                <h2 className="text-2xl font-bold">Selamat Datang</h2>
+                <p className="mx-auto mt-2 max-w-sm text-ink-300">
+                  Lengkapi konfigurasi awal untuk mulai memakai aplikasi kasir Kinara Coffee. Proses ini hanya perlu dilakukan sekali.
+                </p>
               </div>
-              <h2 className="text-2xl font-bold">Selamat Datang</h2>
-              <p className="text-ink-300">
-                Lengkapi konfigurasi awal untuk mulai menggunakan aplikasi kasir. Proses ini hanya perlu dilakukan sekali.
-              </p>
+              <ul className="mt-2 w-full max-w-sm space-y-2 text-left text-sm text-ink-200">
+                {['Profil kedai & logo', 'Pajak, biaya layanan & format struk', 'QRIS & printer', 'Akun administrator'].map((t) => (
+                  <li key={t} className="flex items-center gap-2.5 rounded-xl border border-ink-700 bg-ink-900 px-3.5 py-2.5">
+                    <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-brew-600/15 text-brew-600">
+                      <Icon name="check" size={13} />
+                    </span>
+                    {t}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -301,7 +317,7 @@ export function OnboardingWizard() {
       </div>
 
       {step !== 'finishing' && (
-        <div className="flex flex-none items-center justify-between border-t border-ink-800 px-6 py-4">
+        <div className="flex flex-none items-center justify-between border-t border-ink-700 bg-ink-900 px-6 py-4">
           <button onClick={goBack} disabled={step === 'welcome'} className="btn-ghost">
             Kembali
           </button>

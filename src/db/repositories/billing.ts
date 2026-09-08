@@ -214,7 +214,17 @@ export async function payBill(params: {
 
         if (order.type === 'dine_in' && order.tableId) {
           const table = await db.cafeTables.get(order.tableId)
-          if (table) await db.cafeTables.update(order.tableId, { status: 'needs_cleaning', updatedAt: now })
+          if (table) {
+            await db.cafeTables.update(order.tableId, {
+              status: 'needs_cleaning',
+              currentOrderId: null,
+              occupiedSince: null,
+              guestCount: null,
+              updatedAt: now,
+            })
+            const updated = await db.cafeTables.get(order.tableId)
+            if (updated) await enqueueSync('cafeTables', order.tableId, updated)
+          }
         }
       }
 

@@ -112,6 +112,16 @@ export function KitchenDisplayScreen() {
                   <span className="font-bold text-ink-50">{order.orderNumber}</span>
                   <span className="text-xs text-ink-400">{durationSince(oldestCreatedAt, now)}</span>
                 </div>
+                {order.lifecycleStatus === 'READY' && order.queueNumber != null && (
+                  <div
+                    className={`mb-2 inline-flex w-fit items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${
+                      order.pagerCalledAt ? 'bg-sage-600/30 text-sage-400' : 'bg-ink-700 text-ink-300'
+                    }`}
+                  >
+                    📟 Pager #{order.queueNumber}
+                    {order.pagerCalledAt ? ' • dipanggil' : ' • menunggu'}
+                  </div>
+                )}
                 <div className="mb-3 text-sm text-ink-400">
                   {ORDER_TYPE_LABELS[order.type]}
                   {table ? ` • ${table.name}` : ''}

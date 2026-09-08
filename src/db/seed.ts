@@ -103,7 +103,7 @@ export async function seedInitialCatalog(): Promise<void> {
     product({ categoryId: kopi!.id, name: 'Cafe Latte', sku: 'KOPI-004', price: 25000, costPrice: 9000, stockQty: 100, modifierGroupIds: drinkModifiers }),
     product({ categoryId: kopi!.id, name: 'Kopi Susu Gula Aren', sku: 'KOPI-005', price: 22000, costPrice: 8000, stockQty: 100, modifierGroupIds: drinkModifiers, isFavorite: true }),
     product({ categoryId: kopi!.id, name: 'Vanilla Latte', sku: 'KOPI-006', price: 27000, costPrice: 9500, stockQty: 100, modifierGroupIds: drinkModifiers }),
-    product({ categoryId: kopi!.id, name: 'Es Kopi Kikost', sku: 'KOPI-007', price: 25000, costPrice: 8500, stockQty: 100, modifierGroupIds: drinkModifiers, isFavorite: true }),
+    product({ categoryId: kopi!.id, name: 'Es Kopi Kinara', sku: 'KOPI-007', price: 25000, costPrice: 8500, stockQty: 100, modifierGroupIds: drinkModifiers, isFavorite: true }),
 
     product({ categoryId: nonKopi!.id, name: 'Matcha Latte', sku: 'NONKOPI-001', price: 26000, costPrice: 10000, stockQty: 80, modifierGroupIds: drinkModifiers }),
     product({ categoryId: nonKopi!.id, name: 'Chocolate', sku: 'NONKOPI-002', price: 23000, costPrice: 9000, stockQty: 80, modifierGroupIds: drinkModifiers }),
@@ -111,7 +111,7 @@ export async function seedInitialCatalog(): Promise<void> {
     product({ categoryId: nonKopi!.id, name: 'Teh Manis', sku: 'NONKOPI-004', price: 10000, costPrice: 2500, stockQty: 100, modifierGroupIds: drinkModifiers }),
     product({ categoryId: nonKopi!.id, name: 'Lemon Tea', sku: 'NONKOPI-005', price: 15000, costPrice: 4500, stockQty: 100, modifierGroupIds: drinkModifiers }),
 
-    product({ categoryId: makanan!.id, name: 'Nasi Goreng Kikost', sku: 'FOOD-001', price: 28000, costPrice: 12000, stockQty: 50, modifierGroupIds: spicyFoodModifiers, isFavorite: true }),
+    product({ categoryId: makanan!.id, name: 'Nasi Goreng Kinara', sku: 'FOOD-001', price: 28000, costPrice: 12000, stockQty: 50, modifierGroupIds: spicyFoodModifiers, isFavorite: true }),
     product({ categoryId: makanan!.id, name: 'Mie Goreng', sku: 'FOOD-002', price: 25000, costPrice: 10000, stockQty: 50, modifierGroupIds: spicyFoodModifiers }),
     product({ categoryId: makanan!.id, name: 'Ayam Geprek', sku: 'FOOD-003', price: 30000, costPrice: 14000, stockQty: 50, modifierGroupIds: spicyFoodModifiers, isFavorite: true }),
 
@@ -134,11 +134,11 @@ export async function seedInitialCatalog(): Promise<void> {
   const [bijiKopi, susu, gulaAren, esBatu] = ingredients
 
   const kopiSusuGulaAren = products.find((p) => p.sku === 'KOPI-005')!
-  const esKopiKikost = products.find((p) => p.sku === 'KOPI-007')!
+  const esKopiKinara = products.find((p) => p.sku === 'KOPI-007')!
   const cappuccino = products.find((p) => p.sku === 'KOPI-003')!
 
   await db.products.update(kopiSusuGulaAren.id, { trackOwnStock: false })
-  await db.products.update(esKopiKikost.id, { trackOwnStock: false })
+  await db.products.update(esKopiKinara.id, { trackOwnStock: false })
   await db.products.update(cappuccino.id, { trackOwnStock: false })
 
   const recipes: Recipe[] = [
@@ -155,7 +155,7 @@ export async function seedInitialCatalog(): Promise<void> {
     },
     {
       id: newId(),
-      productId: esKopiKikost.id,
+      productId: esKopiKinara.id,
       items: [
         { ingredientId: bijiKopi!.id, qty: 20 },
         { ingredientId: susu!.id, qty: 100 },

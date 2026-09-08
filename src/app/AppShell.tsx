@@ -26,6 +26,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
   { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'] },
+  { to: '/meja', label: 'Meja', icon: 'table', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'] },
   { to: '/dapur', label: 'Dapur', icon: 'chef' },
   { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji', 'dapur'] },
   { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
@@ -76,30 +77,36 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-ink-950">
-      <nav className="flex w-24 flex-none flex-col items-stretch gap-1 overflow-y-auto border-r border-ink-800 bg-ink-900 py-3">
+      <nav className="flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3">
+        <div className="mb-2 flex flex-col items-center gap-1 px-2 pb-3">
+          <img src="/brand/mark.png" alt="Kinara Coffee" className="h-8 w-8" />
+          <span className="font-display text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-brew-500">Kinara</span>
+        </div>
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-1 rounded-xl py-3 text-xs font-medium mx-2 ${
-                isActive ? 'bg-brew-600 text-white' : 'text-ink-300 hover:bg-ink-800'
+              `group relative mx-2 flex flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] font-medium transition-colors ${
+                isActive ? 'bg-brew-600 text-cream-50 shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
               }`
             }
           >
-            <Icon name={item.icon} size={22} />
-            <span>{item.label}</span>
+            <Icon name={item.icon} size={21} />
+            <span className="leading-none">{item.label}</span>
           </NavLink>
         ))}
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-none items-center justify-between border-b border-ink-800 bg-ink-900 px-4 py-2">
+        <header className="flex flex-none items-center justify-between border-b border-ink-700 bg-ink-900 px-4 py-2.5">
           <div className="flex items-center gap-3">
             <button
               onClick={() => void triggerManualSync()}
-              className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${
-                sync.failedCount > 0 ? 'bg-red-900/30 text-red-400' : 'bg-ink-800 text-ink-200'
+              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                sync.failedCount > 0
+                  ? 'border-red-300/40 bg-red-900 text-red-400'
+                  : 'border-ink-600 bg-ink-800 text-ink-200 hover:bg-ink-700'
               }`}
               title="Sinkronisasi sekarang"
             >
@@ -111,13 +118,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Icon name="refresh" size={14} className={sync.isSyncing ? 'animate-spin' : ''} />
             </button>
             {openShift ? (
-              <span className="rounded-full bg-sage-600/20 px-3 py-1.5 text-xs font-medium text-sage-500">
+              <span className="badge border border-sage-500/30 bg-sage-600/15 text-sage-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-sage-500" />
                 Shift aktif • Kas {formatRupiah(openShift.expectedCash)}
               </span>
             ) : (
-              <span className="rounded-full bg-red-900/40 px-3 py-1.5 text-xs font-medium text-red-400">
-                Belum ada shift
-              </span>
+              <span className="badge border border-red-300/40 bg-red-900 text-red-500">Belum ada shift</span>
             )}
             {showBackupWarning && (
               <button
@@ -132,7 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {pendingQr > 0 && (
               <button
                 onClick={() => navigate('/pesanan-qr')}
-                className="flex items-center gap-1.5 rounded-full bg-brew-600/30 px-3 py-1.5 text-xs font-medium text-brew-300 hover:bg-brew-600/40"
+                className="flex items-center gap-1.5 rounded-full border border-brew-500/30 bg-brew-600/12 px-3 py-1.5 text-xs font-medium text-brew-700 hover:bg-brew-600/20"
                 title="Buka Pesanan QR"
               >
                 <Icon name="bell" size={14} />

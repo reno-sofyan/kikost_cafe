@@ -56,32 +56,36 @@ export function LoginScreen() {
   const isLocked = lockoutMs > 0
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 bg-ink-950 p-6">
-      <div className="text-center">
-        {settings?.logoDataUrl && (
-          <img src={settings.logoDataUrl} alt="Logo" className="mx-auto mb-3 h-16 w-16 rounded-full object-cover" />
+    <div className="flex h-full items-center justify-center bg-ink-950 p-6">
+      <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
+        <div className="text-center">
+          {settings?.logoDataUrl ? (
+            <img src={settings.logoDataUrl} alt="Logo" className="mx-auto mb-4 h-16 w-16 rounded-full object-cover" />
+          ) : (
+            <img src="/brand/logo-full.png" alt="Kinara Coffee" className="mx-auto mb-4 h-20 w-auto" />
+          )}
+          <h1 className="text-2xl font-bold text-ink-50">{settings?.cafeName ?? 'Kinara Coffee'}</h1>
+          <p className="mt-1 text-sm text-ink-300">Masukkan PIN untuk masuk</p>
+        </div>
+
+        <div className="flex h-4 w-full max-w-xs justify-center gap-3">
+          {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
+            <span
+              key={i}
+              className={`h-3.5 w-3.5 rounded-full border-2 transition-colors ${
+                i < pin.length ? 'border-brew-600 bg-brew-600' : 'border-ink-600'
+              }`}
+            />
+          ))}
+        </div>
+
+        {error && <p className="text-center text-sm font-medium text-red-500">{error}</p>}
+        {isLocked && (
+          <p className="text-center text-sm font-medium text-red-500">Coba lagi dalam {Math.ceil(lockoutMs / 1000)} detik</p>
         )}
-        <h1 className="text-2xl font-bold text-ink-50">{settings?.cafeName ?? 'Kikost Cafe POS'}</h1>
-        <p className="mt-1 text-sm text-ink-400">Masukkan PIN untuk masuk</p>
+
+        <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} disabled={busy || isLocked} />
       </div>
-
-      <div className="flex h-4 w-full max-w-xs justify-center gap-3">
-        {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
-          <span
-            key={i}
-            className={`h-4 w-4 rounded-full border-2 ${
-              i < pin.length ? 'border-brew-500 bg-brew-500' : 'border-ink-700'
-            }`}
-          />
-        ))}
-      </div>
-
-      {error && <p className="text-sm font-medium text-red-400">{error}</p>}
-      {isLocked && (
-        <p className="text-sm font-medium text-red-400">Coba lagi dalam {Math.ceil(lockoutMs / 1000)} detik</p>
-      )}
-
-      <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} disabled={busy || isLocked} />
     </div>
   )
 }

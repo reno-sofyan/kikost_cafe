@@ -76,7 +76,7 @@ export class PublicOrderError extends Error {
 }
 
 const DEFAULT_SETTINGS: CatalogSettings = {
-  cafeName: 'Kikost Cafe',
+  cafeName: 'Kinara Coffee',
   address: '',
   phone: '',
   taxPercent: 0,
@@ -439,6 +439,7 @@ export async function submitPublicOrder(params: {
       notes: customerName,
       idempotencyKey: params.idempotencyKey,
       parentOrderId: null,
+      pagerCalledAt: null,
       rejectedReason: null,
       voidReason: null,
       voidedBy: null,
