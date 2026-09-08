@@ -6,11 +6,15 @@ import type { Product, Recipe } from '@/types/domain'
 export type ProductInput = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>
 
 export async function listProducts(): Promise<Product[]> {
-  return db.products.orderBy('name').toArray()
+  return (await db.products.orderBy('name').toArray()).filter((p) => !p.archived)
+}
+
+export async function listArchivedProducts(): Promise<Product[]> {
+  return (await db.products.orderBy('name').toArray()).filter((p) => p.archived)
 }
 
 export async function listAvailableProducts(): Promise<Product[]> {
-  return db.products.filter((p) => p.isAvailable).sortBy('name')
+  return db.products.filter((p) => p.isAvailable && !p.archived).sortBy('name')
 }
 
 export async function getProduct(id: string): Promise<Product | undefined> {
@@ -39,6 +43,30 @@ export async function setProductAvailability(id: string, isAvailable: boolean): 
   await updateProduct(id, { isAvailable })
 }
 
+/** Arsipkan / pulihkan. Mengarsipkan juga mematikan `isAvailable` supaya langsung
+ *  lepas dari Kasir & menu QR bila nanti dipulihkan tanpa dicek ulang. */
+export async function setProductArchived(id: string, archived: boolean): Promise<void> {
+  await updateProduct(id, archived ? { archived: true, isAvailable: false } : { archived: false })
+}
+
+/**
+ * Hapus permanen — HANYA bila produk belum pernah masuk pesanan mana pun.
+ * Kalau sudah pernah terjual, lempar error (pakai arsip).
+ * Penghapusan bersifat LOKAL (tidak ada tombstone sinkronisasi): di setup
+ * multi-perangkat produk bisa muncul lagi setelah pull — untuk itu pakai arsip.
+ */
+export async function deleteProductIfUnused(id: string): Promise<void> {
+  const used = await db.orderItems.where('productId').equals(id).count()
+  if (used > 0) {
+    throw new Error('Produk sudah pernah terjual — arsipkan saja agar riwayat & laporan tetap utuh.')
+  }
+  await db.transaction('rw', db.products, db.recipes, async () => {
+    await db.products.delete(id)
+    const recipe = await db.recipes.where('productId').equals(id).first()
+    if (recipe) await db.recipes.delete(recipe.id)
+  })
+}
+
 export async function toggleFavorite(id: string): Promise<void> {
   const product = await db.products.get(id)
   if (!product) return
@@ -49,6 +77,7 @@ export async function searchProducts(query: string, categoryId?: string): Promis
   const lowered = query.trim().toLowerCase()
   const all = await db.products.toArray()
   return all.filter((p) => {
+    if (p.archived) return false
     const matchesCategory = !categoryId || categoryId === 'all' || p.categoryId === categoryId
     if (!matchesCategory) return false
     if (!lowered) return true

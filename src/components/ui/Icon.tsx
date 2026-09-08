@@ -26,6 +26,8 @@ export type IconName =
   | 'cart'
   | 'alertTriangle'
   | 'arrowLeft'
+  | 'chevronUp'
+  | 'chevronDown'
   | 'trash'
   | 'edit'
   | 'image'
@@ -164,6 +166,8 @@ const SHAPES: Record<IconName, ReactNode> = {
     </>
   ),
   arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />,
+  chevronUp: <path d="M6 15l6-6 6 6" />,
+  chevronDown: <path d="M6 9l6 6 6-6" />,
   trash: (
     <>
       <path d="M4 7h16" />

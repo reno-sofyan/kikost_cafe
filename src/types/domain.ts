@@ -249,6 +249,9 @@ export interface Product {
   lowStockThreshold: number
   isFavorite: boolean
   isAvailable: boolean
+  /** Diarsipkan: disembunyikan dari Kasir, menu QR, dan daftar Produk (kecuali tampilan Arsip).
+   *  Dipakai alih-alih hapus permanen supaya riwayat & laporan tetap utuh. */
+  archived?: boolean
   modifierGroupIds: string[]
   createdAt: number
   updatedAt: number
