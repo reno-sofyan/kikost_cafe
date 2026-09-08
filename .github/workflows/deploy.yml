@@ -8,6 +8,10 @@ name: Deploy
 #   (Coolify UI -> Keys & Tokens -> API tokens, write scope; value is in
 #    deploy/.env.coolify locally).
 # Optional override secret COOLIFY_APP_UUID (defaults to the known cafe-pos uuid).
+#
+# Until COOLIFY_TOKEN is set this job fails at the guard step — deploy manually
+# after `git push` with:  bash deploy/trigger.sh  (reads the token from the
+# local deploy/.env.coolify and waits for the new build to go live).
 
 on:
   workflow_run:
