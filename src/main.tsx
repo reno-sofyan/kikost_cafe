@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { ErrorBoundary } from '@/app/ErrorBoundary'
 import '@/index.css'
 
 const rootEl = document.getElementById('root')!
@@ -13,9 +14,11 @@ if (window.location.pathname.startsWith('/order/')) {
   void import('@/features/order/CustomerApp').then(({ CustomerApp }) => {
     ReactDOM.createRoot(rootEl).render(
       <React.StrictMode>
-        <BrowserRouter>
-          <CustomerApp />
-        </BrowserRouter>
+        <ErrorBoundary scope="halaman pesanan">
+          <BrowserRouter>
+            <CustomerApp />
+          </BrowserRouter>
+        </ErrorBoundary>
       </React.StrictMode>,
     )
   })
@@ -28,9 +31,11 @@ if (window.location.pathname.startsWith('/order/')) {
       ensureDefaultSettings().finally(() => {
         ReactDOM.createRoot(rootEl).render(
           <React.StrictMode>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
+            <ErrorBoundary scope="aplikasi">
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </ErrorBoundary>
           </React.StrictMode>,
         )
       }),
