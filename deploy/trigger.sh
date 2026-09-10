@@ -13,8 +13,10 @@ cd "$(dirname "$0")/.."
 ENVFILE="deploy/.env.coolify"
 [ -f "$ENVFILE" ] || { echo "ERR: $ENVFILE tidak ada — token Coolify diperlukan." >&2; exit 1; }
 
-TOKEN=$(grep -E '^COOLIFY_TOKEN=' "$ENVFILE" | head -1 | cut -d= -f2- | tr -d ' "'"'"'')
-UUID=$(grep -E '^COOLIFY_APP_UUID=' "$ENVFILE" | head -1 | cut -d= -f2- | tr -d ' "'"'"'')
+# `|| true`: grep exits 1 when the key is absent; without it `set -e` + pipefail
+# would abort the script before the `:-` default below can kick in.
+TOKEN=$( { grep -E '^COOLIFY_TOKEN=' "$ENVFILE" || true; } | head -1 | cut -d= -f2- | tr -d ' "'"'"'')
+UUID=$( { grep -E '^COOLIFY_APP_UUID=' "$ENVFILE" || true; } | head -1 | cut -d= -f2- | tr -d ' "'"'"'')
 UUID=${UUID:-qilynan1p0jvsiqjkkins6ot}
 BASE=${COOLIFY_BASE:-https://coolify.kikost.com}
 [ -n "$TOKEN" ] || { echo "ERR: COOLIFY_TOKEN kosong di $ENVFILE" >&2; exit 1; }
