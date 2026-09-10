@@ -86,6 +86,7 @@ export async function startOrder(params: {
     idempotencyKey: newIdempotencyKey(),
     parentOrderId: null,
     pagerCalledAt: null,
+    pagerNumber: null,
     rejectedReason: null,
     voidReason: null,
     voidedBy: null,
@@ -395,6 +396,7 @@ export async function splitOrder(orderId: string, itemIdsToMove: string[]): Prom
       lifecycleStatus: original.lifecycleStatus === 'DRAFT' ? 'DRAFT' : 'CONFIRMED',
       rejectedReason: null,
       pagerCalledAt: null,
+      pagerNumber: null,
       queueNumber: await drawQueueNumber(),
     }
     await db.orders.add(newOrder)

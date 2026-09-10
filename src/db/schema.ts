@@ -432,6 +432,18 @@ export class KikostDatabase extends Dexie {
         })
       }
     })
+
+    // v13: nomor coaster pager (`order.pagerNumber`) dipisah dari nomor antrean
+    // harian. Didaur ulang dari kumpulan 1..maxPagerNumber saat order siap, jadi
+    // hari sibuk (>maxPagerNumber pesanan) tetap kebagian coaster. Backfill null.
+    this.version(13).upgrade(async (tx) => {
+      await tx
+        .table('orders')
+        .toCollection()
+        .modify((o: { pagerNumber?: number | null }) => {
+          if (o.pagerNumber === undefined) o.pagerNumber = null
+        })
+    })
   }
 }
 

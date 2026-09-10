@@ -440,6 +440,7 @@ export async function submitPublicOrder(params: {
       idempotencyKey: params.idempotencyKey,
       parentOrderId: null,
       pagerCalledAt: null,
+      pagerNumber: null,
       rejectedReason: null,
       voidReason: null,
       voidedBy: null,

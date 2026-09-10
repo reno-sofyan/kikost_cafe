@@ -116,7 +116,8 @@ export type PagerConnectionType = 'none' | 'usb-serial'
 /**
  * Setelan jembatan ke base station pager Retekess yang dicolok ke tablet lewat
  * USB-OTG (butuh kabel USB-to-RS232 FTDI/CP2102/CH340/PL2303 untuk model DB9).
- * Nomor antrean order (`Order.queueNumber`) dipakai sebagai nomor pager.
+ * Nomor coaster (`Order.pagerNumber`) didaur ulang dari kumpulan 1..maxPagerNumber
+ * saat order siap, jadi terpisah dari nomor antrean harian yang terus naik.
  */
 export interface PagerConfig {
   connectionType: PagerConnectionType
@@ -578,6 +579,12 @@ export interface Order {
   parentOrderId: string | null
   /** Waktu (epoch ms) pager Retekess dibunyikan untuk order ini; null = belum. */
   pagerCalledAt: number | null
+  /**
+   * Nomor coaster pager fisik yang dipegang pelanggan, diambil dari kumpulan
+   * 1..maxPagerNumber dan didaur ulang begitu order lepas dari READY. null =
+   * belum dapat coaster (belum siap, pager nonaktif, atau kumpulan penuh).
+   */
+  pagerNumber: number | null
   /** Alasan penolakan pesanan QR oleh kasir/waiter (lifecycle REJECTED). */
   rejectedReason: string | null
   voidReason: string | null

@@ -1,7 +1,11 @@
 # Integrasi Pager Restoran (Retekess Wireless Calling System)
 
 POS bisa membunyikan **coaster pager Retekess** otomatis saat pesanan siap.
-**Nomor antrean pesanan (`queueNumber`) = nomor pager.**
+**Nomor coaster (`order.pagerNumber`) diambil dari kumpulan `1..maxPagerNumber`
+dan _didaur ulang_** — begitu satu pesanan diambil pelanggan (lepas dari READY),
+nomornya bebas dipakai pesanan berikutnya. Jadi hari sibuk dengan lebih dari
+`maxPagerNumber` pesanan tetap kebagian coaster (beda dari nomor antrean harian
+`queueNumber` yang terus naik).
 
 ## Cara kerja
 
@@ -12,15 +16,20 @@ Dapur tandai semua item "Siap"
 pagerEngine (tiap 15 dtk, di setiap perangkat)   src/features/pager/pagerEngine.ts
         │  hanya perangkat dengan pagerConfig.connectionType = 'usb-serial'
         ▼
-buildPagerFrame(template, queueNumber)            src/features/pager/pagerProtocol.ts
+pickFreePagerNumber → nomor coaster bebas terkecil (1..maxPagerNumber)
+        │  semua coaster dipakai? → pesanan menunggu, dicoba lagi siklus berikutnya
+        ▼
+buildPagerFrame(template, pagerNumber)            src/features/pager/pagerProtocol.ts
         ▼
 plugin native UsbSerial → USB-OTG → base station Retekess → coaster berbunyi
         ▼
-order.pagerCalledAt di-set + di-sync  → perangkat lain tidak memanggil ulang
+order.pagerNumber + order.pagerCalledAt di-set + di-sync
+        → perangkat lain tidak memanggil ulang; nomor "dipegang" selama order READY
 ```
 
 Layar Dapur menampilkan badge `📟 Pager #N • dipanggil / menunggu` pada kartu order
-yang sudah READY.
+READY (hanya bila pager aktif). Bila semua coaster sedang dipakai, kartu yang
+menunggu menampilkan `📟 menunggu coaster (semua dipakai)`.
 
 ## Hardware yang didukung
 
@@ -40,8 +49,10 @@ Sambungan ke tablet Android:
 2. **Pindai** → pilih perangkat USB (atau biarkan "Otomatis").
 3. Isi **baud rate** + **template frame** dari dokumen protokol RS-232 model Anda
    (minta ke `support@retekess.com`). Ada beberapa preset sebagai titik awal.
-4. **Tes panggil** sebuah nomor → coaster harus berbunyi.
-5. **Simpan.** Biarkan "Panggil otomatis saat pesanan siap" menyala.
+4. Set **"Nomor pager maks."** = jumlah coaster fisik yang Anda punya (mis. 20).
+   Nomor coaster didaur ulang dalam rentang `1..maks` ini.
+5. **Tes panggil** sebuah nomor → coaster harus berbunyi.
+6. **Simpan.** Biarkan "Panggil otomatis saat pesanan siap" menyala.
 
 Aktifkan pager **hanya di satu perangkat** (yang terhubung fisik ke base station).
 Perangkat lain cukup biarkan `none` — mereka tetap sinkron dan tidak akan
@@ -62,10 +73,14 @@ Contoh: `02{nnn}03` + nomor 12 → byte `02 30 31 32 03` (STX + "012" + ETX).
 
 ## Idempotensi & retry
 
-- `order.pagerCalledAt` ikut di-sync antar perangkat → satu panggilan per order.
+- `order.pagerCalledAt` + `order.pagerNumber` ikut di-sync antar perangkat → satu
+  panggilan per order.
 - Gagal kirim (kabel lepas, port sibuk) → `pagerCalledAt` tetap null, dicoba lagi
   siklus berikutnya (backoff 30 dtk per order).
-- Hanya order **hari ini** dengan `1 ≤ queueNumber ≤ maxPagerNumber` yang dipanggil.
+- Kumpulan coaster penuh (semua nomor 1..`maxPagerNumber` dipegang order yang
+  masih READY) → order menunggu **tanpa** backoff, langsung dapat nomor pada
+  siklus berikutnya begitu ada coaster yang bebas.
+- Hanya order **hari ini** yang berstatus READY yang diproses.
 
 ## Fallback: coaster pager keypad-only
 
@@ -81,6 +96,7 @@ ASCII yang dimengerti firmware ESP32. Firmware ditulis terpisah.
 |---|---|
 | Tipe & default | `src/types/domain.ts` (`PagerConfig`), `src/db/repositories/settings.ts` |
 | Migrasi (`pagerCalledAt`, `pagerConfig`) | `src/db/schema.ts` v12 |
+| Migrasi (`pagerNumber`) | `src/db/schema.ts` v13 |
 | Protokol frame | `src/features/pager/pagerProtocol.ts` |
 | Driver + transport seam | `src/features/pager/pagerDrivers.ts` |
 | Engine background | `src/features/pager/pagerEngine.ts` (dipasang di `src/App.tsx`) |

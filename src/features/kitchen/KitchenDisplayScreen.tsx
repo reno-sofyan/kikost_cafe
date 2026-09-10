@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { listActiveKitchenItems, setOrderItemKitchenStatus } from '@/db/repositories/orders'
+import { getSettings } from '@/db/repositories/settings'
 import { playNewOrderChime } from '@/lib/kitchenSound'
 import { reprintKitchenTicket } from '@/db/repositories/kitchenDispatch'
 import { useSessionStore } from '@/state/sessionStore'
@@ -46,6 +47,7 @@ export function KitchenDisplayScreen() {
   const orderIds = useMemo(() => Array.from(new Set((items ?? []).map((i) => i.orderId))), [items])
   const orders = useLiveQuery(() => db.orders.where('id').anyOf(orderIds.length ? orderIds : ['-']).toArray(), [orderIds])
   const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
+  const pagerEnabled = useLiveQuery(async () => (await getSettings()).pagerConfig.connectionType === 'usb-serial', []) ?? false
   const ticketsRaw = useLiveQuery(
     () => db.kitchenTickets.where('orderId').anyOf(orderIds.length ? orderIds : ['-']).toArray(),
     [orderIds],
@@ -112,15 +114,21 @@ export function KitchenDisplayScreen() {
                   <span className="font-bold text-ink-50">{order.orderNumber}</span>
                   <span className="text-xs text-ink-400">{durationSince(oldestCreatedAt, now)}</span>
                 </div>
-                {order.lifecycleStatus === 'READY' && order.queueNumber != null && (
-                  <div
-                    className={`mb-2 inline-flex w-fit items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${
-                      order.pagerCalledAt ? 'bg-sage-600/30 text-sage-400' : 'bg-ink-700 text-ink-300'
-                    }`}
-                  >
-                    📟 Pager #{order.queueNumber}
-                    {order.pagerCalledAt ? ' • dipanggil' : ' • menunggu'}
-                  </div>
+                {pagerEnabled && order.lifecycleStatus === 'READY' && (
+                  order.pagerNumber != null ? (
+                    <div
+                      className={`mb-2 inline-flex w-fit items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${
+                        order.pagerCalledAt ? 'bg-sage-600/30 text-sage-400' : 'bg-ink-700 text-ink-300'
+                      }`}
+                    >
+                      📟 Pager #{order.pagerNumber}
+                      {order.pagerCalledAt ? ' • dipanggil' : ' • menunggu'}
+                    </div>
+                  ) : order.pagerCalledAt == null ? (
+                    <div className="mb-2 inline-flex w-fit items-center gap-1 rounded bg-yellow-900/30 px-2 py-0.5 text-xs font-semibold text-yellow-400">
+                      📟 menunggu coaster (semua dipakai)
+                    </div>
+                  ) : null
                 )}
                 <div className="mb-3 text-sm text-ink-400">
                   {ORDER_TYPE_LABELS[order.type]}

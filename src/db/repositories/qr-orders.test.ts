@@ -54,6 +54,7 @@ async function seedQrOrder(over: Partial<Order> = {}): Promise<Order> {
     idempotencyKey: 'idem-1',
     parentOrderId: null,
     pagerCalledAt: null,
+    pagerNumber: null,
     rejectedReason: null,
     voidReason: null,
     voidedBy: null,
