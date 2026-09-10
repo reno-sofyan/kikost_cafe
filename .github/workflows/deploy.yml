@@ -57,19 +57,24 @@ jobs:
       - name: Wait for the new build to go live
         run: |
           set -u
-          # A route that only exists in the new build: /api/devices returns 401
-          # (needs a device key) once deployed, 404 on the old build.
+          # The entry bundle hash in index.html changes on every build, so a
+          # change from the pre-deploy hash is a reliable "new build is live"
+          # signal. (Checking /api/devices only proves the route exists — it has
+          # since Phase 2c, so the old build already passes that.)
+          bundle() { curl -s -m 10 "https://pos.kikost.com/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1; }
+          before=$(bundle || true)
+          echo "bundle before deploy: ${before:-unreadable}"
           for i in $(seq 1 90); do
             health=$(curl -s -m 10 "https://pos.kikost.com/api/health" || true)
-            dev=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "https://pos.kikost.com/api/devices" || true)
-            echo "[$i] health=${health:-none} /api/devices=$dev"
-            if echo "$health" | grep -q '"db":"ok"' && [ "$dev" != "404" ] && [ "$dev" != "000" ]; then
-              echo "New build is live and healthy."
+            now=$(bundle || true)
+            echo "[$i] db=$(echo "${health:-none}" | grep -oE '\"db\":\"[a-z]+\"' || echo none) bundle=${now:-none}"
+            if echo "$health" | grep -q '"db":"ok"' && [ -n "$now" ] && [ "$now" != "$before" ]; then
+              echo "New build is live and healthy (${before:-?} -> $now)."
               exit 0
             fi
             sleep 10
           done
-          echo "::error::Timed out waiting for the new build (15 min). Check the Coolify dashboard."
+          echo "::error::Timed out (15 min) — bundle still ${before:-?}. Check the Coolify dashboard."
           exit 1
 
       - name: Smoke-check new routes

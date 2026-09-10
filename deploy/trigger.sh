@@ -25,6 +25,13 @@ RC=$(mktemp); trap 'rm -f "$RC"' EXIT
 printf 'header = "Authorization: Bearer %s"\nrequest = "POST"\nsilent\nshow-error\n' "$TOKEN" > "$RC"
 chmod 600 "$RC"
 
+# Sidik jari build yang sedang tayang SEBELUM deploy — hash bundel entri di
+# index.html berubah tiap build, jadi ini penanda "build baru live" yang andal
+# (cek /api/devices lama selalu lolos karena rute itu sudah ada sejak Fase 2c).
+bundle_now() { curl -s -m 10 "https://pos.kikost.com/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1; }
+BEFORE=$(bundle_now || true)
+echo ">> Bundel saat ini: ${BEFORE:-tak terbaca}"
+
 echo ">> Memicu redeploy Coolify (app $UUID)…"
 code=$(curl -s -X POST "$BASE/api/v1/deploy?uuid=$UUID" -K "$RC" -o /tmp/coolify-deploy-resp.json -w '%{http_code}')
 echo "HTTP $code"; cat /tmp/coolify-deploy-resp.json; echo
@@ -33,11 +40,11 @@ case "$code" in 2*) ;; *) echo "::gagal:: HTTP $code" >&2; exit 1 ;; esac
 echo ">> Menunggu build baru live (maks ~15 mnt)…"
 for i in $(seq 1 90); do
   h=$(curl -s -m 10 "https://pos.kikost.com/api/health" || true)
-  d=$(curl -s -m 10 -o /dev/null -w '%{http_code}' "https://pos.kikost.com/api/devices" || true)
-  echo "  [$i] health=${h:-none} /api/devices=$d"
-  if echo "$h" | grep -q '"db":"ok"' && [ "$d" != "404" ] && [ "$d" != "000" ]; then
-    echo ">> Build baru sudah live & sehat."; exit 0
+  b=$(bundle_now || true)
+  echo "  [$i] health=$(echo "${h:-none}" | grep -oE '\"db\":\"[a-z]+\"' || echo none) bundle=${b:-none}"
+  if echo "$h" | grep -q '"db":"ok"' && [ -n "$b" ] && [ "$b" != "$BEFORE" ]; then
+    echo ">> Build baru live & sehat (bundel ${BEFORE:-?} → $b)."; exit 0
   fi
   sleep 10
 done
-echo "::timeout:: cek dashboard Coolify." >&2; exit 1
+echo "::timeout:: bundel belum berubah dari ${BEFORE:-?} — cek dashboard Coolify." >&2; exit 1
