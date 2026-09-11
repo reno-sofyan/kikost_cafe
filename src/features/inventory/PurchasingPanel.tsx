@@ -4,6 +4,7 @@ import { db } from '@/db/schema'
 import { createPurchase, listPurchases, receivePurchase } from '@/db/repositories/purchasing'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 import type { PurchaseLine, StockMovementItemType, UnitOfMeasure } from '@/types/domain'
 
 interface Props {
@@ -51,7 +52,7 @@ export function PurchasingPanel({ userId, userName }: Props) {
               {p.status === 'received' ? (
                 <span className="text-xs text-sage-500">Diterima</span>
               ) : (
-                <button className="btn-primary !min-h-0 !px-3 !py-1 text-xs" onClick={() => void handleReceive(p.id)}>
+                <button className="btn-primary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void handleReceive(p.id)}>
                   Terima Barang
                 </button>
               )}
@@ -106,8 +107,7 @@ function PurchaseFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-6">
         <h2 className="mb-4 text-lg font-bold text-ink-50">Pembelian Baru</h2>
         <input className="input-field mb-2" placeholder="Nama pemasok" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
         <input className="input-field mb-2" placeholder="No. nota (opsional)" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
@@ -148,7 +148,7 @@ function PurchaseFormModal({
             </button>
           </div>
         ))}
-        <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={addLine} disabled={items.length === 0}>
+        <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={addLine} disabled={items.length === 0}>
           + Baris
         </button>
 
@@ -164,7 +164,6 @@ function PurchaseFormModal({
             Simpan Draf
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

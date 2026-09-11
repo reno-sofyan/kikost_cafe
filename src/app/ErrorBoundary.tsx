@@ -51,11 +51,11 @@ export class ErrorBoundary extends Component<Props, State> {
             {error.message || String(error)}
           </pre>
           <div className="flex justify-center gap-2">
-            <button className="btn-secondary !min-h-0 !px-4 !py-2 text-sm" onClick={this.reset}>
+            <button className="btn-secondary !min-h-[2.75rem] !px-4 !py-2 text-sm" onClick={this.reset}>
               Coba lagi
             </button>
             <button
-              className="btn-primary !min-h-0 !px-4 !py-2 text-sm"
+              className="btn-primary !min-h-[2.75rem] !px-4 !py-2 text-sm"
               onClick={() => window.location.reload()}
             >
               Muat ulang aplikasi

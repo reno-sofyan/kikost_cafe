@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 import type { PaymentMethod } from '@/types/domain'
 
 interface Props {
@@ -20,8 +21,7 @@ export function ReferencePaymentModal({ method, remaining, onCancel, onConfirm }
   const [error, setError] = useState<string | null>(null)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">{METHOD_LABEL[method]}</h2>
 
         <label className="mb-3 block">
@@ -61,7 +61,6 @@ export function ReferencePaymentModal({ method, remaining, onCancel, onConfirm }
             Konfirmasi
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

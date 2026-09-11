@@ -14,6 +14,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
 import { formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { printShiftReport } from '@/features/shifts/printShiftReport'
 import type { User } from '@/types/domain'
@@ -134,8 +135,7 @@ export function ShiftScreen() {
 function OpenShiftModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (openingCash: number) => Promise<void> }) {
   const [amount, setAmount] = useState(0)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Buka Shift</h2>
         <label className="mb-4 block">
           <span className="mb-1 block text-sm text-ink-300">Modal Awal</span>
@@ -149,8 +149,7 @@ function OpenShiftModal({ onClose, onConfirm }: { onClose: () => void; onConfirm
             Buka Shift
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -166,8 +165,7 @@ function CashMovementModal({
   const [amount, setAmount] = useState(0)
   const [reason, setReason] = useState('')
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">{type === 'in' ? 'Kas Masuk' : 'Kas Keluar'}</h2>
         <label className="mb-3 block">
           <span className="mb-1 block text-sm text-ink-300">Jumlah</span>
@@ -185,8 +183,7 @@ function CashMovementModal({
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -226,8 +223,8 @@ function CloseShiftModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Tutup Shift</h2>
         {!blindClose && <p className="mb-3 text-sm text-ink-400">Kas seharusnya: {formatRupiah(expectedCash)}</p>}
         {blindClose && !entered && (
@@ -285,7 +282,7 @@ function CloseShiftModal({
             </div>
           </>
         )}
-      </div>
+    </Modal>
 
       {varianceApproval !== null && (
         <SupervisorPinModal
@@ -298,6 +295,6 @@ function CloseShiftModal({
           }}
         />
       )}
-    </div>
+    </>
   )
 }

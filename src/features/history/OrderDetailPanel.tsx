@@ -12,6 +12,7 @@ import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import type { Order, User } from '@/types/domain'
 import type { ReceiptData } from '@/features/printing/receiptData'
 
@@ -77,8 +78,8 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60" onClick={onClose}>
-      <div className="flex h-full w-full max-w-lg flex-col bg-ink-900" onClick={(e) => e.stopPropagation()}>
+    <>
+    <Modal onClose={onClose} align="end" className="flex h-full w-full max-w-lg flex-col bg-ink-900">
         <div className="flex flex-none items-center justify-between border-b border-ink-800 px-5 py-4">
           <div>
             <h2 className="text-lg font-bold text-ink-50">{order.orderNumber}</h2>
@@ -86,7 +87,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
               {STATUS_LABELS[order.status]} • {formatDateTime(order.createdAt)}
             </p>
           </div>
-          <button className="btn-ghost !min-h-0 !px-3 !py-2" onClick={onClose}>
+          <button className="btn-ghost !min-h-[2.75rem] !px-3 !py-2" aria-label="Tutup" onClick={onClose}>
             <Icon name="close" size={18} />
           </button>
         </div>
@@ -216,7 +217,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             </button>
           )}
         </div>
-      </div>
+    </Modal>
 
       {showPrint && receipt && <PrintPreviewModal data={receipt} onClose={() => setShowPrint(false)} />}
 
@@ -249,7 +250,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
       {flow === 'return-pin' && (
         <SupervisorPinModal title="Konfirmasi Retur" onCancel={() => setFlow('return-select')} onApproved={(u) => void handleReturnApproved(u)} />
       )}
-    </div>
+    </>
   )
 }
 

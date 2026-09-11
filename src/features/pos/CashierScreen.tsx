@@ -28,6 +28,8 @@ import { DiscountModal } from '@/features/pos/DiscountModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { toast } from '@/state/toastStore'
 import type { OrderItem, OrderType, Product, User } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
@@ -49,10 +51,9 @@ export function CashierScreen() {
   const [showDiscount, setShowDiscount] = useState(false)
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
-  const [stockWarning, setStockWarning] = useState<string | null>(null)
   const [removeReasonFor, setRemoveReasonFor] = useState<OrderItem | null>(null)
   const [voidItemApproval, setVoidItemApproval] = useState<{ item: OrderItem; reason: string } | null>(null)
-  const [confirmClearCart, setConfirmClearCart] = useState(false)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const openShift = useLiveQuery(() => getOpenShift(), [])
   const categories = useLiveQuery(() => listCategories(), []) ?? []
@@ -93,7 +94,7 @@ export function CashierScreen() {
   async function handleProductTap(product: Product) {
     if (!activeOrderId) return
     if (!product.isAvailable) {
-      setStockWarning(`${product.name} sedang habis / tidak tersedia`)
+      toast.error(`${product.name} sedang habis / tidak tersedia`)
       return
     }
     if (product.modifierGroupIds.length > 0) {
@@ -102,7 +103,7 @@ export function CashierScreen() {
     }
     const canFulfill = await canFulfillProductQty(product, 1)
     if (!canFulfill) {
-      setStockWarning(`Stok bahan untuk ${product.name} tidak mencukupi`)
+      toast.error(`Stok bahan untuk ${product.name} tidak mencukupi`)
       return
     }
     await addOrderItem({
@@ -131,15 +132,17 @@ export function CashierScreen() {
 
   async function handleClearCart() {
     if (!activeOrderId) return
+    if (!(await confirm({ title: 'Kosongkan Keranjang?', description: 'Semua item pada pesanan ini akan dihapus. Tindakan ini tidak dapat dibatalkan.', confirmLabel: 'Ya, Kosongkan', tone: 'danger' }))) {
+      return
+    }
     // Hanya item yang belum dikirim ke dapur yang bisa dikosongkan massal.
     // Item yang sudah di dapur harus dibatalkan satu per satu (butuh approval supervisor).
     for (const item of activeItems) {
       if (item.kitchenStatus === 'new') await removeOrderItem(item.id)
     }
-    setConfirmClearCart(false)
     const stillHasKitchenItems = activeItems.some((i) => i.kitchenStatus !== 'new')
     if (stillHasKitchenItems) {
-      setStockWarning('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
+      toast.error('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
     }
   }
 
@@ -147,7 +150,7 @@ export function CashierScreen() {
     if (!activeOrderId || !pickerProduct) return
     const canFulfill = await canFulfillProductQty(pickerProduct, params.qty)
     if (!canFulfill) {
-      setStockWarning(`Stok bahan untuk ${pickerProduct.name} tidak mencukupi`)
+      toast.error(`Stok bahan untuk ${pickerProduct.name} tidak mencukupi`)
       setPickerProduct(null)
       return
     }
@@ -210,7 +213,7 @@ export function CashierScreen() {
         <div className="flex flex-none gap-2 overflow-x-auto border-b border-ink-800 px-4 py-2">
           <button
             onClick={() => setCategoryId('all')}
-            className={`btn !min-h-0 !px-4 !py-2 text-sm ${categoryId === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-compact !px-4 text-sm ${categoryId === 'all' ? 'btn-primary' : 'btn-secondary'}`}
           >
             Semua
           </button>
@@ -218,7 +221,7 @@ export function CashierScreen() {
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
-              className={`btn !min-h-0 !px-4 !py-2 text-sm whitespace-nowrap ${categoryId === c.id ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-compact !px-4 text-sm whitespace-nowrap ${categoryId === c.id ? 'btn-primary' : 'btn-secondary'}`}
             >
               {c.name}
             </button>
@@ -226,7 +229,9 @@ export function CashierScreen() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {/* md, bukan lg — di viewport landscape tablet 11" (~960px efektif) breakpoint lg (1024px)
+              tak pernah tercapai, jadi grid mentok 3 kolom walau ruang sebenarnya cukup untuk 4. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {products.map((product) => (
               <button
                 key={product.id}
@@ -298,11 +303,19 @@ export function CashierScreen() {
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <button className="btn-secondary !min-h-0 !px-3 !py-1" onClick={() => void handleQtyChange(item, -1)}>
+                        <button
+                          className="btn-secondary btn-compact !px-3"
+                          aria-label={`Kurangi jumlah ${item.productName}`}
+                          onClick={() => void handleQtyChange(item, -1)}
+                        >
                           <Icon name="minus" size={14} />
                         </button>
                         <span className="w-6 text-center font-bold">{item.qty}</span>
-                        <button className="btn-secondary !min-h-0 !px-3 !py-1" onClick={() => void handleQtyChange(item, 1)}>
+                        <button
+                          className="btn-secondary btn-compact !px-3"
+                          aria-label={`Tambah jumlah ${item.productName}`}
+                          onClick={() => void handleQtyChange(item, 1)}
+                        >
                           <Icon name="plus" size={14} />
                         </button>
                       </div>
@@ -334,13 +347,14 @@ export function CashierScreen() {
                 </button>
                 <button
                   className="btn-secondary"
+                  title="Pesanan sudah tersimpan otomatis — ini hanya menutup layar keranjang"
                   onClick={() => {
                     setActiveOrderId(null)
                   }}
                 >
-                  Simpan
+                  Tutup
                 </button>
-                <button className="btn-secondary" disabled={activeItems.length === 0} onClick={() => setConfirmClearCart(true)}>
+                <button className="btn-secondary" disabled={activeItems.length === 0} onClick={() => void handleClearCart()}>
                   Kosongkan
                 </button>
               </div>
@@ -349,7 +363,7 @@ export function CashierScreen() {
                   className="btn-secondary w-full"
                   onClick={async () => {
                     const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name })
-                    setStockWarning(
+                    toast.success(
                       res.itemCount === 0
                         ? 'Semua item sudah dikirim ke dapur.'
                         : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}.`,
@@ -430,30 +444,7 @@ export function CashierScreen() {
           }}
         />
       )}
-      {confirmClearCart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setConfirmClearCart(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6 text-center" onClick={(e) => e.stopPropagation()}>
-            <Icon name="alertTriangle" size={32} className="mx-auto mb-3 text-red-500" />
-            <h2 className="mb-2 text-lg font-bold text-ink-50">Kosongkan Keranjang?</h2>
-            <p className="mb-4 text-sm text-ink-400">Semua item pada pesanan ini akan dihapus. Tindakan ini tidak dapat dibatalkan.</p>
-            <div className="flex gap-3">
-              <button className="btn-ghost flex-1" onClick={() => setConfirmClearCart(false)}>
-                Batal
-              </button>
-              <button className="btn-danger flex-[2]" onClick={() => void handleClearCart()}>
-                Ya, Kosongkan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {stockWarning && (
-        <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center">
-          <div className="rounded-full bg-red-900/90 px-5 py-3 text-sm font-medium text-red-100 shadow-lg" onClick={() => setStockWarning(null)}>
-            {stockWarning}
-          </div>
-        </div>
-      )}
+      {confirmDialog}
     </div>
   )
 }

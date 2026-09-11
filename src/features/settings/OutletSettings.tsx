@@ -4,6 +4,7 @@ import { getSettings } from '@/db/repositories/settings'
 import { getActiveOutlet, listOutlets, saveOutlet, setActiveOutlet } from '@/db/repositories/outlets'
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
+import { Modal } from '@/components/ui/Modal'
 import type { Outlet } from '@/types/domain'
 
 export function OutletSettings() {
@@ -56,11 +57,11 @@ export function OutletSettings() {
           </div>
           <div className="flex gap-2">
             {o.id !== activeId && o.active && (
-              <button className="btn-ghost !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => void guard(() => setActiveOutlet(o.id))}>
+              <button className="btn-ghost !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={() => void guard(() => setActiveOutlet(o.id))}>
                 Jadikan aktif
               </button>
             )}
-            <button className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => setEditing(o)}>
+            <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={() => setEditing(o)}>
               Ubah
             </button>
           </div>
@@ -98,8 +99,7 @@ function OutletForm({
   const [active, setActive] = useState(outlet?.active ?? true)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-5" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="w-full max-w-sm rounded-2xl bg-ink-900 p-5">
         <h3 className="mb-3 text-lg font-bold text-ink-50">{outlet ? 'Ubah Outlet' : 'Outlet Baru'}</h3>
         <label className="mb-3 block">
           <span className="mb-1 block text-sm text-ink-300">Nama</span>
@@ -126,7 +126,6 @@ function OutletForm({
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

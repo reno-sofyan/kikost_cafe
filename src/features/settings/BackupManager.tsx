@@ -6,6 +6,7 @@ import { formatDateTime } from '@/lib/datetime'
 import { saveTextFile } from '@/lib/saveFile'
 import { markBackupDone } from '@/lib/backupReminder'
 import { Capacitor } from '@capacitor/core'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 export function BackupManager() {
   const currentUser = useSessionStore((s) => s.currentUser)!
@@ -110,23 +111,14 @@ export function BackupManager() {
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       {confirmRestoreFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setConfirmRestoreFile(null)}>
-          <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-2 text-lg font-bold text-red-400">Konfirmasi Pemulihan</h2>
-            <p className="mb-4 text-sm text-ink-300">
-              Anda akan memulihkan data dari <span className="font-semibold">{confirmRestoreFile.name}</span>. Seluruh data
-              saat ini di perangkat ini akan diganti. Tindakan ini tidak dapat dibatalkan. Lanjutkan?
-            </p>
-            <div className="flex gap-3">
-              <button className="btn-ghost flex-1" onClick={() => setConfirmRestoreFile(null)}>
-                Batal
-              </button>
-              <button className="btn-danger flex-[2]" onClick={() => void handleRestore(confirmRestoreFile)}>
-                Ya, Pulihkan
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Konfirmasi Pemulihan"
+          description={`Anda akan memulihkan data dari "${confirmRestoreFile.name}". Seluruh data saat ini di perangkat ini akan diganti. Tindakan ini tidak dapat dibatalkan. Lanjutkan?`}
+          confirmLabel="Ya, Pulihkan"
+          tone="danger"
+          onCancel={() => setConfirmRestoreFile(null)}
+          onConfirm={() => void handleRestore(confirmRestoreFile)}
+        />
       )}
     </div>
   )

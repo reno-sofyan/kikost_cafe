@@ -109,7 +109,7 @@ export function StockOpnamePanel({ userId, userName }: Props) {
               </p>
             </div>
             {o.status === 'draft' && (
-              <button className="btn-secondary !min-h-0 !px-3 !py-1 text-xs" onClick={() => { setOpenId(o.id); setCounts({}); setNote(o.note) }}>
+              <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => { setOpenId(o.id); setCounts({}); setNote(o.note) }}>
                 Lanjutkan
               </button>
             )}

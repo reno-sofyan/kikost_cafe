@@ -68,7 +68,7 @@ export function SettingsScreen() {
         {tabs
           .filter((t) => t.visible)
           .map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`btn !min-h-0 !px-4 !py-2 text-sm ${tab === t.key ? 'btn-primary' : 'btn-secondary'}`}>
+            <button key={t.key} onClick={() => setTab(t.key)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${tab === t.key ? 'btn-primary' : 'btn-secondary'}`}>
               {t.label}
             </button>
           ))}

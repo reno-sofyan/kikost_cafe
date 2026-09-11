@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 
 /**
  * Halaman pesan-mandiri pelanggan (publik, tanpa login, tanpa Dexie).
@@ -278,12 +280,11 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
     .reduce((s, o) => s + o.priceDelta, 0)
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end bg-black/50" onClick={onClose}>
-      <div className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-ink-900 p-5" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} align="bottom" className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-ink-900 p-5 sm:rounded-2xl">
         <div className="mb-3 flex items-start justify-between">
           <h2 className="text-lg font-bold">{item.name}</h2>
-          <button className="text-ink-400" onClick={onClose}>
-            tutup
+          <button className="rounded-full p-1.5 text-ink-400 hover:bg-ink-800 hover:text-ink-100" aria-label="Tutup" onClick={onClose}>
+            <Icon name="close" size={18} />
           </button>
         </div>
 
@@ -320,11 +321,11 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
         </label>
 
         <div className="mb-4 flex items-center gap-4">
-          <button className="btn-secondary !min-h-0 !px-4 !py-2 text-lg" onClick={() => setQty((q) => Math.max(1, q - 1))}>
+          <button className="btn-secondary btn-compact !px-4 text-lg" onClick={() => setQty((q) => Math.max(1, q - 1))}>
             −
           </button>
           <span className="text-lg font-bold">{qty}</span>
-          <button className="btn-secondary !min-h-0 !px-4 !py-2 text-lg" onClick={() => setQty((q) => Math.min(99, q + 1))}>
+          <button className="btn-secondary btn-compact !px-4 text-lg" onClick={() => setQty((q) => Math.min(99, q + 1))}>
             +
           </button>
         </div>
@@ -336,8 +337,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
         >
           {missingRequired ? 'Pilih varian wajib dulu' : `Tambah · ${rupiah((item.price + extra) * qty)}`}
         </button>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -511,9 +511,9 @@ function StatusPage() {
               Minta Tagihan
             </button>
           </div>
-          <a href={`/order/${token}`} className="btn-ghost w-full">
+          <Link to={`/order/${token}`} className="btn-ghost w-full">
             Tambah Pesanan
-          </a>
+          </Link>
           {callSent && <p className="text-center text-sm text-sage-400">{callSent}</p>}
         </div>
       )}

@@ -62,7 +62,7 @@ export function TableQrSettings() {
         <div className="flex gap-2">
           <input className="input-field" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://pos.kikost.com" />
           <button
-            className="btn-primary !min-h-0 !px-4"
+            className="btn-primary !min-h-[2.75rem] !px-4"
             onClick={() =>
               void guard(async () => {
                 await updateSettings({ qrOrderBaseUrl: baseUrl.trim().replace(/\/+$/, '') })
@@ -89,7 +89,7 @@ export function TableQrSettings() {
             onChange={(e) => setNewName(e.target.value)}
           />
           <button
-            className="btn-secondary !min-h-0 !px-4"
+            className="btn-secondary !min-h-[2.75rem] !px-4"
             disabled={!newName.trim()}
             onClick={() =>
               void guard(async () => {
@@ -168,7 +168,7 @@ function TableRow({
             <>
               <input className="input-field !min-h-0 !py-1 text-sm" value={name} onChange={(e) => setName(e.target.value)} />
               <button
-                className="btn-primary !min-h-0 !px-2 !py-1 text-xs"
+                className="btn-primary !min-h-[2.75rem] !px-2 !py-1 text-xs"
                 onClick={() =>
                   void guard(async () => {
                     await updateTable(table.id, { name: name.trim() || table.name })
@@ -202,7 +202,7 @@ function TableRow({
 
         <div className="mt-auto flex flex-wrap gap-2">
           <button
-            className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs"
+            className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs"
             onClick={() => void guard(() => issueQrToken(table.id, actor))}
           >
             {table.qrToken ? 'Ganti Token' : 'Buat QR'}
@@ -210,7 +210,7 @@ function TableRow({
           {table.qrToken && (
             <>
               <button
-                className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs"
+                className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs"
                 onClick={() =>
                   void guard(async () => {
                     const blob = await pngBlob(orderUrl(baseUrl, table.qrToken!))
@@ -222,7 +222,7 @@ function TableRow({
                 Unduh PNG
               </button>
               <button
-                className="btn-ghost !min-h-0 !px-3 !py-1.5 text-xs"
+                className="btn-ghost !min-h-[2.75rem] !px-3 !py-1.5 text-xs"
                 onClick={() => void guard(() => setQrActive(table.id, !table.qrActive, actor))}
               >
                 {table.qrActive ? 'Nonaktifkan' : 'Aktifkan'}

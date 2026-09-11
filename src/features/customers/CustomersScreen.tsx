@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { createCustomer, purchaseHistoryForCustomer, searchCustomers, updateCustomer } from '@/db/repositories/customers'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 import type { Customer } from '@/types/domain'
 
 export function CustomersScreen() {
@@ -110,8 +111,7 @@ function CustomerFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">{initial ? 'Edit Pelanggan' : 'Pelanggan Baru'}</h2>
         <input className="input-field mb-3" placeholder="Nama" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input-field mb-3" placeholder="Telepon" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -124,7 +124,6 @@ function CustomerFormModal({
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

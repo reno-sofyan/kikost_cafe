@@ -3,6 +3,7 @@ import { listOpenOrders } from '@/db/repositories/orders'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import type { Order } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
@@ -20,11 +21,10 @@ export function OpenBillsDrawer({ onSelect, onClose }: Props) {
   const openOrders = useLiveQuery(() => listOpenOrders(), []) ?? []
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60" onClick={onClose}>
-      <div className="flex h-full w-full max-w-sm flex-col bg-ink-900" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} align="end" className="flex h-full w-full max-w-sm flex-col bg-ink-900">
         <div className="flex flex-none items-center justify-between border-b border-ink-800 px-5 py-4">
           <h2 className="text-lg font-bold text-ink-50">Pesanan Terbuka</h2>
-          <button className="btn-ghost !min-h-0 !px-3 !py-2" onClick={onClose}>
+          <button className="btn-ghost btn-compact !px-3" aria-label="Tutup" onClick={onClose}>
             <Icon name="close" size={18} />
           </button>
         </div>
@@ -50,7 +50,6 @@ export function OpenBillsDrawer({ onSelect, onClose }: Props) {
             ))}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

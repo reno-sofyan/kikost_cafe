@@ -18,6 +18,8 @@ import { ProductFormModal } from '@/features/products/ProductFormModal'
 import { CategoryManager } from '@/features/products/CategoryManager'
 import { ModifierManager } from '@/features/products/ModifierManager'
 import { Icon } from '@/components/ui/Icon'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { toast } from '@/state/toastStore'
 import type { Product } from '@/types/domain'
 
 type Tab = 'produk' | 'kategori' | 'modifier'
@@ -43,6 +45,7 @@ export function ProductsScreen() {
   const [editing, setEditing] = useState<Product | null>(null)
   const [showForm, setShowForm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const categories = useLiveQuery(() => listCategories(), []) ?? []
   const activeProducts = useLiveQuery(() => searchProducts(search, categoryId), [search, categoryId]) ?? []
@@ -62,10 +65,19 @@ export function ProductsScreen() {
     const text = await file.text()
     const parsed = Papa.parse<ProductCsvRow>(text, { header: true, skipEmptyLines: true })
     const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]))
-    for (const row of parsed.data) {
-      if (!row.sku || !row.name) continue
+    let imported = 0
+    const skipped: string[] = []
+    for (const [i, row] of parsed.data.entries()) {
+      const rowLabel = row.name || row.sku || `baris ${i + 2}`
+      if (!row.sku || !row.name) {
+        skipped.push(`${rowLabel} (SKU/nama kosong)`)
+        continue
+      }
       const categoryId = categoryByName.get((row.category ?? '').toLowerCase()) ?? categories[0]?.id
-      if (!categoryId) continue
+      if (!categoryId) {
+        skipped.push(`${rowLabel} (kategori tak dikenal & belum ada kategori default)`)
+        continue
+      }
       await createProduct({
         categoryId,
         name: row.name,
@@ -82,6 +94,12 @@ export function ProductsScreen() {
         isAvailable: row.available !== '0',
         modifierGroupIds: [],
       })
+      imported++
+    }
+    if (skipped.length === 0) {
+      toast.success(`${imported} produk berhasil diimpor.`)
+    } else {
+      toast.error(`${imported} produk diimpor, ${skipped.length} dilewati: ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? ', ...' : ''}`)
     }
   }
 
@@ -90,7 +108,7 @@ export function ProductsScreen() {
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Produk</h1>
         {(['produk', 'kategori', 'modifier'] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-0 !px-4 !py-2 text-sm capitalize ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
+          <button key={t} onClick={() => setTab(t)} className={`btn btn-compact !px-4 text-sm capitalize ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {t}
           </button>
         ))}
@@ -165,17 +183,22 @@ export function ProductsScreen() {
                   {view === 'arsip' ? (
                     <div className="mt-3 flex gap-2">
                       <button
-                        className="btn-secondary flex-1 !min-h-0 !py-1.5 text-xs"
+                        className="btn-secondary flex-1 !min-h-[2.75rem] !py-1.5 text-xs"
                         onClick={() => void setProductArchived(product.id, false)}
                       >
                         Pulihkan
                       </button>
                       <button
-                        className="btn-ghost !min-h-0 !px-2 !py-1.5 text-xs text-red-400"
+                        className="btn-ghost !min-h-[2.75rem] !px-2 !py-1.5 text-xs text-red-400"
                         title="Hapus permanen (hanya jika belum pernah terjual)"
-                        onClick={() => {
-                          if (!confirm(`Hapus permanen "${product.name}"? Tidak bisa dibatalkan.`)) return
-                          deleteProductIfUnused(product.id).catch((e) => alert(e instanceof Error ? e.message : String(e)))
+                        onClick={async () => {
+                          const ok = await confirm({ title: `Hapus permanen "${product.name}"?`, description: 'Tidak bisa dibatalkan.', confirmLabel: 'Hapus', tone: 'danger' })
+                          if (!ok) return
+                          try {
+                            await deleteProductIfUnused(product.id)
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : String(e))
+                          }
                         }}
                       >
                         Hapus
@@ -202,7 +225,7 @@ export function ProductsScreen() {
                       </div>
                       <div className="mt-2 flex gap-2">
                         <button
-                          className="btn-secondary flex-1 !min-h-0 !py-1.5 text-xs"
+                          className="btn-secondary flex-1 !min-h-[2.75rem] !py-1.5 text-xs"
                           onClick={() => {
                             setEditing(product)
                             setShowForm(true)
@@ -211,11 +234,11 @@ export function ProductsScreen() {
                           Edit
                         </button>
                         <button
-                          className="btn-ghost !min-h-0 !px-2 !py-1.5 text-xs text-ink-400"
+                          className="btn-ghost !min-h-[2.75rem] !px-2 !py-1.5 text-xs text-ink-400"
                           title="Arsipkan — sembunyikan dari Kasir & daftar"
-                          onClick={() => {
-                            if (confirm(`Arsipkan "${product.name}"? Hilang dari Kasir & menu QR; riwayat tetap aman.`))
-                              void setProductArchived(product.id, true)
+                          onClick={async () => {
+                            const ok = await confirm({ title: `Arsipkan "${product.name}"?`, description: 'Hilang dari Kasir & menu QR; riwayat tetap aman.', confirmLabel: 'Arsipkan' })
+                            if (ok) void setProductArchived(product.id, true)
                           }}
                         >
                           Arsip
@@ -237,6 +260,7 @@ export function ProductsScreen() {
       </div>
 
       {showForm && <ProductFormModal initial={editing} onClose={() => setShowForm(false)} />}
+      {confirmDialog}
     </div>
   )
 }

@@ -24,6 +24,8 @@ import {
 import { getDeviceId } from '@/sync/device'
 import { formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { usePromptDialog } from '@/components/ui/usePromptDialog'
 
 export function SyncPanel() {
   const sync = useSyncStore()
@@ -172,6 +174,8 @@ function DeviceManager() {
   const [label, setLabel] = useState('')
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
+  const { prompt, dialog: promptDialog } = usePromptDialog()
 
   const load = useCallback(async () => {
     try {
@@ -221,22 +225,21 @@ function DeviceManager() {
             </div>
             <div className="flex flex-none gap-2">
               <button
-                className="btn-ghost !min-h-0 !px-2 !py-1 text-xs"
-                onClick={() => {
-                  const next = prompt('Nama baru untuk perangkat', d.label)
-                  if (next && next.trim()) void guard(() => renameSyncDevice(d.id, next.trim()))
+                className="btn-ghost !min-h-[2.75rem] !px-2 !py-1 text-xs"
+                onClick={async () => {
+                  const next = await prompt({ title: 'Ubah Nama Perangkat', initialValue: d.label })
+                  if (next) void guard(() => renameSyncDevice(d.id, next))
                 }}
               >
                 Ubah nama
               </button>
               {!d.revoked && (
                 <button
-                  className="btn-danger !min-h-0 !px-2 !py-1 text-xs"
+                  className="btn-danger !min-h-[2.75rem] !px-2 !py-1 text-xs"
                   disabled={busy}
-                  onClick={() => {
-                    if (confirm(`Cabut akses "${d.label}"? Perangkat itu tak bisa sync lagi.`)) {
-                      void guard(() => revokeSyncDevice(d.id))
-                    }
+                  onClick={async () => {
+                    const ok = await confirm({ title: `Cabut akses "${d.label}"?`, description: 'Perangkat itu tak bisa sync lagi.', confirmLabel: 'Cabut', tone: 'danger' })
+                    if (ok) void guard(() => revokeSyncDevice(d.id))
                   }}
                 >
                   Cabut
@@ -257,7 +260,7 @@ function DeviceManager() {
         <input className="input-field !min-h-0 !py-2 text-sm" placeholder="Nama perangkat (mis. Tablet Bar)" value={label} onChange={(e) => setLabel(e.target.value)} />
         <input className="input-field !min-h-0 !py-2 font-mono text-xs" placeholder="Kunci perangkat (buat di tablet baru, tempel di sini)" value={key} onChange={(e) => setKey(e.target.value)} />
         <button
-          className="btn-primary !min-h-0 !py-2 text-sm"
+          className="btn-primary !min-h-[2.75rem] !py-2 text-sm"
           disabled={busy || !label.trim() || key.trim().length < 16}
           onClick={() =>
             void guard(async () => {
@@ -270,6 +273,8 @@ function DeviceManager() {
           Daftarkan
         </button>
       </div>
+      {confirmDialog}
+      {promptDialog}
     </div>
   )
 }

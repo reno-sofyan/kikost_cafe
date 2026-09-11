@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { searchCustomers } from '@/db/repositories/customers'
 import { listTables, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
+import { Modal } from '@/components/ui/Modal'
 import type { Customer, OrderType } from '@/types/domain'
 
 interface Props {
@@ -44,8 +45,7 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-6">
         <h2 className="mb-4 text-lg font-bold text-ink-50">Pesanan Baru</h2>
 
         <div className="mb-4 grid grid-cols-3 gap-2">
@@ -64,11 +64,11 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
           <>
             <div className="mb-4 flex items-center gap-3">
               <span className="text-sm text-ink-300">Jumlah Tamu</span>
-              <button className="btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setGuestCount((g) => Math.max(1, g - 1))}>
+              <button className="btn-secondary btn-compact !px-3" onClick={() => setGuestCount((g) => Math.max(1, g - 1))}>
                 −
               </button>
               <span className="w-6 text-center font-bold">{guestCount}</span>
-              <button className="btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setGuestCount((g) => g + 1)}>
+              <button className="btn-secondary btn-compact !px-3" onClick={() => setGuestCount((g) => g + 1)}>
                 +
               </button>
             </div>
@@ -78,7 +78,7 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
                 <h3 className="mb-2 text-sm font-semibold text-ink-300">Meja (opsional)</h3>
                 <div className="flex flex-wrap gap-2">
                   <button
-                    className={`btn !min-h-0 !px-3 !py-1.5 text-sm ${tableId === null ? 'btn-primary' : 'btn-secondary'}`}
+                    className={`btn btn-compact !px-3 text-sm ${tableId === null ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => setTableId(null)}
                   >
                     Tanpa meja
@@ -86,7 +86,7 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
                   {selectableTables.map((t) => (
                     <button
                       key={t.id}
-                      className={`btn !min-h-0 !px-3 !py-1.5 text-sm ${tableId === t.id ? 'btn-primary' : 'btn-secondary'}`}
+                      className={`btn btn-compact !px-3 text-sm ${tableId === t.id ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setTableId(t.id)}
                     >
                       {t.name}
@@ -154,7 +154,6 @@ export function NewOrderModal({ onCancel, onConfirm }: Props) {
             Mulai Pesanan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

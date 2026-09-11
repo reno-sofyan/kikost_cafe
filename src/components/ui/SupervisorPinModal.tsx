@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { verifySupervisorPin } from '@/db/repositories/users'
 import { PinPad } from '@/components/ui/PinPad'
+import { Modal } from '@/components/ui/Modal'
 import type { User } from '@/types/domain'
 
 interface Props {
@@ -32,8 +33,7 @@ export function SupervisorPinModal({ title, description, onCancel, onApproved }:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-xs rounded-2xl bg-ink-900 p-6 text-center" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="w-full max-w-xs rounded-2xl bg-ink-900 p-6 text-center">
         <h2 className="mb-1 text-lg font-bold text-ink-50">{title}</h2>
         {description && <p className="mb-3 text-sm text-ink-400">{description}</p>}
         <p className="mb-3 text-xs text-ink-500">Perlu PIN Supervisor/Administrator</p>
@@ -42,7 +42,6 @@ export function SupervisorPinModal({ title, description, onCancel, onApproved }:
         <button className="btn-ghost mt-3 text-sm" onClick={onCancel}>
           Batal
         </button>
-      </div>
-    </div>
+    </Modal>
   )
 }

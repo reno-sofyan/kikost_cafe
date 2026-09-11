@@ -13,6 +13,7 @@ import { countActivePrintFailures } from '@/db/repositories/printQueue'
 import { countPendingQrOrders } from '@/db/repositories/qrOrders'
 import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
+import { ToastHost } from '@/components/ui/ToastHost'
 import type { Role } from '@/types/domain'
 
 interface NavItem {
@@ -162,7 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="font-semibold text-ink-50">{currentUser.name}</div>
               <div className="text-ink-400">{currentUser.role}</div>
             </div>
-            <button onClick={lock} className="btn-ghost !min-h-0 !px-3 !py-2" title="Kunci layar">
+            <button onClick={lock} className="btn-ghost !min-h-[2.75rem] !px-3 !py-2" title="Kunci layar">
               <Icon name="lock" size={18} />
             </button>
             <button
@@ -170,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 logout()
                 navigate('/')
               }}
-              className="btn-ghost !min-h-0 !px-3 !py-2"
+              className="btn-ghost !min-h-[2.75rem] !px-3 !py-2"
               title="Keluar"
             >
               <Icon name="power" size={18} />
@@ -180,6 +181,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
+      <ToastHost />
     </div>
   )
 }

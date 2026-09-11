@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
 import type { DiscountType } from '@/types/domain'
 
 interface Props {
@@ -13,8 +14,7 @@ export function DiscountModal({ initialType, initialValue, onCancel, onConfirm }
   const [value, setValue] = useState(initialValue || 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Diskon Transaksi</h2>
         <div className="mb-4 grid grid-cols-2 gap-2">
           <button onClick={() => setType('percent')} className={`btn ${type === 'percent' ? 'btn-primary' : 'btn-secondary'}`}>
@@ -45,7 +45,6 @@ export function DiscountModal({ initialType, initialValue, onCancel, onConfirm }
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

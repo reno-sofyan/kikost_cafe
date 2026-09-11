@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
 
 interface Props {
   title: string
@@ -13,8 +14,7 @@ export function ReasonPromptModal({ title, description, confirmLabel = 'Konfirma
   const [error, setError] = useState<string | null>(null)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel}>
         <h2 className="mb-1 text-lg font-bold text-ink-50">{title}</h2>
         {description && <p className="mb-3 text-sm text-ink-400">{description}</p>}
         <textarea
@@ -43,7 +43,6 @@ export function ReasonPromptModal({ title, description, confirmLabel = 'Konfirma
             {confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

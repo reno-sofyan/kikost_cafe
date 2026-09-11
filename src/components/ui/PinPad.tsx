@@ -32,6 +32,7 @@ export function PinPad({ value, onChange, onSubmit, maxLength = 8, disabled }: P
             type="button"
             onClick={() => pressKey(key)}
             disabled={disabled}
+            aria-label={key === 'del' ? 'Hapus digit terakhir' : undefined}
             className="numpad-key"
           >
             {key === 'del' ? <Icon name="backspace" size={22} className="mx-auto" /> : key}

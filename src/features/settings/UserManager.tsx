@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { createUser, listUsers, setUserActive, updateUser, updateUserPin } from '@/db/repositories/users'
 import { ROLE_LABELS } from '@/lib/permissions'
 import { isValidPinFormat } from '@/lib/pinHash'
+import { Modal } from '@/components/ui/Modal'
 import type { Role, User } from '@/types/domain'
 
 export function UserManager() {
@@ -28,7 +29,7 @@ export function UserManager() {
                 Aktif
               </label>
               <button
-                className="btn-secondary !min-h-0 !px-3 !py-1.5 text-sm"
+                className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-sm"
                 onClick={() => {
                   setEditing(u)
                   setShowForm(true)
@@ -77,8 +78,7 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">{initial ? 'Edit Pengguna' : 'Pengguna Baru'}</h2>
         <label className="mb-3 block">
           <span className="mb-1 block text-sm text-ink-300">Nama</span>
@@ -113,7 +113,6 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

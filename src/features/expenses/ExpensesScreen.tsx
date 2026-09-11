@@ -5,6 +5,7 @@ import { getOpenShift } from '@/db/repositories/shifts'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -75,8 +76,7 @@ function ExpenseFormModal({ shiftId, userId, onClose }: { shiftId: string | null
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Catat Pengeluaran</h2>
         <label className="mb-3 block">
           <span className="mb-1 block text-sm text-ink-300">Kategori</span>
@@ -118,7 +118,6 @@ function ExpenseFormModal({ shiftId, userId, onClose }: { shiftId: string | null
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

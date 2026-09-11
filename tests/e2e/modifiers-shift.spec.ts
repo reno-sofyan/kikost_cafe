@@ -53,7 +53,7 @@ test('tutup shift DITOLAK bila masih ada open bill', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Snack' }).click()
   await page.getByRole('button', { name: /Kentang Goreng/ }).click()
-  await page.getByRole('button', { name: 'Simpan', exact: true }).click()
+  await page.getByRole('button', { name: 'Tutup', exact: true }).click()
 
   await page.getByRole('link', { name: 'Shift' }).click()
   await page.getByRole('button', { name: 'Tutup Shift', exact: true }).click()

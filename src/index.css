@@ -83,6 +83,12 @@
   .eyebrow {
     @apply text-xs font-semibold uppercase tracking-[0.14em] text-ink-300;
   }
+  /* Varian tombol yang lebih ringkas dari default (tab, stepper, aksi baris tabel) —
+     TETAP jaga tinggi minimum ramah-sentuh (44px) untuk tablet kasir, beda dengan
+     sekadar `!min-h-0` yang menghilangkan batas sentuh sama sekali. */
+  .btn-compact {
+    @apply !min-h-[2.75rem] !py-2;
+  }
 }
 
 ::-webkit-scrollbar {

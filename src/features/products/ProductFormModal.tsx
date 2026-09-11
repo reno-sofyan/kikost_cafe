@@ -7,6 +7,7 @@ import { listIngredients } from '@/db/repositories/stock'
 import { parseRupiahInput, formatRupiah } from '@/lib/currency'
 import { compatibleUnits } from '@/lib/units'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import { db } from '@/db/schema'
 import type { Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
 
@@ -111,8 +112,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-ink-900 p-6">
         <h2 className="mb-4 text-lg font-bold text-ink-50">{initial ? 'Edit Produk' : 'Produk Baru'}</h2>
 
         <div className="grid grid-cols-2 gap-4">
@@ -215,7 +215,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ink-300">Resep / BOM (opsional)</h3>
-            <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={addRecipeItem} disabled={ingredients.length === 0}>
+            <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={addRecipeItem} disabled={ingredients.length === 0}>
               + Bahan
             </button>
           </div>
@@ -256,7 +256,12 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
                   </option>
                 ))}
               </select>
-              <button type="button" className="text-red-400" onClick={() => setRecipeItems((prev) => prev.filter((_, i) => i !== index))}>
+              <button
+                type="button"
+                className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-red-400 hover:bg-ink-700"
+                aria-label="Hapus bahan resep"
+                onClick={() => setRecipeItems((prev) => prev.filter((_, i) => i !== index))}
+              >
                 <Icon name="close" size={16} />
               </button>
             </div>
@@ -276,7 +281,6 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

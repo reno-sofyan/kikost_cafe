@@ -133,7 +133,7 @@ export function QrOrderInbox() {
                   {tableName.get(c.tableId) ?? 'Meja'} — {CALL_LABEL[c.type]}
                   <span className="ml-2 text-xs text-ink-400">{durationSince(c.createdAt, now)}</span>
                 </span>
-                <button className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => void run(c.id, () => resolveTableCall(c.id))}>
+                <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={() => void run(c.id, () => resolveTableCall(c.id))}>
                   Selesai
                 </button>
               </div>
@@ -180,14 +180,14 @@ export function QrOrderInbox() {
                       />
                       <div className="flex gap-2">
                         <button
-                          className="btn-danger flex-1 !min-h-0 !py-2 text-sm"
+                          className="btn-danger flex-1 !min-h-[2.75rem] !py-2 text-sm"
                           disabled={busyId === order.id || !rejectReason.trim()}
                           onClick={() => void run(order.id, () => rejectQrOrder(order.id, rejectReason, actor))}
                         >
                           Tolak Pesanan
                         </button>
                         <button
-                          className="btn-ghost !min-h-0 !py-2 text-sm"
+                          className="btn-ghost !min-h-[2.75rem] !py-2 text-sm"
                           onClick={() => {
                             setRejecting(null)
                             setRejectReason('')
@@ -201,7 +201,7 @@ export function QrOrderInbox() {
                     <div className="space-y-2">
                       {order.tableId && mergeTargets.get(order.tableId) && (
                         <button
-                          className="btn-secondary w-full !min-h-0 !py-2 text-sm"
+                          className="btn-secondary w-full !min-h-[2.75rem] !py-2 text-sm"
                           disabled={busyId === order.id}
                           onClick={() =>
                             void run(order.id, () =>
@@ -214,14 +214,14 @@ export function QrOrderInbox() {
                       )}
                       <div className="flex gap-2">
                         <button
-                          className="btn-primary flex-1 !min-h-0 !py-2 text-sm"
+                          className="btn-primary flex-1 !min-h-[2.75rem] !py-2 text-sm"
                           disabled={busyId === order.id}
                           onClick={() => void accept(order.id)}
                         >
                           {busyId === order.id ? 'Memproses...' : 'Terima sbg. pesanan baru'}
                         </button>
                         <button
-                          className="btn-secondary !min-h-0 !px-3 !py-2 text-sm"
+                          className="btn-secondary !min-h-[2.75rem] !px-3 !py-2 text-sm"
                           onClick={() => setRejecting(order.id)}
                         >
                           Tolak

@@ -36,6 +36,7 @@ export type IconName =
   | 'checkCircle'
   | 'backspace'
   | 'barcode'
+  | 'pager'
 
 const SHAPES: Record<IconName, ReactNode> = {
   search: (
@@ -215,6 +216,13 @@ const SHAPES: Record<IconName, ReactNode> = {
   barcode: (
     <>
       <path d="M4 5v14M8 5v14M11 5v14M15 5v14M18 5v14M20.5 5v14" />
+    </>
+  ),
+  pager: (
+    <>
+      <rect x="4" y="7" width="16" height="13" rx="2" />
+      <path d="M8 7V5.5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2V7" />
+      <path d="M7.5 12h9M7.5 15.5h5" />
     </>
   ),
 }

@@ -5,6 +5,7 @@ import { adjustIngredientStock, createIngredient, listIngredients, listLowStockI
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import { PurchasingPanel } from '@/features/inventory/PurchasingPanel'
 import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
 import { ProductionPanel } from '@/features/inventory/ProductionPanel'
@@ -44,7 +45,7 @@ export function InventoryScreen() {
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Stok &amp; Bahan Baku</h1>
         {(['bahan', 'pembelian', 'produksi', 'opname', 'riwayat'] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-0 !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
+          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {{ bahan: 'Bahan Baku', pembelian: 'Pembelian', produksi: 'Produksi', opname: 'Stok Opname', riwayat: 'Riwayat Pergerakan' }[t]}
           </button>
         ))}
@@ -126,8 +127,7 @@ function NewIngredientModal({ onClose }: { onClose: () => void }) {
   const [costPerUnit, setCostPerUnit] = useState(0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Bahan Baku Baru</h2>
         <input className="input-field mb-3" placeholder="Nama bahan" value={name} onChange={(e) => setName(e.target.value)} />
         <select className="input-field mb-3" value={unit} onChange={(e) => setUnit(e.target.value as UnitOfMeasure)}>
@@ -164,8 +164,7 @@ function NewIngredientModal({ onClose }: { onClose: () => void }) {
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -175,8 +174,7 @@ function AdjustStockModal({ ingredient, userId, onClose }: { ingredient: Ingredi
   const [note, setNote] = useState('')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-1 text-lg font-bold text-ink-50">Sesuaikan Stok</h2>
         <p className="mb-4 text-sm text-ink-400">
           {ingredient.name} • Stok saat ini: {ingredient.stockQty} {ingredient.unit}
@@ -184,7 +182,7 @@ function AdjustStockModal({ ingredient, userId, onClose }: { ingredient: Ingredi
 
         <div className="mb-3 grid grid-cols-3 gap-2">
           {(['stock_in', 'stock_out', 'waste'] as StockMovementReason[]).map((r) => (
-            <button key={r} onClick={() => setMode(r)} className={`btn !min-h-0 !py-2 text-xs ${mode === r ? 'btn-primary' : 'btn-secondary'}`}>
+            <button key={r} onClick={() => setMode(r)} className={`btn !min-h-[2.75rem] !py-2 text-xs ${mode === r ? 'btn-primary' : 'btn-secondary'}`}>
               {REASON_LABELS[r]}
             </button>
           ))}
@@ -215,7 +213,6 @@ function AdjustStockModal({ ingredient, userId, onClose }: { ingredient: Ingredi
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

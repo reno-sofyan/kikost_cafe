@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings } from '@/db/repositories/settings'
 import { formatRupiah } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 
 interface Props {
   amount: number
@@ -12,8 +13,7 @@ export function QrisPaymentModal({ amount, onCancel, onConfirm }: Props) {
   const settings = useLiveQuery(() => getSettings(), [])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6 text-center" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel} className="w-full max-w-sm rounded-2xl bg-ink-900 p-6 text-center">
         <h2 className="mb-1 text-lg font-bold text-ink-50">Pembayaran QRIS</h2>
         <p className="mb-4 text-2xl font-bold text-brew-400">{formatRupiah(amount)}</p>
 
@@ -38,7 +38,6 @@ export function QrisPaymentModal({ amount, onCancel, onConfirm }: Props) {
             Pembayaran Telah Diterima
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 
 const QUICK_DENOMINATIONS = [5000, 10000, 20000, 50000, 100000]
 
@@ -30,8 +31,7 @@ export function CashPaymentModal({ remaining, onCancel, onConfirm }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onCancel}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Pembayaran Tunai</h2>
 
         <label className="mb-3 block">
@@ -87,7 +87,6 @@ export function CashPaymentModal({ remaining, onCancel, onConfirm }: Props) {
             Konfirmasi
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -94,7 +94,7 @@ export function KitchenDisplayScreen() {
           <button
             key={tab.value}
             onClick={() => setFilter(tab.value)}
-            className={`btn !min-h-0 !px-4 !py-2 text-sm ${filter === tab.value ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn btn-compact !px-4 text-sm ${filter === tab.value ? 'btn-primary' : 'btn-secondary'}`}
           >
             {tab.label}
           </button>
@@ -121,12 +121,14 @@ export function KitchenDisplayScreen() {
                         order.pagerCalledAt ? 'bg-sage-600/30 text-sage-400' : 'bg-ink-700 text-ink-300'
                       }`}
                     >
-                      📟 Pager #{order.pagerNumber}
+                      <Icon name="pager" size={13} />
+                      Pager #{order.pagerNumber}
                       {order.pagerCalledAt ? ' • dipanggil' : ' • menunggu'}
                     </div>
                   ) : order.pagerCalledAt == null ? (
                     <div className="mb-2 inline-flex w-fit items-center gap-1 rounded bg-yellow-900/30 px-2 py-0.5 text-xs font-semibold text-yellow-400">
-                      📟 menunggu coaster (semua dipakai)
+                      <Icon name="pager" size={13} />
+                      menunggu coaster (semua dipakai)
                     </div>
                   ) : null
                 )}
@@ -163,7 +165,7 @@ export function KitchenDisplayScreen() {
                       ) : (
                         NEXT_STATUS[item.kitchenStatus] && (
                           <button
-                            className="btn-secondary mt-2 w-full !min-h-0 !py-1.5 text-xs"
+                            className="btn-secondary mt-2 w-full !min-h-[2.75rem] !py-1.5 text-xs"
                             onClick={() => void setOrderItemKitchenStatus(item.id, NEXT_STATUS[item.kitchenStatus]!)}
                           >
                             {STATUS_ACTION_LABEL[item.kitchenStatus]}

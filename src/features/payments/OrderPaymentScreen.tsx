@@ -82,13 +82,13 @@ export function OrderPaymentScreen() {
             <p className="text-ink-400">{activeItems.length} item · Total {formatRupiah(order.grandTotal)}</p>
           </div>
           {!isSplit && activeItems.length > 1 && (
-            <button className="btn-secondary !min-h-0 !px-3 !py-2 text-sm" onClick={() => setShowSplit(true)}>
+            <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-2 text-sm" onClick={() => setShowSplit(true)}>
               <Icon name="receipt" size={15} className="mr-1 inline" /> Pisah per Item
             </button>
           )}
           {isSplit && (
             <button
-              className="btn-ghost !min-h-0 !px-3 !py-2 text-sm"
+              className="btn-ghost !min-h-[2.75rem] !px-3 !py-2 text-sm"
               onClick={() => void unsplitBills(orderId).catch(() => {})}
             >
               Gabungkan Tagihan
@@ -324,7 +324,7 @@ function BillPayCard({
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
           />
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
-          <button className="btn-primary w-full !min-h-0 !py-2.5 text-sm" disabled={!canSettle || isSubmitting} onClick={() => submit()}>
+          <button className="btn-primary w-full !min-h-[2.75rem] !py-2.5 text-sm" disabled={!canSettle || isSubmitting} onClick={() => submit()}>
             {isSubmitting ? 'Memproses…' : `Bayar ${bill.label}`}
           </button>
         </>
@@ -366,7 +366,7 @@ function PayControls({
     <>
       <div className="mb-3 grid grid-cols-4 gap-2">
         {(['cash', 'qris', 'transfer', 'card'] as PaymentMethod[]).map((method) => (
-          <button key={method} disabled={remaining <= 0} onClick={() => setActiveModal(method)} className="btn-secondary !min-h-0 !py-2 text-sm">
+          <button key={method} disabled={remaining <= 0} onClick={() => setActiveModal(method)} className="btn-secondary !min-h-[2.75rem] !py-2 text-sm">
             {METHOD_LABELS[method]}
           </button>
         ))}
@@ -379,7 +379,11 @@ function PayControls({
               <span className="text-ink-200">{line.methodLabel}</span>
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-ink-50">{formatRupiah(line.amount)}</span>
-                <button className="text-red-400" onClick={() => removeLine(line.key)}>
+                <button
+                  className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-red-400 hover:bg-ink-700"
+                  aria-label={`Hapus pembayaran ${line.methodLabel}`}
+                  onClick={() => removeLine(line.key)}
+                >
                   <Icon name="close" size={16} />
                 </button>
               </div>

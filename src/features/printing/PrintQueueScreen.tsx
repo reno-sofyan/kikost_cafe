@@ -31,7 +31,7 @@ export function PrintQueueScreen() {
     <div className="flex h-full flex-col">
       <div className="flex flex-none flex-wrap items-center gap-3 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-2 text-xl font-bold text-ink-50">Antrean Cetak</h1>
-        <button className="btn-secondary !min-h-0 !px-4 !py-2 text-sm" onClick={() => void processPrintQueue()}>
+        <button className="btn-secondary !min-h-[2.75rem] !px-4 !py-2 text-sm" onClick={() => void processPrintQueue()}>
           Proses Sekarang
         </button>
         {(['cashier', 'kitchen', 'bar'] as const).map((s) =>
@@ -61,13 +61,13 @@ export function PrintQueueScreen() {
               <div className="flex flex-none items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[job.status]}`}>{job.status}</span>
                 {canRetry && (job.status === 'FAILED' || job.status === 'PERMANENTLY_FAILED' || job.status === 'RETRYING') && (
-                  <button className="btn-secondary !min-h-0 !px-3 !py-1 text-xs" onClick={() => void retryPrintJob(job.id, actor)}>
+                  <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void retryPrintJob(job.id, actor)}>
                     Retry
                   </button>
                 )}
                 {canReprint && job.status === 'PRINTED' && job.kind === 'receipt' && job.orderId && (
                   <button
-                    className="btn-secondary !min-h-0 !px-3 !py-1 text-xs"
+                    className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs"
                     onClick={() => void enqueueReceiptForOrder(job.orderId!, actor, { isReprint: true })}
                   >
                     Reprint

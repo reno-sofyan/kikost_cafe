@@ -4,6 +4,7 @@ import { buildOperationsReport, buildSalesReport, buildStockReport } from '@/db/
 import { formatRupiah, formatNumber } from '@/lib/currency'
 import { startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { exportAccountingJournalCsv, exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
+import { toast } from '@/state/toastStore'
 
 type Preset = 'today' | 'week' | 'month' | 'custom'
 
@@ -36,7 +37,7 @@ export function ReportsScreen() {
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Laporan</h1>
         {(['today', 'week', 'month', 'custom'] as Preset[]).map((p) => (
-          <button key={p} onClick={() => setPreset(p)} className={`btn !min-h-0 !px-4 !py-2 text-sm ${preset === p ? 'btn-primary' : 'btn-secondary'}`}>
+          <button key={p} onClick={() => setPreset(p)} className={`btn btn-compact !px-4 text-sm ${preset === p ? 'btn-primary' : 'btn-secondary'}`}>
             {p === 'today' ? 'Hari Ini' : p === 'week' ? '7 Hari' : p === 'month' ? 'Bulan Ini' : 'Kustom'}
           </button>
         ))}
@@ -59,7 +60,7 @@ export function ReportsScreen() {
               className="btn-secondary"
               onClick={async () => {
                 const { balanced } = await exportAccountingJournalCsv(range)
-                if (!balanced) alert('Peringatan: jurnal tidak seimbang. Periksa data transaksi.')
+                if (!balanced) toast.error('Peringatan: jurnal tidak seimbang. Periksa data transaksi.')
               }}
             >
               Jurnal Akuntansi

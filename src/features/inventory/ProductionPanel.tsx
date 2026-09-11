@@ -11,6 +11,7 @@ import {
 import { compatibleUnits } from '@/lib/units'
 import { formatDateTime } from '@/lib/datetime'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import type { StockMovementItemType, UnitOfMeasure, User } from '@/types/domain'
 
 interface DraftInput {
@@ -45,6 +46,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
   const [note, setNote] = useState('')
   const [inputs, setInputs] = useState<DraftInput[]>([])
   const [error, setError] = useState<string | null>(null)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [shortId, setShortId] = useState<{ productionId: string; items: string[] } | null>(null)
@@ -168,7 +170,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
               </div>
             )
           })}
-          <button className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={addInput}>+ Bahan</button>
+          <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={addInput}>+ Bahan</button>
         </div>
 
         <input className="input-field !min-h-0 !py-2 text-sm" placeholder="Catatan (opsional)" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -226,12 +228,18 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
             {r.status === 'draft' && (
               <div className="mt-2 flex gap-2">
                 <button
-                  className="btn-primary !min-h-0 !px-3 !py-1 text-xs"
+                  className="btn-primary !min-h-[2.75rem] !px-3 !py-1 text-xs"
                   onClick={() => void completeProduction({ productionId: r.id, completedBy: userId, completedByName: userName }).catch(() => {})}
                 >
                   Selesaikan
                 </button>
-                <button className="btn-ghost !min-h-0 !px-3 !py-1 text-xs" onClick={() => void deleteDraftProduction(r.id)}>
+                <button
+                  className="btn-ghost !min-h-[2.75rem] !px-3 !py-1 text-xs"
+                  onClick={async () => {
+                    const ok = await confirm({ title: 'Hapus draf produksi ini?', confirmLabel: 'Hapus', tone: 'danger' })
+                    if (ok) void deleteDraftProduction(r.id)
+                  }}
+                >
                   Hapus draf
                 </button>
               </div>
@@ -239,6 +247,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
           </div>
         ))}
       </div>
+      {confirmDialog}
     </div>
   )
 }

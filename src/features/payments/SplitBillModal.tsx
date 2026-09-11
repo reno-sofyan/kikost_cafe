@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { splitBillByItems } from '@/db/repositories/billing'
 import { formatRupiah } from '@/lib/currency'
+import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import type { OrderItem } from '@/types/domain'
 
 /**
@@ -60,20 +62,19 @@ export function SplitBillModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-5" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink-50">Pisah Tagihan per Item</h2>
-          <button className="text-ink-400" onClick={onClose}>
-            tutup
+          <button className="rounded-full p-1.5 text-ink-400 hover:bg-ink-800 hover:text-ink-100" aria-label="Tutup" onClick={onClose}>
+            <Icon name="close" size={18} />
           </button>
         </div>
 
         <div className="mb-4 flex items-center gap-3">
           <span className="text-sm text-ink-300">Jumlah tagihan</span>
-          <button className="btn-secondary !min-h-0 !px-3 !py-1" onClick={() => setBucketCount(count - 1)}>−</button>
+          <button className="btn-secondary btn-compact !px-3" onClick={() => setBucketCount(count - 1)}>−</button>
           <span className="font-bold text-ink-50">{count}</span>
-          <button className="btn-secondary !min-h-0 !px-3 !py-1" onClick={() => setBucketCount(count + 1)}>+</button>
+          <button className="btn-secondary btn-compact !px-3" onClick={() => setBucketCount(count + 1)}>+</button>
         </div>
 
         <div className="mb-4 space-y-2">
@@ -122,7 +123,6 @@ export function SplitBillModal({
             {busy ? 'Memproses…' : 'Buat Tagihan Terpisah'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

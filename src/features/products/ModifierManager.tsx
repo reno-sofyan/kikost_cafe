@@ -12,6 +12,8 @@ import {
 } from '@/db/repositories/modifiers'
 import { formatRupiah } from '@/lib/currency'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import type { ModifierGroup, ModifierGroupType, ModifierOption } from '@/types/domain'
 
 const TYPE_LABELS: Record<ModifierGroupType, string> = {
@@ -46,6 +48,7 @@ function ModifierGroupCard({ group, onEdit }: { group: ModifierGroup; onEdit: ()
   const options = useLiveQuery(() => listModifierOptions(group.id), [group.id]) ?? []
   const [newOptionName, setNewOptionName] = useState('')
   const [newOptionPrice, setNewOptionPrice] = useState(0)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   async function swap(a: ModifierOption, b: ModifierOption) {
     await updateModifierOption(a.id, { sortOrder: b.sortOrder })
@@ -69,8 +72,9 @@ function ModifierGroupCard({ group, onEdit }: { group: ModifierGroup; onEdit: ()
           <button
             className="text-red-400"
             title="Hapus grup"
-            onClick={() => {
-              if (confirm(`Hapus grup modifier "${group.name}" beserta semua opsinya?`)) void deleteModifierGroup(group.id)
+            onClick={async () => {
+              const ok = await confirm({ title: `Hapus grup modifier "${group.name}"?`, description: 'Semua opsinya ikut terhapus.', confirmLabel: 'Hapus', tone: 'danger' })
+              if (ok) void deleteModifierGroup(group.id)
             }}
           >
             <Icon name="trash" size={15} />
@@ -107,7 +111,7 @@ function ModifierGroupCard({ group, onEdit }: { group: ModifierGroup; onEdit: ()
           onChange={(e) => setNewOptionPrice(Number(e.target.value))}
         />
         <button
-          className="btn-secondary !min-h-0 !px-3 !py-2 text-sm"
+          className="btn-secondary !min-h-[2.75rem] !px-3 !py-2 text-sm"
           onClick={async () => {
             if (!newOptionName.trim()) return
             await createModifierOption({
@@ -123,6 +127,7 @@ function ModifierGroupCard({ group, onEdit }: { group: ModifierGroup; onEdit: ()
           +
         </button>
       </div>
+      {confirmDialog}
     </div>
   )
 }
@@ -143,6 +148,7 @@ function OptionRow({
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(option.name)
   const [price, setPrice] = useState(option.priceDelta)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   if (editing) {
     return (
@@ -196,10 +202,18 @@ function OptionRow({
         <button className="text-ink-400 hover:text-ink-100" title="Ubah" onClick={() => setEditing(true)}>
           <Icon name="edit" size={14} />
         </button>
-        <button className="text-red-400" title="Hapus" onClick={() => void deleteModifierOption(option.id)}>
+        <button
+          className="text-red-400"
+          title="Hapus"
+          onClick={async () => {
+            const ok = await confirm({ title: `Hapus opsi "${option.name}"?`, confirmLabel: 'Hapus', tone: 'danger' })
+            if (ok) void deleteModifierOption(option.id)
+          }}
+        >
           <Icon name="close" size={14} />
         </button>
       </span>
+      {confirmDialog}
     </div>
   )
 }
@@ -211,8 +225,7 @@ function GroupModal({ group, onClose }: { group: ModifierGroup | null; onClose: 
   const [multiSelect, setMultiSelect] = useState(group?.multiSelect ?? false)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">{group ? 'Ubah Grup Modifier' : 'Grup Modifier Baru'}</h2>
         <input className="input-field mb-3" placeholder="Nama grup" value={name} onChange={(e) => setName(e.target.value)} />
         <select className="input-field mb-3" value={type} onChange={(e) => setType(e.target.value as ModifierGroupType)}>
@@ -249,7 +262,6 @@ function GroupModal({ group, onClose }: { group: ModifierGroup | null; onClose: 
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

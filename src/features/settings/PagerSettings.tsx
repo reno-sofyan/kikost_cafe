@@ -123,7 +123,7 @@ export function PagerSettings() {
                   <option value={form.usbDeviceId}>{form.usbDeviceLabel ?? `Device ${form.usbDeviceId}`} (tak terdeteksi)</option>
                 )}
               </select>
-              <button type="button" className="btn-secondary !min-h-0 !px-3 text-xs" onClick={() => void scanDevices()} disabled={!isNative}>
+              <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 text-xs" onClick={() => void scanDevices()} disabled={!isNative}>
                 Pindai
               </button>
             </div>
@@ -207,7 +207,7 @@ export function PagerSettings() {
                 value={testNumber}
                 onChange={(e) => setTestNumber(Math.max(1, Number(e.target.value)))}
               />
-              <button type="button" className="btn-secondary !min-h-0 !px-4 text-sm" onClick={() => void runTest()} disabled={!isNative}>
+              <button type="button" className="btn-secondary !min-h-[2.75rem] !px-4 text-sm" onClick={() => void runTest()} disabled={!isNative}>
                 Bunyikan pager
               </button>
             </div>

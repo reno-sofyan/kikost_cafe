@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { db } from '@/db/schema'
 import { listModifierOptionsForGroups } from '@/db/repositories/modifiers'
 import { formatRupiah } from '@/lib/currency'
+import { Modal } from '@/components/ui/Modal'
 import type { ModifierGroup, ModifierOption, OrderItemModifierSnapshot, Product } from '@/types/domain'
 
 interface Props {
@@ -96,11 +97,7 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onCancel}>
-      <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-2xl bg-ink-900 sm:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onCancel} align="bottom" className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-2xl bg-ink-900 sm:rounded-2xl">
         <div className="flex-none border-b border-ink-800 px-5 py-4">
           <h2 className="text-lg font-bold text-ink-50">{product.name}</h2>
           <p className="text-sm text-ink-400">{formatRupiah(product.price)}</p>
@@ -149,11 +146,11 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-ink-100">Jumlah</h3>
             <div className="flex items-center gap-3">
-              <button className="btn-secondary !min-h-0 !px-4 !py-2" onClick={() => setQty((q) => Math.max(1, q - 1))}>
+              <button className="btn-secondary btn-compact !px-4" onClick={() => setQty((q) => Math.max(1, q - 1))}>
                 −
               </button>
               <span className="w-8 text-center text-lg font-bold">{qty}</span>
-              <button className="btn-secondary !min-h-0 !px-4 !py-2" onClick={() => setQty((q) => q + 1)}>
+              <button className="btn-secondary btn-compact !px-4" onClick={() => setQty((q) => q + 1)}>
                 +
               </button>
             </div>
@@ -170,7 +167,6 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
             Tambah • {formatRupiah((product.price + addOnTotal) * qty)}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

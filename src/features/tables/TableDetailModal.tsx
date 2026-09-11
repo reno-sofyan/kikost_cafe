@@ -4,6 +4,7 @@ import { getOrder, mergeOrders } from '@/db/repositories/orders'
 import { listTables, markAvailable, markNeedsCleaning, moveTable, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince } from '@/lib/datetime'
+import { Modal } from '@/components/ui/Modal'
 import type { CafeTable } from '@/types/domain'
 
 interface Props {
@@ -21,8 +22,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
   const otherOccupied = allTables.filter((t) => t.id !== table.id && t.currentOrderId && (t.status === 'occupied' || t.status === 'awaiting_payment'))
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink-50">{table.name}</h2>
           <span className="text-sm text-ink-400">{TABLE_STATUS_LABELS[table.status]}</span>
@@ -132,7 +132,6 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }

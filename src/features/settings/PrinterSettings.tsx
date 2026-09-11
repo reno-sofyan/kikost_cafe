@@ -13,6 +13,8 @@ import {
 } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
 import { buildSampleReceiptData } from '@/features/printing/receiptData'
+import { Modal } from '@/components/ui/Modal'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { EscPosPrinter, type BluetoothPrinterDevice } from '@/native/escPosPrinterPlugin'
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
@@ -59,7 +61,7 @@ export function PrinterSettings() {
     <div className="max-w-lg space-y-4">
       <div className="flex gap-2">
         {(['printers', 'routing'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-0 !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
+          <button key={t} onClick={() => setTab(t)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {t === 'printers' ? 'Printer' : 'Routing Kategori'}
           </button>
         ))}
@@ -97,10 +99,10 @@ export function PrinterSettings() {
                     </p>
                   </div>
                   <div className="flex flex-none gap-2">
-                    <button className="btn-secondary !min-h-0 !px-3 !py-1 text-xs" onClick={() => void handleTest(p)}>
+                    <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void handleTest(p)}>
                       Test
                     </button>
-                    <button className="btn-secondary !min-h-0 !px-3 !py-1 text-xs" onClick={() => setEditing(p)}>
+                    <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => setEditing(p)}>
                       Edit
                     </button>
                   </div>
@@ -192,6 +194,7 @@ function PrinterFormModal({
   const [paperSize, setPaperSize] = useState<ReceiptPaperSize>(printer?.paperSize ?? '58mm')
   const [active, setActive] = useState(printer?.active ?? true)
   const [fallbackPrinterId, setFallback] = useState<string | null>(printer?.fallbackPrinterId ?? null)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const [paired, setPaired] = useState<BluetoothPrinterDevice[]>([])
 
   async function scanBt() {
@@ -203,8 +206,8 @@ function PrinterFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-ink-900 p-6" onClick={(e) => e.stopPropagation()}>
+    <>
+    <Modal onClose={onClose} className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-ink-900 p-6">
         <h2 className="mb-4 text-lg font-bold text-ink-50">{printer ? 'Edit Printer' : 'Printer Baru'}</h2>
         <input className="input-field mb-3" placeholder="Nama printer" value={name} onChange={(e) => setName(e.target.value)} />
         <label className="mb-3 block text-sm text-ink-300">
@@ -236,7 +239,7 @@ function PrinterFormModal({
         )}
         {connectionType === 'bluetooth' && (
           <div className="mb-3">
-            <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => void scanBt()}>
+            <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={() => void scanBt()}>
               Cari Perangkat
             </button>
             <div className="mt-1 space-y-1">
@@ -289,8 +292,15 @@ function PrinterFormModal({
             Batal
           </button>
           {onDelete && (
-            <button className="btn-danger !px-3" onClick={() => void onDelete()}>
-              <Icon name="close" size={16} />
+            <button
+              className="btn-danger !px-3"
+              aria-label="Hapus printer"
+              onClick={async () => {
+                const ok = await confirm({ title: `Hapus printer "${name}"?`, description: 'Rute cetak yang memakai printer ini perlu diatur ulang.', confirmLabel: 'Hapus', tone: 'danger' })
+                if (ok) void onDelete()
+              }}
+            >
+              <Icon name="trash" size={16} />
             </button>
           )}
           <button
@@ -315,7 +325,8 @@ function PrinterFormModal({
             Simpan
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
+      {confirmDialog}
+    </>
   )
 }

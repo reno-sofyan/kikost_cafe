@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { renderReceiptBodyHtml } from '@/features/printing/renderReceiptHtml'
 import { printReceiptData, saveReceiptAsPdf } from '@/features/printing/printReceipt'
+import { Modal } from '@/components/ui/Modal'
 import type { ReceiptData } from '@/features/printing/receiptData'
 
 interface Props {
@@ -25,8 +26,7 @@ export function PrintPreviewModal({ data, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-sm flex-col rounded-2xl bg-ink-900" onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} className="flex max-h-[90vh] w-full max-w-sm flex-col rounded-2xl bg-ink-900">
         <div className="flex-none border-b border-ink-800 px-4 py-3">
           <h2 className="font-bold text-ink-50">Pratinjau Struk</h2>
         </div>
@@ -49,7 +49,6 @@ export function PrintPreviewModal({ data, onClose }: Props) {
             Tutup
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
