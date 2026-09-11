@@ -12,6 +12,7 @@ import { TableQrSettings } from '@/features/settings/TableQrSettings'
 import { OutletSettings } from '@/features/settings/OutletSettings'
 import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
+import { readFileAsResizedDataUrl } from '@/lib/image'
 import type { ReceiptPaperSize } from '@/types/domain'
 
 type Tab =
@@ -28,15 +29,6 @@ type Tab =
   | 'audit'
 
 const TAB_KEYS: Tab[] = ['profil', 'outlet', 'pajak', 'qris', 'printer', 'pager', 'meja-qr', 'pengguna', 'sinkronisasi', 'backup', 'audit']
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
 
 export function SettingsScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
@@ -131,7 +123,7 @@ function ProfileForm() {
           className="text-sm text-ink-300"
           onChange={async (e) => {
             const file = e.target.files?.[0]
-            if (file) setLogoDataUrl(await readFileAsDataUrl(file))
+            if (file) setLogoDataUrl(await readFileAsResizedDataUrl(file))
           }}
         />
         {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="mt-2 h-16 w-16 rounded-full object-cover" />}
@@ -306,7 +298,7 @@ function QrisForm() {
           className="text-sm text-ink-300"
           onChange={async (e) => {
             const file = e.target.files?.[0]
-            if (file) setQrisImageDataUrl(await readFileAsDataUrl(file))
+            if (file) setQrisImageDataUrl(await readFileAsResizedDataUrl(file))
           }}
         />
         {qrisImageDataUrl && <img src={qrisImageDataUrl} alt="QRIS" className="mt-2 h-48 w-48 rounded-xl bg-white object-contain p-2" />}

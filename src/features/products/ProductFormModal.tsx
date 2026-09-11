@@ -6,19 +6,11 @@ import { createProduct, getRecipeForProduct, saveRecipe, updateProduct } from '@
 import { listIngredients } from '@/db/repositories/stock'
 import { parseRupiahInput, formatRupiah } from '@/lib/currency'
 import { compatibleUnits } from '@/lib/units'
+import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { db } from '@/db/schema'
 import type { Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
 
 const UNITS: UnitOfMeasure[] = ['pcs', 'g', 'kg', 'ml', 'l']
 
@@ -164,7 +156,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
               className="text-sm text-ink-300"
               onChange={async (e) => {
                 const file = e.target.files?.[0]
-                if (file) setPhotoDataUrl(await readFileAsDataUrl(file))
+                if (file) setPhotoDataUrl(await readFileAsResizedDataUrl(file))
               }}
             />
           </label>

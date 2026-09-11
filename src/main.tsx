@@ -2,7 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { ErrorBoundary } from '@/app/ErrorBoundary'
+import { ToastHost } from '@/components/ui/ToastHost'
+import { installGlobalErrorHandlers } from '@/lib/globalErrorHandler'
 import '@/index.css'
+
+// Dipasang sebelum apa pun lain dirender — lihat globalErrorHandler.ts untuk alasannya.
+installGlobalErrorHandlers()
 
 const rootEl = document.getElementById('root')!
 
@@ -18,6 +23,7 @@ if (window.location.pathname.startsWith('/order/')) {
           <BrowserRouter>
             <CustomerApp />
           </BrowserRouter>
+          <ToastHost />
         </ErrorBoundary>
       </React.StrictMode>,
     )
@@ -35,6 +41,7 @@ if (window.location.pathname.startsWith('/order/')) {
               <BrowserRouter>
                 <App />
               </BrowserRouter>
+              <ToastHost />
             </ErrorBoundary>
           </React.StrictMode>,
         )

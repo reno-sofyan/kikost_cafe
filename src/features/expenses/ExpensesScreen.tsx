@@ -5,16 +5,8 @@ import { getOpenShift } from '@/db/repositories/shifts'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
+import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Modal } from '@/components/ui/Modal'
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
 
 export function ExpensesScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
@@ -104,7 +96,7 @@ function ExpenseFormModal({ shiftId, userId, onClose }: { shiftId: string | null
             className="text-sm text-ink-300"
             onChange={async (e) => {
               const file = e.target.files?.[0]
-              if (file) setPhotoDataUrl(await readFileAsDataUrl(file))
+              if (file) setPhotoDataUrl(await readFileAsResizedDataUrl(file))
             }}
           />
         </label>

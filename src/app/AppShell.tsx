@@ -13,7 +13,6 @@ import { countActivePrintFailures } from '@/db/repositories/printQueue'
 import { countPendingQrOrders } from '@/db/repositories/qrOrders'
 import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
-import { ToastHost } from '@/components/ui/ToastHost'
 import type { Role } from '@/types/domain'
 
 interface NavItem {
@@ -181,7 +180,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
-      <ToastHost />
     </div>
   )
 }
