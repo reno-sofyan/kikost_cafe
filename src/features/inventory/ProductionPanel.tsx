@@ -10,6 +10,7 @@ import {
 } from '@/db/repositories/production'
 import { compatibleUnits } from '@/lib/units'
 import { formatDateTime } from '@/lib/datetime'
+import { randomUUID } from '@/lib/id'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import type { StockMovementItemType, UnitOfMeasure, User } from '@/types/domain'
@@ -54,7 +55,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
   const outputUnits = outputRef ? compatibleUnits(itemByRef.get(outputRef)?.unit ?? 'ml') : []
 
   function addInput() {
-    setInputs((p) => [...p, { key: crypto.randomUUID(), ref: '', qty: 0, unit: 'g' }])
+    setInputs((p) => [...p, { key: randomUUID(), ref: '', qty: 0, unit: 'g' }])
   }
   function patchInput(key: string, patch: Partial<DraftInput>) {
     setInputs((p) => p.map((r) => (r.key === key ? { ...r, ...patch } : r)))

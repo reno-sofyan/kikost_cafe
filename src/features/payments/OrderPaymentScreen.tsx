@@ -16,6 +16,7 @@ import {
 import { useSessionStore } from '@/state/sessionStore'
 import { useSubmitGuard } from '@/lib/useSubmitGuard'
 import { formatRupiah } from '@/lib/currency'
+import { randomUUID } from '@/lib/id'
 import { CashPaymentModal } from '@/features/payments/CashPaymentModal'
 import { QrisPaymentModal } from '@/features/payments/QrisPaymentModal'
 import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal'
@@ -212,7 +213,7 @@ function SingleBillPayment({
         lines={lines}
         activeModal={activeModal}
         setActiveModal={setActiveModal}
-        addLine={(l) => setLines((p) => [...p, { ...l, key: crypto.randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
+        addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
         removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
       />
 
@@ -320,7 +321,7 @@ function BillPayCard({
             lines={lines}
             activeModal={activeModal}
             setActiveModal={setActiveModal}
-            addLine={(l) => setLines((p) => [...p, { ...l, key: crypto.randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
+            addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
           />
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}

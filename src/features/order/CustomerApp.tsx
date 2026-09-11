@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
+import { randomUUID } from '@/lib/id'
 
 /**
  * Halaman pesan-mandiri pelanggan (publik, tanpa login, tanpa Dexie).
@@ -190,7 +191,7 @@ function MenuPage() {
         {itemsByCat.map((item) => (
           <button
             key={item.id}
-            onClick={() => (item.modifierGroups.length ? setEditing(item) : addLine({ key: crypto.randomUUID(), item, qty: 1, optionIds: [], note: '' }))}
+            onClick={() => (item.modifierGroups.length ? setEditing(item) : addLine({ key: randomUUID(), item, qty: 1, optionIds: [], note: '' }))}
             className="card flex w-full items-center gap-3 p-3 text-left transition-transform active:scale-[0.99]"
           >
             {item.photoDataUrl && <img src={item.photoDataUrl} alt="" className="h-16 w-16 flex-none rounded-xl object-cover" />}
@@ -333,7 +334,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
         <button
           className="btn-primary w-full"
           disabled={missingRequired}
-          onClick={() => onAdd({ key: crypto.randomUUID(), item, qty, optionIds, note })}
+          onClick={() => onAdd({ key: randomUUID(), item, qty, optionIds, note })}
         >
           {missingRequired ? 'Pilih varian wajib dulu' : `Tambah · ${rupiah((item.price + extra) * qty)}`}
         </button>
