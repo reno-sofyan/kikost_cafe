@@ -5,6 +5,7 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { seedInitialCatalog } from '@/db/seed'
 import { useSessionStore } from '@/state/sessionStore'
 import { isValidPinFormat } from '@/lib/pinHash'
+import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
 import type { PrinterConnectionType, ReceiptPaperSize } from '@/types/domain'
 
@@ -12,13 +13,13 @@ type Step = 'welcome' | 'profile' | 'fiscal' | 'qris' | 'printer' | 'admin' | 'f
 
 const STEP_ORDER: Step[] = ['welcome', 'profile', 'fiscal', 'qris', 'printer', 'admin', 'finishing']
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+/** Jangan biarkan layar "Menyiapkan aplikasi..." nyangkut selamanya kalau salah satu
+ * langkah gagal/hang (mis. WebView tablet tertentu bermasalah dengan WebCrypto). */
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(timeoutMessage)), ms)),
+  ])
 }
 
 export function OnboardingWizard() {
@@ -79,42 +80,53 @@ export function OnboardingWizard() {
     }
 
     setStep('finishing')
-    await updateSettings({
-      cafeName: cafeName.trim() || 'Kinara Coffee',
-      address,
-      phone,
-      logoDataUrl,
-      taxPercent,
-      serviceChargePercent,
-      roundingIncrement,
-      transactionPrefix: transactionPrefix.trim() || 'KKP',
-      qrisImageDataUrl,
-      qrisMerchantName: qrisMerchantName || null,
-      receiptPaperSize,
-      printerConfig: {
-        connectionType: printerType,
-        paperSize: receiptPaperSize,
-        bluetoothAddress: null,
-        bluetoothName: null,
-        networkHost: printerType === 'network' ? networkHost : null,
-        networkPort: printerType === 'network' ? networkPort : null,
-        autoPrintOnPayment: false,
-        autoPrintKitchenOrder: false,
-      },
-      onboardingCompleted: true,
-    })
+    try {
+      await withTimeout(
+        (async () => {
+          await updateSettings({
+            cafeName: cafeName.trim() || 'Kinara Coffee',
+            address,
+            phone,
+            logoDataUrl,
+            taxPercent,
+            serviceChargePercent,
+            roundingIncrement,
+            transactionPrefix: transactionPrefix.trim() || 'KKP',
+            qrisImageDataUrl,
+            qrisMerchantName: qrisMerchantName || null,
+            receiptPaperSize,
+            printerConfig: {
+              connectionType: printerType,
+              paperSize: receiptPaperSize,
+              bluetoothAddress: null,
+              bluetoothName: null,
+              networkHost: printerType === 'network' ? networkHost : null,
+              networkPort: printerType === 'network' ? networkPort : null,
+              autoPrintOnPayment: false,
+              autoPrintKitchenOrder: false,
+            },
+            onboardingCompleted: true,
+          })
 
-    const admin = await createUser({ name: adminName.trim(), role: 'administrator', pin: adminPin })
-    await recordAuditLog({
-      userId: admin.id,
-      userName: admin.name,
-      action: 'onboarding.completed',
-      entityType: 'settings',
-      entityId: 'singleton',
-      details: 'Onboarding aplikasi selesai, akun administrator dibuat',
-    })
-    await seedInitialCatalog()
-    login(admin)
+          const admin = await createUser({ name: adminName.trim(), role: 'administrator', pin: adminPin })
+          await recordAuditLog({
+            userId: admin.id,
+            userName: admin.name,
+            action: 'onboarding.completed',
+            entityType: 'settings',
+            entityId: 'singleton',
+            details: 'Onboarding aplikasi selesai, akun administrator dibuat',
+          })
+          await seedInitialCatalog()
+          login(admin)
+        })(),
+        20_000,
+        'Waktu tunggu habis (20 detik). Coba lagi — kalau berulang, mungkin ada masalah penyimpanan di perangkat ini.',
+      )
+    } catch (e) {
+      setStep('admin')
+      setError(e instanceof Error ? `Gagal menyiapkan aplikasi: ${e.message}` : 'Gagal menyiapkan aplikasi. Coba lagi.')
+    }
   }
 
   return (
@@ -181,7 +193,7 @@ export function OnboardingWizard() {
                   className="text-sm text-ink-300"
                   onChange={async (e) => {
                     const file = e.target.files?.[0]
-                    if (file) setLogoDataUrl(await readFileAsDataUrl(file))
+                    if (file) setLogoDataUrl(await readFileAsResizedDataUrl(file))
                   }}
                 />
                 {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="mt-2 h-16 w-16 rounded-full object-cover" />}
@@ -223,7 +235,7 @@ export function OnboardingWizard() {
                   className="text-sm text-ink-300"
                   onChange={async (e) => {
                     const file = e.target.files?.[0]
-                    if (file) setQrisImageDataUrl(await readFileAsDataUrl(file))
+                    if (file) setQrisImageDataUrl(await readFileAsResizedDataUrl(file))
                   }}
                 />
                 {qrisImageDataUrl && <img src={qrisImageDataUrl} alt="QRIS" className="mt-2 h-32 w-32 object-contain" />}
