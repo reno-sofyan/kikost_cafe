@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getOrder, mergeOrders } from '@/db/repositories/orders'
+import { cancelEmptyOrder, getOrder, listOrderItems, mergeOrders } from '@/db/repositories/orders'
 import { listTables, markAvailable, markNeedsCleaning, moveTable, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
+import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince } from '@/lib/datetime'
 import { Modal } from '@/components/ui/Modal'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { toast } from '@/state/toastStore'
 import type { CafeTable } from '@/types/domain'
 
 interface Props {
@@ -15,8 +18,29 @@ interface Props {
 
 export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
   const [mode, setMode] = useState<'default' | 'move' | 'merge'>('default')
+  const currentUser = useSessionStore((s) => s.currentUser)!
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const order = useLiveQuery(() => (table.currentOrderId ? getOrder(table.currentOrderId) : undefined), [table.currentOrderId])
+  const orderItems = useLiveQuery(() => (order ? listOrderItems(order.id) : []), [order?.id]) ?? []
   const allTables = useLiveQuery(() => listTables(), []) ?? []
+  const orderIsEmpty = !!order && orderItems.filter((i) => !i.removed && !i.voided).length === 0
+
+  async function handleCancelEmptyOrder() {
+    if (!order) return
+    const ok = await confirm({
+      title: 'Batalkan Pesanan Kosong?',
+      description: `Pesanan ${order.orderNumber} di ${table.name} belum berisi item dan akan dibatalkan. Meja akan tersedia kembali.`,
+      confirmLabel: 'Ya, Batalkan',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await cancelEmptyOrder(order.id, { userId: currentUser.id, userName: currentUser.name })
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+    }
+  }
 
   const otherAvailable = allTables.filter((t) => t.id !== table.id && t.status === 'available')
   const otherOccupied = allTables.filter((t) => t.id !== table.id && t.currentOrderId && (t.status === 'occupied' || t.status === 'awaiting_payment'))
@@ -53,6 +77,11 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
                     Gabungkan Tagihan
                   </button>
                 </>
+              )}
+              {orderIsEmpty && (
+                <button className="btn-ghost !text-red-400" onClick={() => void handleCancelEmptyOrder()}>
+                  Batalkan Pesanan Kosong
+                </button>
               )}
               {table.status === 'needs_cleaning' && (
                 <button
@@ -132,6 +161,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
             </button>
           </div>
         )}
+        {confirmDialog}
     </Modal>
   )
 }

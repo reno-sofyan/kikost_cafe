@@ -48,7 +48,7 @@ test('pembayaran sebagian: DP dulu → pesanan tetap terbuka → pelunasan menye
   // Lunasi sisa lewat "Pesanan Terbuka".
   await page.getByRole('button', { name: 'Pesanan Terbuka' }).click()
   const drawer = page.locator('div.fixed.inset-0.z-50').filter({ has: page.getByRole('heading', { name: 'Pesanan Terbuka' }) })
-  await drawer.locator('button.card').first().click()
+  await drawer.locator('.card button').first().click()
   await page.getByRole('button', { name: /^Bayar •/ }).click()
   await expect(page.getByText('Sudah dibayar sebelumnya')).toBeVisible()
   await page.getByRole('button', { name: 'Tunai', exact: true }).click()

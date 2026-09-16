@@ -61,7 +61,7 @@ export function CashierScreen() {
   const order = useLiveQuery(() => (activeOrderId ? getOrder(activeOrderId) : undefined), [activeOrderId])
   const items = useLiveQuery(() => (activeOrderId ? listOrderItems(activeOrderId) : []), [activeOrderId])
 
-  const activeItems = useMemo(() => (items ?? []).filter((i) => !i.voided), [items])
+  const activeItems = useMemo(() => (items ?? []).filter((i) => !i.voided && !i.removed), [items])
 
   if (!openShift) {
     return (

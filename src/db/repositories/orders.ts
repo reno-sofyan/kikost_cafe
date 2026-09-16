@@ -3,7 +3,7 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId, newIdempotencyKey } from '@/lib/id'
 import { computeLineTotal, computeOrderTotals } from '@/lib/orderTotals'
 import { getSettings, nextTransactionNumber } from '@/db/repositories/settings'
-import { occupyTable } from '@/db/repositories/tables'
+import { markAvailable, occupyTable } from '@/db/repositories/tables'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { assertTransition, deriveKitchenPhase, legacyStatusFor } from '@/lib/orderState'
 import { getDeviceId } from '@/sync/device'
@@ -156,6 +156,59 @@ async function syncKitchenPhase(orderId: string): Promise<void> {
 
 export async function listOpenOrders(): Promise<Order[]> {
   return db.orders.where('status').equals('open').reverse().sortBy('createdAt')
+}
+
+export async function countActiveOrderItems(orderId: string): Promise<number> {
+  return db.orderItems
+    .where('orderId')
+    .equals(orderId)
+    .filter((i) => !i.removed && !i.voided)
+    .count()
+}
+
+/**
+ * Membatalkan pesanan terbuka yang TIDAK punya item aktif — mis. dibuka lalu
+ * tak jadi dipakai, atau semua itemnya dihapus/dibatalkan. Pesanan kosong ini
+ * tetap berstatus `open` dan ikut memblokir penutupan shift
+ * (`closeShift` di shifts.ts) sampai dibatalkan lewat sini. Melepas meja bila
+ * dine-in. Pesanan yang masih punya item harus dibatalkan lewat `voidOrder`
+ * (butuh persetujuan supervisor).
+ */
+export async function cancelEmptyOrder(orderId: string, actor: { userId: string; userName: string }): Promise<void> {
+  await db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.auditLogs], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
+    const activeItemCount = await db.orderItems
+      .where('orderId')
+      .equals(orderId)
+      .filter((i) => !i.removed && !i.voided)
+      .count()
+    if (activeItemCount > 0) {
+      throw new Error('Pesanan masih berisi item. Kosongkan keranjang atau batalkan lewat menu Void (supervisor) dahulu.')
+    }
+    const from = order.lifecycleStatus ?? 'DRAFT'
+    const to: OrderLifecycleStatus = from === 'DRAFT' || from === 'PENDING_CONFIRMATION' ? 'CANCELLED' : 'VOIDED'
+    await transitionOrder(orderId, to, {
+      voidReason: 'Pesanan kosong dibatalkan',
+      voidedBy: actor.userId,
+      voidedAt: Date.now(),
+    })
+    if (order.tableId) {
+      const table = await db.cafeTables.get(order.tableId)
+      if (table && table.currentOrderId === orderId) {
+        await markAvailable(order.tableId)
+      }
+    }
+    await recordAuditLog({
+      userId: actor.userId,
+      userName: actor.userName,
+      action: 'order.cancelEmpty',
+      entityType: 'order',
+      entityId: orderId,
+      details: `Pesanan kosong ${order.orderNumber} dibatalkan (tidak ada item).`,
+    })
+  })
 }
 
 export async function listOrderItems(orderId: string): Promise<OrderItem[]> {
