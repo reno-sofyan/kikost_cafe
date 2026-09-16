@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import QRCode from 'qrcode'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { randomUUID } from '@/lib/id'
@@ -371,11 +372,67 @@ interface OrderStatus {
 
 const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu' }
 
+/** Order boleh dibayar online hanya setelah dikonfirmasi kasir — cermin dari
+ * PAYABLE_STATUSES di backend/src/routes/midtransPay.ts. */
+const PAYABLE_STATUSES = new Set(['CONFIRMED', 'PREPARING', 'READY', 'SERVED'])
+
 function Line({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex justify-between">
       <span>{label}</span>
       <span>{value < 0 ? '−' : ''}{rupiah(Math.abs(value))}</span>
+    </div>
+  )
+}
+
+interface QrisCharge {
+  qrDataUrl: string
+  grossAmount: number
+  expiryTime: string | null
+}
+
+function PayQrisPanel({ token, orderId, amountDue }: { token: string; orderId: string; amountDue: number }) {
+  const [charge, setCharge] = useState<QrisCharge | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function start() {
+    setLoading(true)
+    setError(null)
+    try {
+      const r = await fetch(`${API}/api/t/${encodeURIComponent(token)}/orders/${encodeURIComponent(orderId)}/pay`, { method: 'POST' })
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(body.error || 'Gagal memulai pembayaran QRIS.')
+      const qrDataUrl = await QRCode.toDataURL(String(body.qrString), { width: 280, margin: 1 })
+      setCharge({ qrDataUrl, grossAmount: Number(body.grossAmount) || amountDue, expiryTime: body.expiryTime ?? null })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal memulai pembayaran QRIS.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!charge) {
+    return (
+      <div className="mt-3 border-t border-ink-800 pt-3">
+        {error && <p className="mb-2 rounded-lg bg-red-900 px-3 py-2 text-xs text-red-400">{error}</p>}
+        <button className="btn-primary w-full" disabled={loading} onClick={() => void start()}>
+          {loading ? 'Menyiapkan QRIS…' : `Bayar Sekarang dengan QRIS · ${rupiah(amountDue)}`}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 border-t border-ink-800 pt-3 text-center">
+      <img src={charge.qrDataUrl} alt="Kode QRIS pembayaran" className="mx-auto h-52 w-52 rounded-xl bg-white p-2" />
+      <p className="mt-2 text-sm font-bold text-ink-100">{rupiah(charge.grossAmount)}</p>
+      <p className="mt-1 text-xs text-ink-400">
+        Pindai dengan aplikasi e-wallet atau mobile banking Anda. Halaman ini otomatis diperbarui begitu pembayaran diterima.
+      </p>
+      <button className="btn-ghost mt-2 w-full text-xs" onClick={() => setCharge(null)}>
+        QR kedaluwarsa? Buat QR Baru
+      </button>
     </div>
   )
 }
@@ -497,8 +554,13 @@ function StatusPage() {
             LUNAS — {rupiah(data.paidAmount)}
             {data.paymentMethods.length > 0 && ` (${data.paymentMethods.map((m) => METHOD_LABEL[m] ?? m).join(', ')})`}
           </p>
+        ) : PAYABLE_STATUSES.has(data.status) ? (
+          <>
+            <p className="mt-2 text-xs text-ink-400">Bayar di kasir, atau bayar sekarang lewat QRIS di bawah.</p>
+            <PayQrisPanel token={token} orderId={id} amountDue={Math.max(0, data.grandTotal - data.paidAmount)} />
+          </>
         ) : (
-          <p className="mt-2 text-xs text-ink-400">Bayar di kasir.</p>
+          <p className="mt-2 text-xs text-ink-400">Bayar di kasir setelah pesanan dikonfirmasi.</p>
         )}
       </div>
 

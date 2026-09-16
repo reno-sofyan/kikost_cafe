@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { loadConfig } from '../config.js'
 import { getPool } from '../db/pool.js'
 import { isAuthBlocked, recordAuthFailure, recordAuthSuccess } from '../lib/authThrottle.js'
+import { recordOnlinePayment } from '../lib/onlinePayments.js'
 
 /**
  * Webhook pembayaran online (QRIS / payment gateway). Bersifat generik:
@@ -57,18 +58,8 @@ export async function registerPaymentWebhook(app: FastifyInstance): Promise<void
     }
     recordAuthSuccess(request.ip)
 
-    const now = Date.now()
-    const payload = { id: reference, orderId, billId, amount, method, reference, createdAt: now }
-
-    // Idempoten: reference sudah ada → tidak menulis ulang.
-    const res = await getPool().query(
-      `INSERT INTO sync_entity_state (entity, entity_id, payload, entity_updated_at, server_seq, updated_at)
-         VALUES ('onlinePayments', $1, $2::jsonb, $3, nextval('sync_server_seq'), now())
-       ON CONFLICT (entity, entity_id) DO NOTHING`,
-      [reference, JSON.stringify(payload), now],
-    )
-
-    reply.code(res.rowCount ? 201 : 200)
-    return { ok: true, duplicate: res.rowCount === 0 }
+    const { inserted } = await recordOnlinePayment(getPool(), { orderId, billId, amount, method, reference })
+    reply.code(inserted ? 201 : 200)
+    return { ok: true, duplicate: !inserted }
   })
 }

@@ -12,6 +12,7 @@ import { registerPublicRoutes } from './routes/public.js'
 import { registerDeviceRoutes } from './routes/devices.js'
 import { registerEventRoutes } from './routes/events.js'
 import { registerPaymentWebhook } from './routes/paymentWebhook.js'
+import { registerMidtransRoutes } from './routes/midtransPay.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -108,8 +109,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   // ---- SSE "ada perubahan" (auth kunci lewat query, EventSource tak bisa header) ----
   await registerEventRoutes(app)
 
-  // ---- Webhook pembayaran online (auth = HMAC) ----
+  // ---- Webhook pembayaran online generik (auth = HMAC) ----
   await registerPaymentWebhook(app)
+
+  // ---- Pembayaran QRIS Midtrans (mulai transaksi + notifikasi) ----
+  await registerMidtransRoutes(app)
 
   // Bersihkan tabel throttle berkala.
   const pruneTimer = setInterval(pruneAuthThrottle, 5 * 60_000)

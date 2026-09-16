@@ -32,9 +32,19 @@ const schema = z.object({
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
-  // Secret HMAC-SHA256 untuk memverifikasi webhook pembayaran online (QRIS/gateway).
+  // Secret HMAC-SHA256 untuk memverifikasi webhook pembayaran online generik (QRIS/gateway).
   // Kosong = endpoint webhook nonaktif (503).
   PAYMENT_WEBHOOK_SECRET: z.string().default(''),
+
+  // Midtrans (pembayaran QRIS online dari halaman pesan-mandiri /order/:token).
+  // Kosong = endpoint /pay & notifikasi Midtrans nonaktif (503).
+  MIDTRANS_SERVER_KEY: z.string().default(''),
+  MIDTRANS_CLIENT_KEY: z.string().default(''),
+  MIDTRANS_MERCHANT_ID: z.string().default(''),
+  MIDTRANS_IS_PRODUCTION: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 
   // Aktifkan endpoint backup snapshot (JSON penuh state server). Default nonaktif.
   ENABLE_BACKUP_ENDPOINT: z

@@ -4,7 +4,9 @@ Pelanggan memindai QR di meja → membuka menu di HP-nya (tanpa aplikasi, tanpa
 login) → memilih item + varian + catatan + nama → **Kirim Pesanan**. Pesanan
 masuk sebagai `PENDING_CONFIRMATION` di tablet kasir (dengan bunyi lonceng).
 Kasir/waiter **Terima** (nomor antrean keluar, tiket dapur/bar tercetak) atau
-**Tolak** (wajib alasan). Pembayaran tetap di kasir.
+**Tolak** (wajib alasan). Setelah diterima, pelanggan bisa **bayar di kasir
+ATAU langsung dari HP-nya via QRIS** (Midtrans) di halaman status pesanan —
+lihat [Pembayaran online](#pembayaran-online-midtrans-qris) di bawah.
 
 ## Arsitektur singkat
 
@@ -57,17 +59,47 @@ sinyal saat ada perubahan → tarik-sync seketika (pesanan QR baru muncul < 3 dt
 Poll 20 dtk tetap jalan sebagai jaring pengaman. Tak perlu konfigurasi; melewati
 Traefik seperti request `/api` lain.
 
-## Pembayaran online (opsional)
+## Pembayaran online — generik (opsional)
 
-`POST /api/payments/webhook` — generik. Adaptor gateway apa pun memetakan
-notifikasinya ke `{ orderId, billId, amount, method, reference }` + header
-`X-Signature` = HMAC-SHA256 hex dari string `orderId.billId.amount.reference`
-memakai env **`PAYMENT_WEBHOOK_SECRET`** (kosong → endpoint 503/nonaktif).
+`POST /api/payments/webhook` — generik untuk gateway apa pun selain Midtrans.
+Adaptor memetakan notifikasinya ke `{ orderId, billId, amount, method, reference }`
++ header `X-Signature` = HMAC-SHA256 hex dari string
+`orderId.billId.amount.reference` memakai env **`PAYMENT_WEBHOOK_SECRET`**
+(kosong → endpoint 503/nonaktif).
 
 Efek: menulis entitas `onlinePayments` (append-only, idempoten per `reference`).
 **Tablet** yang menjalankan `payBill` lokal saat menariknya — potong stok,
 selesaikan order — jadi jalur kasir offline tak berubah. Bila order belum
 dikonfirmasi kasir, pelunasan ditunda sampai dikonfirmasi.
+
+## Pembayaran online — Midtrans QRIS
+
+Halaman status pesanan pelanggan (`/order/:token/status/:id`) menampilkan
+tombol **"Bayar Sekarang dengan QRIS"** begitu kasir menerima pesanan
+(status `CONFIRMED` ke atas) dan belum lunas.
+
+- `POST /api/t/:token/orders/:id/pay` — server menghitung sisa tagihan
+  (`grandTotal` − pembayaran yang sudah ada), membuat transaksi QRIS via
+  **Core API Midtrans** (`POST /v2/charge`, `payment_type: qris`), dan
+  mengembalikan `qr_string` yang dirender jadi gambar QR di halaman
+  pelanggan (library `qrcode`, sama seperti QR meja). Ditolak (409) bila
+  order belum `CONFIRMED`/dst atau sudah lunas.
+- Tiap percobaan bayar dapat `order_id` Midtrans baru (`<orderId>_<nonce>`)
+  supaya bisa dicoba ulang (mis. QR kedaluwarsa) tanpa bentrok "order_id
+  already exists" di Midtrans.
+- `POST /api/payments/midtrans/notification` — penerima notifikasi
+  server-to-server Midtrans. Tanda tangan diverifikasi
+  (`SHA512(order_id+status_code+gross_amount+ServerKey)`); hanya status
+  `settlement`/`capture` (fraud `accept`) yang menulis `onlinePayments` —
+  jalur & efeknya sama persis dengan webhook generik di atas (idempoten,
+  diterapkan lewat `payBill` di tablet).
+- **Wajib disetel di Dashboard Midtrans** (Settings → Configuration →
+  Payment Notification URL): `https://<domain-backend>/api/payments/midtrans/notification`.
+- Env: `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_MERCHANT_ID`,
+  `MIDTRANS_IS_PRODUCTION` (`true`/`false`). `MIDTRANS_SERVER_KEY` kosong →
+  `/pay` balas 503 dengan pesan "Pembayaran online belum dikonfigurasi.",
+  ditampilkan sebagai galat di bawah tombol — pelanggan tetap bisa lanjut
+  bayar di kasir seperti biasa.
 
 ## Gabung pesanan meja
 
