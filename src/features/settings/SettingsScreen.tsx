@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings, updateSettings } from '@/db/repositories/settings'
@@ -90,6 +90,7 @@ function ProfileForm() {
   const [phone, setPhone] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!settings) return
@@ -115,19 +116,26 @@ function ProfileForm() {
         <span className="mb-1 block text-sm text-ink-300">Telepon</span>
         <input className="input-field" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </label>
-      <label className="block">
+      <div>
         <span className="mb-1 block text-sm text-ink-300">Logo</span>
         <input
+          ref={logoInputRef}
           type="file"
           accept="image/*"
-          className="text-sm text-ink-300"
+          className="hidden"
           onChange={async (e) => {
             const file = e.target.files?.[0]
             if (file) setLogoDataUrl(await readFileAsResizedDataUrl(file))
+            e.target.value = ''
           }}
         />
-        {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="mt-2 h-16 w-16 rounded-full object-cover" />}
-      </label>
+        <div className="flex items-center gap-3">
+          {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="h-16 w-16 rounded-full object-cover" />}
+          <button type="button" className="btn-secondary btn-compact" onClick={() => logoInputRef.current?.click()}>
+            {logoDataUrl ? 'Ganti Logo' : 'Pilih Logo'}
+          </button>
+        </div>
+      </div>
       <button
         className="btn-primary"
         onClick={async () => {
@@ -279,6 +287,7 @@ function QrisForm() {
   const [qrisImageDataUrl, setQrisImageDataUrl] = useState<string | null>(null)
   const [qrisMerchantName, setQrisMerchantName] = useState('')
   const [saved, setSaved] = useState(false)
+  const qrisInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!settings) return
@@ -290,19 +299,26 @@ function QrisForm() {
 
   return (
     <div className="max-w-md space-y-4">
-      <label className="block">
+      <div>
         <span className="mb-1 block text-sm text-ink-300">Gambar QRIS Statis Kafe</span>
         <input
+          ref={qrisInputRef}
           type="file"
           accept="image/*"
-          className="text-sm text-ink-300"
+          className="hidden"
           onChange={async (e) => {
             const file = e.target.files?.[0]
             if (file) setQrisImageDataUrl(await readFileAsResizedDataUrl(file))
+            e.target.value = ''
           }}
         />
-        {qrisImageDataUrl && <img src={qrisImageDataUrl} alt="QRIS" className="mt-2 h-48 w-48 rounded-xl bg-white object-contain p-2" />}
-      </label>
+        {qrisImageDataUrl && (
+          <img src={qrisImageDataUrl} alt="QRIS" className="mb-2 h-48 w-48 rounded-xl bg-white object-contain p-2" />
+        )}
+        <button type="button" className="btn-secondary btn-compact" onClick={() => qrisInputRef.current?.click()}>
+          {qrisImageDataUrl ? 'Ganti Gambar QRIS' : 'Pilih Gambar QRIS'}
+        </button>
+      </div>
       <label className="block">
         <span className="mb-1 block text-sm text-ink-300">Nama Merchant (opsional)</span>
         <input className="input-field" value={qrisMerchantName} onChange={(e) => setQrisMerchantName(e.target.value)} />

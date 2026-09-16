@@ -82,7 +82,7 @@ export function ReportsScreen() {
             <StatCard label="Pajak" value={formatRupiah(report.taxTotal)} />
             <StatCard label="Service Charge" value={formatRupiah(report.serviceChargeTotal)} />
             <StatCard label="Retur" value={formatRupiah(report.returnTotal)} />
-            <StatCard label="Pembatalan" value={String(report.voidCount)} />
+            <StatCard label="Pembatalan" value={String(report.voidCount)} accent="text-red-400" />
             <StatCard label="Pengeluaran" value={formatRupiah(report.expenseTotal)} accent="text-red-400" />
           </div>
 

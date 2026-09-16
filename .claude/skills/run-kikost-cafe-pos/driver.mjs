@@ -74,7 +74,7 @@ async function ensureLoggedIn() {
   } else if (await page.getByText('Pilih akun untuk masuk').isVisible().catch(() => false)) {
     console.log('-> layar pilih akun, masuk sebagai', ADMIN_NAME)
     await page.getByRole('button', { name: new RegExp(ADMIN_NAME) }).click()
-    await page.waitForSelector(`text=Masukkan PIN untuk masuk sebagai ${ADMIN_NAME}`)
+    await page.waitForSelector('text=Masukkan PIN untuk masuk')
     for (const digit of ADMIN_PIN) await page.getByRole('button', { name: digit, exact: true }).click()
     await page.getByRole('button', { name: 'Masuk' }).click()
     await page.waitForSelector('nav', { timeout: 10000 })

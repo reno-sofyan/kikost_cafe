@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { createCustomer, purchaseHistoryForCustomer, searchCustomers, updateCustomer } from '@/db/repositories/customers'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah } from '@/lib/currency'
+import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import type { Customer } from '@/types/domain'
 
@@ -41,7 +42,10 @@ export function CustomersScreen() {
 
       <div className="flex-1 overflow-y-auto p-6">
         {!selected ? (
-          <p className="text-ink-500">Pilih pelanggan untuk melihat detail</p>
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <Icon name="user" size={40} className="text-ink-400" />
+            <p className="text-ink-400">Pilih pelanggan untuk melihat detail</p>
+          </div>
         ) : (
           <div>
             <div className="mb-4 flex items-center justify-between">

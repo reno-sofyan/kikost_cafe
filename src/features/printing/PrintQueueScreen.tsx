@@ -8,6 +8,12 @@ import { formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
 import type { PrintJobStatus } from '@/types/domain'
 
+const STATION_LABEL: Record<'cashier' | 'kitchen' | 'bar', string> = {
+  cashier: 'Kasir',
+  kitchen: 'Dapur',
+  bar: 'Bar',
+}
+
 const STATUS_STYLE: Record<PrintJobStatus, string> = {
   QUEUED: 'bg-ink-800 text-ink-300',
   PRINTING: 'bg-brew-600/20 text-brew-400',
@@ -37,7 +43,7 @@ export function PrintQueueScreen() {
         {(['cashier', 'kitchen', 'bar'] as const).map((s) =>
           stationsWithPrinter.has(s) ? null : (
             <span key={s} className="rounded-full bg-yellow-900/30 px-3 py-1 text-xs text-yellow-400">
-              Belum ada printer {s}
+              Printer {STATION_LABEL[s]} belum diset
             </span>
           ),
         )}
@@ -53,7 +59,7 @@ export function PrintQueueScreen() {
                   {job.isReprint && <span className="ml-2 text-xs text-brown-400">CETAK ULANG</span>}
                 </p>
                 <p className="text-xs text-ink-500">
-                  {job.station} · {formatDateTime(job.createdAt)}
+                  {STATION_LABEL[job.station as 'cashier' | 'kitchen' | 'bar'] ?? job.station} · {formatDateTime(job.createdAt)}
                   {job.attempts > 0 ? ` · ${job.attempts}× coba` : ''}
                   {job.lastError ? ` · ${job.lastError}` : ''}
                 </p>

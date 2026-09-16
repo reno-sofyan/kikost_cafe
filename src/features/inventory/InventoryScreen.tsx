@@ -70,7 +70,8 @@ export function InventoryScreen() {
                   <div>
                     <p className="font-semibold text-ink-50">{ing.name}</p>
                     <p className="text-sm text-ink-400">
-                      Stok: {ing.stockQty} {ing.unit} • Batas menipis: {ing.lowStockThreshold} {ing.unit}
+                      Stok: {ing.stockQty.toLocaleString('id-ID')} {ing.unit} • Batas menipis:{' '}
+                      {ing.lowStockThreshold.toLocaleString('id-ID')} {ing.unit}
                     </p>
                   </div>
                   <button className="btn-secondary" onClick={() => setAdjustTarget(ing)}>
@@ -177,7 +178,7 @@ function AdjustStockModal({ ingredient, userId, onClose }: { ingredient: Ingredi
     <Modal onClose={onClose}>
         <h2 className="mb-1 text-lg font-bold text-ink-50">Sesuaikan Stok</h2>
         <p className="mb-4 text-sm text-ink-400">
-          {ingredient.name} • Stok saat ini: {ingredient.stockQty} {ingredient.unit}
+          {ingredient.name} • Stok saat ini: {ingredient.stockQty.toLocaleString('id-ID')} {ingredient.unit}
         </p>
 
         <div className="mb-3 grid grid-cols-3 gap-2">
