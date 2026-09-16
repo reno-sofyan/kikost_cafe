@@ -11,8 +11,10 @@ import { backupIsStale, lastBackupLabel } from '@/lib/backupReminder'
 import { isBackendConfigured } from '@/sync/deviceConfig'
 import { countActivePrintFailures } from '@/db/repositories/printQueue'
 import { countPendingQrOrders } from '@/db/repositories/qrOrders'
+import { recordAuditLog } from '@/db/repositories/auditLog'
 import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import type { Role } from '@/types/domain'
 
 interface NavItem {
@@ -44,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const lock = useSessionStore((s) => s.lock)
   const logout = useSessionStore((s) => s.logout)
   const navigate = useNavigate()
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const sync = useSyncStore()
   const openShift = useLiveQuery(() => getOpenShift(), [])
   const printAlerts =
@@ -68,6 +71,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     backupIsStale(now)
 
   if (!currentUser) return null
+
+  async function handleLogout() {
+    const ok = await confirm({
+      title: 'Ganti akun?',
+      description: `Anda akan keluar dari akun ${currentUser!.name}. Masuk kembali dengan PIN untuk melanjutkan.`,
+      confirmLabel: 'Keluar',
+    })
+    if (!ok) return
+    await recordAuditLog({
+      userId: currentUser!.id,
+      userName: currentUser!.name,
+      action: 'auth.logout',
+      entityType: 'user',
+      entityId: currentUser!.id,
+      details: `${currentUser!.name} keluar dari aplikasi`,
+    })
+    logout()
+    navigate('/')
+  }
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.roles && !item.roles.includes(currentUser.role)) return false
@@ -166,12 +188,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Icon name="lock" size={18} />
             </button>
             <button
-              onClick={() => {
-                logout()
-                navigate('/')
-              }}
+              onClick={() => void handleLogout()}
               className="btn-ghost !min-h-[2.75rem] !px-3 !py-2"
-              title="Keluar"
+              title="Ganti akun / keluar"
             >
               <Icon name="power" size={18} />
             </button>
@@ -180,6 +199,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
+      {confirmDialog}
     </div>
   )
 }

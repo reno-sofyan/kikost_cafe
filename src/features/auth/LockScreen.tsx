@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { findUserByPin } from '@/db/repositories/users'
+import { recordAuditLog } from '@/db/repositories/auditLog'
 import { useSessionStore } from '@/state/sessionStore'
 import { PinPad } from '@/components/ui/PinPad'
 import { Icon } from '@/components/ui/Icon'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { attemptsRemaining, getLockoutRemainingMs, recordFailedAttempt, recordSuccessfulAttempt } from '@/lib/loginRateLimit'
 
 export function LockScreen() {
@@ -14,6 +16,7 @@ export function LockScreen() {
   const unlock = useSessionStore((s) => s.unlock)
   const login = useSessionStore((s) => s.login)
   const logout = useSessionStore((s) => s.logout)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   useEffect(() => {
     const timer = setInterval(() => setLockoutMs(getLockoutRemainingMs()), 1000)
@@ -49,10 +52,32 @@ export function LockScreen() {
     }
   }
 
+  async function handleLogout() {
+    const ok = await confirm({
+      title: 'Ganti akun?',
+      description: currentUser
+        ? `Anda akan keluar dari akun ${currentUser.name}. Masuk kembali dengan PIN untuk melanjutkan.`
+        : 'Masuk kembali dengan PIN untuk melanjutkan.',
+      confirmLabel: 'Keluar',
+    })
+    if (!ok) return
+    if (currentUser) {
+      await recordAuditLog({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        action: 'auth.logout',
+        entityType: 'user',
+        entityId: currentUser.id,
+        details: `${currentUser.name} keluar dari aplikasi`,
+      })
+    }
+    logout()
+  }
+
   const isLocked = lockoutMs > 0
 
   return (
-    <div className="flex h-full items-center justify-center bg-ink-950 p-6">
+    <div className="flex h-full items-center justify-center overflow-y-auto bg-ink-950 p-6">
       <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
         <div className="text-center">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-brew-600/12 text-brew-600">
@@ -71,10 +96,11 @@ export function LockScreen() {
 
         <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} disabled={busy || isLocked} />
 
-        <button onClick={logout} className="btn-ghost text-sm text-ink-300">
-          Keluar dari akun ini
+        <button onClick={() => void handleLogout()} className="btn-ghost text-sm text-ink-300">
+          Ganti akun (keluar)
         </button>
       </div>
+      {confirmDialog}
     </div>
   )
 }

@@ -1,15 +1,26 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { createUser, listUsers, setUserActive, updateUser, updateUserPin } from '@/db/repositories/users'
+import { createUser, listUsers, LastUserManagerError, setUserActive, updateUser, updateUserPin } from '@/db/repositories/users'
 import { ROLE_LABELS } from '@/lib/permissions'
 import { isValidPinFormat } from '@/lib/pinHash'
 import { Modal } from '@/components/ui/Modal'
+import { useSessionStore } from '@/state/sessionStore'
+import { toast } from '@/state/toastStore'
 import type { Role, User } from '@/types/domain'
 
 export function UserManager() {
   const users = useLiveQuery(() => listUsers(), []) ?? []
+  const currentUser = useSessionStore((s) => s.currentUser)!
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
+
+  async function handleToggleActive(user: User, active: boolean) {
+    try {
+      await setUserActive(user.id, active, { userId: currentUser.id, userName: currentUser.name })
+    } catch (err) {
+      toast.error(err instanceof LastUserManagerError ? err.message : 'Gagal mengubah status pengguna.')
+    }
+  }
 
   return (
     <div className="max-w-2xl">
@@ -25,7 +36,7 @@ export function UserManager() {
             </div>
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 text-sm text-ink-400">
-                <input type="checkbox" checked={u.active} onChange={(e) => void setUserActive(u.id, e.target.checked)} />
+                <input type="checkbox" checked={u.active} onChange={(e) => void handleToggleActive(u, e.target.checked)} />
                 Aktif
               </label>
               <button
@@ -48,6 +59,7 @@ export function UserManager() {
 }
 
 function UserFormModal({ initial, onClose }: { initial: User | null; onClose: () => void }) {
+  const currentUser = useSessionStore((s) => s.currentUser)!
   const [name, setName] = useState(initial?.name ?? '')
   const [role, setRole] = useState<Role>(initial?.role ?? 'kasir')
   const [pin, setPin] = useState('')
@@ -62,17 +74,23 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
       setError('PIN harus 4-8 digit angka')
       return
     }
-    if (initial) {
-      await updateUser(initial.id, { name: name.trim(), role })
-      if (pin) {
-        if (!isValidPinFormat(pin)) {
-          setError('PIN harus 4-8 digit angka')
-          return
+    const actor = { userId: currentUser.id, userName: currentUser.name }
+    try {
+      if (initial) {
+        await updateUser(initial.id, { name: name.trim(), role }, actor)
+        if (pin) {
+          if (!isValidPinFormat(pin)) {
+            setError('PIN harus 4-8 digit angka')
+            return
+          }
+          await updateUserPin(initial.id, pin, actor)
         }
-        await updateUserPin(initial.id, pin)
+      } else {
+        await createUser({ name: name.trim(), role, pin }, actor)
       }
-    } else {
-      await createUser({ name: name.trim(), role, pin })
+    } catch (err) {
+      setError(err instanceof LastUserManagerError ? err.message : 'Gagal menyimpan pengguna.')
+      return
     }
     onClose()
   }

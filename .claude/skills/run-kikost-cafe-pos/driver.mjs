@@ -54,7 +54,7 @@ async function shot(name) {
 async function ensureLoggedIn() {
   await page.goto(BASE_URL)
   await page.waitForFunction(
-    () => /Selamat Datang|Masukkan PIN/.test(document.body.innerText) || !!document.querySelector('nav'),
+    () => /Selamat Datang|Pilih akun untuk masuk/.test(document.body.innerText) || !!document.querySelector('nav'),
     { timeout: 20000 },
   )
 
@@ -71,8 +71,10 @@ async function ensureLoggedIn() {
     await page.getByLabel('Konfirmasi PIN').fill(ADMIN_PIN)
     await page.getByRole('button', { name: 'Selesai & Mulai' }).click()
     await page.waitForSelector('text=Buka Shift', { timeout: 20000 })
-  } else if (await page.getByText('Masukkan PIN').isVisible().catch(() => false)) {
-    console.log('-> layar PIN, masuk sebagai', ADMIN_NAME)
+  } else if (await page.getByText('Pilih akun untuk masuk').isVisible().catch(() => false)) {
+    console.log('-> layar pilih akun, masuk sebagai', ADMIN_NAME)
+    await page.getByRole('button', { name: new RegExp(ADMIN_NAME) }).click()
+    await page.waitForSelector(`text=Masukkan PIN untuk masuk sebagai ${ADMIN_NAME}`)
     for (const digit of ADMIN_PIN) await page.getByRole('button', { name: digit, exact: true }).click()
     await page.getByRole('button', { name: 'Masuk' }).click()
     await page.waitForSelector('nav', { timeout: 10000 })
