@@ -20,6 +20,8 @@ export async function createTable(input: { name: string; area: string; capacity:
     guestCount: null,
     qrToken: null,
     qrActive: false,
+    posX: null,
+    posY: null,
     updatedAt: Date.now(),
   }
   await db.transaction('rw', db.cafeTables, db.syncQueue, async () => {
@@ -29,12 +31,36 @@ export async function createTable(input: { name: string; area: string; capacity:
   return table
 }
 
+/** Simpan posisi meja di kanvas "Susun Denah". Tak perlu audit — kosmetik murni. */
+export async function setTablePosition(id: string, posX: number, posY: number): Promise<void> {
+  await updateTable(id, { posX: Math.round(posX), posY: Math.round(posY) })
+}
+
 export async function updateTable(id: string, patch: Partial<Omit<CafeTable, 'id'>>): Promise<void> {
   await db.transaction('rw', db.cafeTables, db.syncQueue, async () => {
     await db.cafeTables.update(id, { ...patch, updatedAt: Date.now() })
     const updated = await db.cafeTables.get(id)
     if (updated) await enqueueSync('cafeTables', id, updated)
   })
+}
+
+/**
+ * Menghapus meja HANYA bila belum pernah dipakai untuk pesanan apa pun (menjaga
+ * riwayat/laporan tetap utuh — sama seperti `deleteProductIfUnused` di
+ * `products.ts`) dan sedang tidak terisi. Meja yang pernah dipakai: nonaktifkan
+ * QR-nya saja lewat `setQrActive`, jangan dihapus.
+ */
+export async function deleteTableIfUnused(id: string): Promise<void> {
+  const table = await db.cafeTables.get(id)
+  if (!table) return
+  if (table.status !== 'available') {
+    throw new Error('Meja sedang terisi atau menunggu pembersihan — selesaikan dulu sebelum menghapus.')
+  }
+  const used = await db.orders.where('tableId').equals(id).count()
+  if (used > 0) {
+    throw new Error('Meja ini pernah dipakai untuk pesanan — riwayat akan rusak jika dihapus. Nonaktifkan QR-nya saja bila sudah tak dipakai.')
+  }
+  await db.cafeTables.delete(id)
 }
 
 /** Token QR = string acak (bukan id meja). Backend memetakan token → meja/outlet. */

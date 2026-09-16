@@ -4,7 +4,7 @@ import { resetLocalDb } from '@/test/db'
 import { addOrderItem, startOrder } from './orders'
 import { openShift } from './shifts'
 import { finalizePayment } from './checkout'
-import { createTable, markAvailable, markAwaitingPayment } from './tables'
+import { createTable, deleteTableIfUnused, markAvailable, markAwaitingPayment, setTablePosition } from './tables'
 import type { Product } from '@/types/domain'
 
 async function seedProduct(): Promise<void> {
@@ -60,5 +60,42 @@ describe('Siklus status meja dine-in', () => {
     // masih "available"
     await markAwaitingPayment(table.id)
     expect((await db.cafeTables.get(table.id))?.status).toBe('available')
+  })
+})
+
+describe('setTablePosition', () => {
+  it('meja baru punya posX/posY null; setTablePosition menyimpan & membulatkan', async () => {
+    const table = await createTable({ name: 'Meja 5', area: '', capacity: 2 })
+    expect(table.posX).toBeNull()
+    expect(table.posY).toBeNull()
+    await setTablePosition(table.id, 12.6, 40.4)
+    const updated = await db.cafeTables.get(table.id)
+    expect(updated?.posX).toBe(13)
+    expect(updated?.posY).toBe(40)
+  })
+})
+
+describe('deleteTableIfUnused', () => {
+  it('menghapus meja yang belum pernah dipakai', async () => {
+    const table = await createTable({ name: 'Meja Baru', area: '', capacity: 2 })
+    await deleteTableIfUnused(table.id)
+    expect(await db.cafeTables.get(table.id)).toBeUndefined()
+  })
+
+  it('menolak menghapus meja yang sedang terisi', async () => {
+    const table = await createTable({ name: 'Meja 3', area: '', capacity: 2 })
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'K', openingCash: 100000 })
+    await startOrder({ type: 'dine_in', tableId: table.id, cashierId: 'u1', cashierName: 'K', shiftId: shift.id })
+    await expect(deleteTableIfUnused(table.id)).rejects.toThrow('sedang terisi')
+    expect(await db.cafeTables.get(table.id)).toBeDefined()
+  })
+
+  it('menolak menghapus meja yang pernah dipakai (walau sudah tersedia lagi)', async () => {
+    const table = await createTable({ name: 'Meja 4', area: '', capacity: 2 })
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'K', openingCash: 100000 })
+    await startOrder({ type: 'dine_in', tableId: table.id, cashierId: 'u1', cashierName: 'K', shiftId: shift.id })
+    await markAvailable(table.id)
+    await expect(deleteTableIfUnused(table.id)).rejects.toThrow('pernah dipakai')
+    expect(await db.cafeTables.get(table.id)).toBeDefined()
   })
 })

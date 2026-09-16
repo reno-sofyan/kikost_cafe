@@ -440,6 +440,10 @@ export interface CafeTable {
   qrToken: string | null
   /** QR aktif? Dinonaktifkan → backend menolak (410) tanpa hapus meja. */
   qrActive: boolean
+  /** Posisi bebas di kanvas denah (mode "Susun Denah"). null = belum diatur —
+   *  tampil di grid otomatis sampai pengguna menggeser sekali. */
+  posX: number | null
+  posY: number | null
   updatedAt: number
 }
 
