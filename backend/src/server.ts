@@ -71,7 +71,11 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   await app.register(helmet, {
     contentSecurityPolicy: false, // API JSON murni; CSP diterapkan di reverse proxy untuk web.
-    crossOriginResourcePolicy: { policy: 'same-site' },
+    // 'cross-origin' bukan 'same-site': API ini sengaja dikonsumsi dari origin lain
+    // (app Android Capacitor = https://localhost/capacitor://localhost, beda site dari
+    // pos.kikost.com). 'same-site' akan memblokir fetch dari APK walau CORS_ORIGINS
+    // sudah mengizinkannya — CORP adalah lapisan terpisah dari CORS.
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 
   await app.register(cors, {
