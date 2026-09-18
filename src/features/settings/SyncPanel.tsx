@@ -14,6 +14,7 @@ import {
   type SyncDevice,
 } from '@/sync/client'
 import { triggerManualSync } from '@/sync/engine'
+import { enqueueFullResync } from '@/sync/outbox'
 import {
   clearDeviceSyncConfig,
   getApiBaseUrl,
@@ -38,6 +39,30 @@ export function SyncPanel() {
   const [deviceKey, setDeviceKey] = useState(getDeviceKey())
   const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [saved, setSaved] = useState(false)
+  const [resyncState, setResyncState] = useState<'idle' | 'running' | 'done'>('idle')
+  const [resyncCount, setResyncCount] = useState<number | null>(null)
+  const { confirm: confirmResync, dialog: resyncConfirmDialog } = useConfirmDialog()
+
+  async function handleFullResync() {
+    const ok = await confirmResync({
+      title: 'Sinkron ulang semua data?',
+      description:
+        'Seluruh data lokal (produk, kategori, meja, riwayat, dll.) akan didorong ulang ke server, ' +
+        'terlepas dari status sync sebelumnya. Pakai ini kalau backend baru dikonfigurasi di perangkat ' +
+        'yang sudah lama dipakai offline. Proses bisa memakan waktu untuk data yang banyak.',
+      confirmLabel: 'Sinkron Ulang',
+    })
+    if (!ok) return
+    setResyncState('running')
+    try {
+      const count = await enqueueFullResync()
+      setResyncCount(count)
+      await triggerManualSync()
+      setResyncState('done')
+    } catch {
+      setResyncState('idle')
+    }
+  }
 
   async function handleTest() {
     setTestState('testing')
@@ -87,7 +112,28 @@ export function SyncPanel() {
           <Icon name="refresh" size={16} className={sync.isSyncing ? 'animate-spin' : ''} />
           Sinkronkan Sekarang
         </button>
+
+        {canManageDevices && isBackendConfigured() && (
+          <div className="mt-4 border-t border-ink-800 pt-4">
+            <button
+              className="btn-secondary flex items-center gap-2"
+              disabled={resyncState === 'running'}
+              onClick={() => void handleFullResync()}
+            >
+              <Icon name="refresh" size={16} className={resyncState === 'running' ? 'animate-spin' : ''} />
+              {resyncState === 'running' ? 'Menyinkron ulang...' : 'Sinkron Ulang Semua Data'}
+            </button>
+            <p className="mt-2 text-xs text-ink-500">
+              Dorong ulang semua data lokal ke server, termasuk yang sudah lama ada sebelum backend ini
+              dikonfigurasi. Pakai sekali saat menyambungkan perangkat lama ke backend baru.
+            </p>
+            {resyncState === 'done' && resyncCount !== null && (
+              <p className="mt-2 text-sm text-sage-500">{resyncCount} item dimasukkan ke antrean & sedang disinkron.</p>
+            )}
+          </div>
+        )}
       </div>
+      {resyncConfirmDialog}
 
       <div className="card p-5">
         <h3 className="mb-1 font-semibold text-ink-100">Konfigurasi Backend Perangkat</h3>
