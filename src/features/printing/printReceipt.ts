@@ -1,10 +1,25 @@
 import jsPDF from 'jspdf'
 import { getSettings } from '@/db/repositories/settings'
+import { activePrinterForStation } from '@/db/repositories/printers'
 import { buildReceiptData, type ReceiptData } from '@/features/printing/receiptData'
-import { resolvePrinterDriver, type PrinterDriver } from '@/features/printing/printerDrivers'
+import { resolvePrinterDriver, PrinterNotConfiguredError, type PrinterDriver } from '@/features/printing/printerDrivers'
 import { renderReceiptBodyHtml } from '@/features/printing/renderReceiptHtml'
 import { saveFile } from '@/lib/saveFile'
 import type { Order } from '@/types/domain'
+
+/**
+ * Resolve driver dari printer kasir aktif di tabel `printers` (multi-station) —
+ * BUKAN `settings.printerConfig` (field lawas satu-global yang sudah tak diisi
+ * lagi sejak Pengaturan > Printer pindah ke sistem multi-station; tetap "none"
+ * selamanya walau printer sudah dikonfigurasi & terbukti jalan lewat cetak
+ * otomatis/"Test" di Pengaturan). Menyamakan sumber ini juga dipakai di
+ * `receiptDispatch.ts` untuk cetak nota otomatis setelah bayar.
+ */
+async function resolveCashierPrinterDriver(): Promise<PrinterDriver> {
+  const printer = await activePrinterForStation('cashier')
+  if (!printer) throw new PrinterNotConfiguredError()
+  return resolvePrinterDriver(printer)
+}
 
 export async function prepareReceiptData(order: Order, opts: { isReprint?: boolean } = {}): Promise<ReceiptData> {
   const settings = await getSettings()
@@ -17,14 +32,14 @@ export async function printOrderReceipt(
 ): Promise<void> {
   const settings = await getSettings()
   const data = await buildReceiptData(order, settings, { isReprint: opts.isReprint })
-  const driver = opts.driverOverride ?? resolvePrinterDriver(settings.printerConfig)
+  const driver = opts.driverOverride ?? (await resolveCashierPrinterDriver())
   await driver.print(data)
 }
 
 /** Mencetak dari ReceiptData yang sudah dibangun (mempertahankan penanda mis. CETAK ULANG). */
 export async function printReceiptData(data: ReceiptData): Promise<void> {
-  const settings = await getSettings()
-  await resolvePrinterDriver(settings.printerConfig).print(data)
+  const driver = await resolveCashierPrinterDriver()
+  await driver.print(data)
 }
 
 /**

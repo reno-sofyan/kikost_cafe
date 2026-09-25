@@ -3,7 +3,7 @@ import { buildEscPosReceipt } from '@/features/printing/escpos'
 import { renderReceiptDocument } from '@/features/printing/renderReceiptHtml'
 import { EscPosPrinter } from '@/native/escPosPrinterPlugin'
 import type { ReceiptData } from '@/features/printing/receiptData'
-import type { PrinterConfig } from '@/types/domain'
+import type { PrinterConnectionSettings } from '@/types/domain'
 
 export interface PrinterDriver {
   print(data: ReceiptData): Promise<void>
@@ -58,7 +58,7 @@ function toBase64(bytes: Uint8Array): string {
 
 /** Mencetak lewat printer Bluetooth atau WiFi/LAN memakai plugin native Capacitor (hanya di APK). */
 export class NativeEscPosDriver implements PrinterDriver {
-  constructor(private readonly config: PrinterConfig) {}
+  constructor(private readonly config: PrinterConnectionSettings) {}
 
   async print(data: ReceiptData): Promise<void> {
     if (!Capacitor.isNativePlatform()) throw new PrinterUnavailableOnPlatformError()
@@ -90,7 +90,7 @@ export class MockPrinterDriver implements PrinterDriver {
   }
 }
 
-export function resolvePrinterDriver(config: PrinterConfig): PrinterDriver {
+export function resolvePrinterDriver(config: PrinterConnectionSettings): PrinterDriver {
   switch (config.connectionType) {
     case 'browser':
       return new BrowserPrintDriver()

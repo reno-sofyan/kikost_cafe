@@ -98,13 +98,18 @@ export interface CafeSettings {
 
 export type PrinterConnectionType = 'none' | 'bluetooth' | 'network' | 'browser'
 
-export interface PrinterConfig {
+/** Subset dipakai driver ESC/POS — dipenuhi baik `PrinterConfig` (lawas, satu global)
+ *  maupun `Printer` (multi-station), supaya kode pengiriman tak perlu tahu sumbernya. */
+export interface PrinterConnectionSettings {
   connectionType: PrinterConnectionType
-  paperSize: ReceiptPaperSize
   bluetoothAddress: string | null
-  bluetoothName: string | null
   networkHost: string | null
   networkPort: number | null
+}
+
+export interface PrinterConfig extends PrinterConnectionSettings {
+  paperSize: ReceiptPaperSize
+  bluetoothName: string | null
   autoPrintOnPayment: boolean
   autoPrintKitchenOrder: boolean
 }

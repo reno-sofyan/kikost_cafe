@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { buildEscPosReceipt } from './escpos'
 import { buildSampleReceiptData, type ReceiptData } from './receiptData'
-import { MockPrinterDriver } from './printerDrivers'
+import { MockPrinterDriver, PrinterNotConfiguredError } from './printerDrivers'
+import { printReceiptData } from './printReceipt'
+import { savePrinter } from '@/db/repositories/printers'
 import { DEFAULT_SETTINGS } from '@/db/repositories/settings'
+import { resetLocalDb } from '@/test/db'
 
 const sample: ReceiptData = buildSampleReceiptData({
   ...DEFAULT_SETTINGS,
@@ -48,6 +51,24 @@ describe('buildEscPosReceipt', () => {
   it('menandai transaksi dibatalkan', () => {
     const text = decode(buildEscPosReceipt({ ...sample, isVoided: true }))
     expect(text).toContain('TRANSAKSI DIBATALKAN')
+  })
+})
+
+const actor = { userId: 'u1', userName: 'Admin' }
+
+describe('printReceiptData (regresi: harus resolve printer dari tabel `printers`, bukan settings.printerConfig lawas)', () => {
+  beforeEach(() => resetLocalDb())
+
+  it('gagal jelas kalau belum ada printer kasir aktif', async () => {
+    await expect(printReceiptData(sample)).rejects.toThrow(PrinterNotConfiguredError)
+  })
+
+  it('berhasil begitu printer kasir dikonfigurasi lewat Pengaturan > Printer (tabel `printers`)', async () => {
+    await savePrinter(
+      { name: 'Kasir', station: 'cashier', connectionType: 'browser', bluetoothAddress: null, bluetoothName: null, networkHost: null, networkPort: null, paperSize: '58mm', active: true, fallbackPrinterId: null },
+      actor,
+    )
+    await expect(printReceiptData(sample)).resolves.not.toThrow()
   })
 })
 
