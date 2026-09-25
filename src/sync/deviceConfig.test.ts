@@ -28,6 +28,16 @@ describe('deviceConfig', () => {
     expect(hasStoredOverride()).toBe(true)
   })
 
+  it('menambahkan https:// bila skema tak ditulis', () => {
+    saveDeviceSyncConfig({ apiBaseUrl: 'pos.kikost.com' })
+    expect(getApiBaseUrl()).toBe('https://pos.kikost.com')
+  })
+
+  it('membuang /api yang kepencet ikut ditulis di akhir URL', () => {
+    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.kikost.com/api' })
+    expect(getApiBaseUrl()).toBe('https://pos.kikost.com')
+  })
+
   it('menyimpan string kosong = menghapus kunci itu', () => {
     saveDeviceSyncConfig({ apiBaseUrl: 'https://x.test', deviceKey: 'k' })
     saveDeviceSyncConfig({ apiBaseUrl: '' })

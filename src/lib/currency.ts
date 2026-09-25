@@ -1,12 +1,18 @@
-const RUPIAH_FORMATTER = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-})
-
+/**
+ * Format manual "Rp1.500.000" / "Rp5.500,50" — titik pemisah ribuan, koma
+ * desimal HANYA muncul bila ada pecahan. Sengaja tidak pakai `style: 'currency'`
+ * karena data simbol mata uang ICU sering terpangkas (small-ICU) di WebView
+ * Android OEM, membuat simbol Rupiah tercetak rusak (mis. jadi "Ta"). Grouping
+ * angka polos (`style: 'decimal'`, default) jauh lebih konsisten lintas perangkat.
+ */
 export function formatRupiah(amount: number): string {
-  return RUPIAH_FORMATTER.format(Math.round(amount))
+  const rounded = Math.round(amount * 100) / 100
+  const hasFraction = !Number.isInteger(rounded)
+  const formatter = new Intl.NumberFormat('id-ID', {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: hasFraction ? 2 : 0,
+  })
+  return `Rp${formatter.format(rounded)}`
 }
 
 export function formatNumber(amount: number): string {

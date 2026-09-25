@@ -29,9 +29,23 @@ function envDeviceKey(): string {
   return (import.meta.env.VITE_DEVICE_SYNC_KEY as string | undefined)?.trim() ?? ''
 }
 
+/**
+ * Perbaiki salah ketik umum: lupa skema (`pos.kikost.com` -> `https://pos.kikost.com`)
+ * atau kepencet nempelin `/api` di akhir (bikin path jadi dobel, mis. `/api/api/sync/...`).
+ * Tanpa ini, salah ketik begini bikin fetch() nyasar ke bundel HTML lokal aplikasi
+ * sendiri alih-alih server, dan errornya jadi "Unexpected token '<'" yang membingungkan.
+ */
+function normalizeApiBaseUrl(raw: string): string {
+  let url = raw.trim().replace(/\/+$/, '')
+  if (!url) return ''
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  url = url.replace(/\/api$/i, '')
+  return url
+}
+
 export function getApiBaseUrl(): string {
   const stored = readStored(API_BASE_URL_KEY)?.trim()
-  return (stored && stored.length > 0 ? stored : envApiBaseUrl()).replace(/\/+$/, '')
+  return normalizeApiBaseUrl(stored && stored.length > 0 ? stored : envApiBaseUrl())
 }
 
 export function getDeviceKey(): string {
@@ -51,7 +65,7 @@ export function hasStoredOverride(): boolean {
 export function saveDeviceSyncConfig(config: Partial<DeviceSyncConfig>): void {
   try {
     if (config.apiBaseUrl !== undefined) {
-      const clean = config.apiBaseUrl.trim().replace(/\/+$/, '')
+      const clean = normalizeApiBaseUrl(config.apiBaseUrl)
       if (clean) localStorage.setItem(API_BASE_URL_KEY, clean)
       else localStorage.removeItem(API_BASE_URL_KEY)
     }

@@ -53,23 +53,40 @@ async function authorizedFetch(path: string, init: RequestInit): Promise<Respons
   return response
 }
 
+/**
+ * Balasan bukan-JSON (biasanya HTML — proxy/URL Backend salah, atau server down)
+ * bikin `response.json()` gagal dengan pesan kriptis "Unexpected token '<'".
+ * Dicek eksplisit di sini supaya errornya langsung nunjuk ke penyebab yang jelas.
+ */
+async function parseJsonOrThrow<T>(response: Response, failLabel: string): Promise<T> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      `${failLabel} (HTTP ${response.status}): server membalas bukan JSON — cek URL Backend di Pengaturan > Sinkronisasi.`,
+    )
+  }
+  return (await response.json()) as T
+}
+
 export async function pushSyncBatch(deviceId: string, items: SyncPushItem[]): Promise<SyncPushResponse> {
   const response = await authorizedFetch('/api/sync/push', {
     method: 'POST',
     body: JSON.stringify({ deviceId, items }),
   })
+  const data = await parseJsonOrThrow<SyncPushResponse>(response, 'Sinkronisasi gagal')
   if (!response.ok) {
     throw new Error(`Sinkronisasi gagal (HTTP ${response.status})`)
   }
-  return (await response.json()) as SyncPushResponse
+  return data
 }
 
 export async function pullSyncChanges(since: number): Promise<SyncPullResponse> {
   const response = await authorizedFetch(`/api/sync/pull?since=${since}`, { method: 'GET' })
+  const data = await parseJsonOrThrow<SyncPullResponse>(response, 'Gagal mengambil data terbaru')
   if (!response.ok) {
     throw new Error(`Gagal mengambil data terbaru (HTTP ${response.status})`)
   }
-  return (await response.json()) as SyncPullResponse
+  return data
 }
 
 export async function pingBackend(): Promise<boolean> {

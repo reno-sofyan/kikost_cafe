@@ -19,6 +19,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 import org.json.JSONArray;
 
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Set;
@@ -127,7 +128,7 @@ public class EscPosPrinterPlugin extends Plugin {
             }
             adapter.cancelDiscovery();
             BluetoothDevice device = adapter.getRemoteDevice(address);
-            bluetoothSocket = device.createRfcommSocketToServiceRecord(SPP_UUID);
+            bluetoothSocket = openSocket(device);
             bluetoothSocket.connect();
             activeOutput = bluetoothSocket.getOutputStream();
             JSObject ret = new JSObject();
@@ -139,6 +140,24 @@ public class EscPosPrinterPlugin extends Plugin {
         } catch (Exception e) {
             closeQuietly();
             call.reject("Gagal terhubung ke printer Bluetooth: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Banyak printer thermal generic/klon punya modul Bluetooth SPP yang tidak
+     * merespons SDP lookup dengan benar — createRfcommSocketToServiceRecord()
+     * jadi "berhasil" connect() dan write() tanpa exception, tapi data tak
+     * pernah benar-benar sampai ke printer. Channel RFCOMM 1 lewat API
+     * tersembunyi ini adalah workaround standar dan lebih andal untuk printer
+     * semacam itu; kalau reflection gagal (mis. OEM ROM aneh), turun ke cara
+     * standar.
+     */
+    private BluetoothSocket openSocket(BluetoothDevice device) throws Exception {
+        try {
+            Method method = device.getClass().getMethod("createRfcommSocket", int.class);
+            return (BluetoothSocket) method.invoke(device, 1);
+        } catch (Exception reflectionFailed) {
+            return device.createRfcommSocketToServiceRecord(SPP_UUID);
         }
     }
 
