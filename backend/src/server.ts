@@ -56,6 +56,20 @@ export async function buildServer(): Promise<FastifyInstance> {
         paths: ['req.headers.authorization', 'req.headers.cookie'],
         remove: true,
       },
+      // /api/events otentikasi lewat query `?key=` (EventSource tak bisa kirim
+      // header) — tanpa serializer ini, kunci perangkat (kredensial penuh, sama
+      // bobotnya dengan Bearer token) akan ke-log mentah di setiap request lewat
+      // `req.url`, yang tidak tersentuh oleh `redact.paths` di atas.
+      serializers: {
+        req(request: FastifyRequest) {
+          return {
+            method: request.method,
+            url: request.url.replace(/([?&]key=)[^&]*/i, '$1[redacted]'),
+            host: request.headers.host,
+            remoteAddress: request.ip,
+          }
+        },
+      },
       transport:
         config.NODE_ENV === 'development'
           ? { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } }
