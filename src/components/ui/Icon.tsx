@@ -37,6 +37,8 @@ export type IconName =
   | 'backspace'
   | 'barcode'
   | 'pager'
+  | 'phone'
+  | 'bag'
 
 const SHAPES: Record<IconName, ReactNode> = {
   search: (
@@ -223,6 +225,15 @@ const SHAPES: Record<IconName, ReactNode> = {
       <rect x="4" y="7" width="16" height="13" rx="2" />
       <path d="M8 7V5.5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2V7" />
       <path d="M7.5 12h9M7.5 15.5h5" />
+    </>
+  ),
+  phone: (
+    <path d="M6.5 3.5h2.8l1.4 4-2 1.6a12 12 0 0 0 5.2 5.2l1.6-2 4 1.4v2.8a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 4.5 5.7a2 2 0 0 1 2-2.2Z" />
+  ),
+  bag: (
+    <>
+      <path d="M6 8h12l-1 12.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 20.5L6 8Z" />
+      <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
     </>
   ),
 }

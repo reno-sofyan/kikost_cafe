@@ -17,6 +17,7 @@ import { registerMidtransRoutes } from './routes/midtransPay.js'
 declare module 'fastify' {
   interface FastifyRequest {
     deviceId: string | null
+    tenantId: string
   }
 }
 
@@ -82,6 +83,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   })
 
   app.decorateRequest('deviceId', null)
+  app.decorateRequest('tenantId', 'default')
 
   await app.register(helmet, {
     contentSecurityPolicy: false, // API JSON murni; CSP diterapkan di reverse proxy untuk web.
@@ -159,6 +161,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
     recordAuthSuccess(request.ip)
     request.deviceId = device.deviceId
+    request.tenantId = device.tenantId
   })
 
   // ---- Manajemen perangkat sinkronisasi ----
@@ -173,7 +176,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
     const items: PushItem[] = parsed.data.items
     try {
-      const result = await processPush({ deviceId: request.deviceId, items })
+      const result = await processPush({ deviceId: request.deviceId, tenantId: request.tenantId, items })
       return result
     } catch (err) {
       const statusCode = (err as { statusCode?: number }).statusCode ?? 500
@@ -191,7 +194,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       return { error: 'Query tidak valid', issues: parsed.error.issues }
     }
     try {
-      return await processPull(parsed.data.since)
+      return await processPull(parsed.data.since, request.tenantId)
     } catch (err) {
       reply.code(500)
       request.log.error({ err: err instanceof Error ? err.message : err }, 'pull gagal')

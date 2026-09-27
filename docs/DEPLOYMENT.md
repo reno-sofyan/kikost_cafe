@@ -56,12 +56,32 @@ Isi `deploy/.env` (rahasia BARU, bukan milik Kikost):
 
 ```bash
 openssl rand -hex 24   # -> POSTGRES_PASSWORD
-openssl rand -hex 32   # -> SYNC_DEVICE_KEYS (satu per tablet, pisah koma)
+openssl rand -hex 32   # -> satu kunci tablet, ulangi untuk setiap tablet
 ```
 
 Set: `POS_DOMAIN=pos.kikost.com`, `PROXY_NETWORK=coolify`,
 `TRAEFIK_HTTPS_ENTRYPOINT=https`, `TRAEFIK_CERTRESOLVER=letsencrypt`
 (sesuaikan bila langkah 1 menunjukkan nama lain).
+
+### Tiga usaha internal pada satu backend
+
+Untuk cafe, kantin, dan minimarket, gunakan satu tenant per usaha pada
+`SYNC_DEVICE_KEYS`. Contoh (masing-masing `kunci-*` adalah hasil `openssl rand -hex 32`):
+
+```dotenv
+SYNC_DEVICE_KEYS=cafe:kunci-cafe,kantin:kunci-kantin,minimarket:kunci-minimarket
+```
+
+Semua tablet usaha yang sama memakai prefix tenant yang sama dan kunci berbeda,
+misalnya `cafe:kunci-kasir,cafe:kunci-dapur`. Backend membatasi sinkronisasi,
+perangkat terdaftar, QR meja, dan pembayaran ke tenant tersebut; satu tenant tidak
+dapat menarik data tenant lain. Masukkan URL backend yang sama dan kunci milik
+usahanya pada setiap tablet melalui **Pengaturan → Sinkronisasi**.
+
+Format lama `SYNC_DEVICE_KEYS=kunci1,kunci2` tetap berfungsi, tetapi seluruhnya
+masuk tenant `default` sehingga tidak boleh dipakai untuk tiga usaha. Pada upgrade,
+migrasi menjaga data lama di tenant `default`; data itu tidak dihapus dan tidak akan
+terbaca oleh kunci `cafe:`, `kantin:`, atau `minimarket:` baru.
 
 ## 3. Pasang di balik Traefik Coolify
 

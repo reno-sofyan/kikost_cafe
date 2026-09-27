@@ -16,7 +16,9 @@ import {
 const TOKEN_RE = /^[a-f0-9]{16,64}$/i
 
 const submitSchema = z.object({
-  customerName: z.string().max(80).optional().default(''),
+  customerName: z.string().min(1).max(80),
+  customerPhone: z.string().min(1).max(20),
+  orderType: z.enum(['dine_in', 'takeaway']).optional().default('dine_in'),
   items: z
     .array(
       z.object({
@@ -68,8 +70,8 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     const client = await getPool().connect()
     try {
       const resolved = await resolveToken(client, token)
-      const catalog = await loadCatalog(client)
-      await logPublicRequest(client, 'GET /api/t/:token', token, clientIp(request), 200, resolved.tableName)
+      const catalog = await loadCatalog(client, resolved.tenantId)
+      await logPublicRequest(client, resolved.tenantId, 'GET /api/t/:token', token, clientIp(request), 200, resolved.tableName)
       return buildMenu(catalog, resolved)
     } catch (err) {
       request.log.warn({ err: err instanceof Error ? err.message : err }, 'menu QR gagal')
@@ -101,6 +103,8 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
         token,
         idempotencyKey,
         customerName: parsed.data.customerName,
+        customerPhone: parsed.data.customerPhone,
+        orderType: parsed.data.orderType,
         items: parsed.data.items as SubmitItemInput[],
         ip: clientIp(request),
       })

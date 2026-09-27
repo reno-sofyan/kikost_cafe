@@ -54,8 +54,33 @@ const schema = z.object({
 })
 
 export type AppConfig = z.infer<typeof schema> & {
-  deviceKeys: string[]
+  deviceKeys: DeviceKeyConfig[]
   corsOrigins: string[]
+}
+
+export interface DeviceKeyConfig {
+  key: string
+  tenantId: string
+}
+
+const TENANT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
+
+function parseDeviceKeys(raw: string): DeviceKeyConfig[] {
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const separator = entry.indexOf(':')
+      if (separator === -1) return { key: entry, tenantId: 'default' }
+
+      const tenantId = entry.slice(0, separator).trim().toLowerCase()
+      const key = entry.slice(separator + 1).trim()
+      if (!TENANT_ID_RE.test(tenantId) || !key) {
+        throw new Error('SYNC_DEVICE_KEYS harus berbentuk tenant:kunci, dengan tenant huruf kecil, angka, _ atau -.')
+      }
+      return { key, tenantId }
+    })
 }
 
 let cached: AppConfig | null = null
@@ -63,9 +88,7 @@ let cached: AppConfig | null = null
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (cached) return cached
   const parsed = schema.parse(env)
-  const deviceKeys = parsed.SYNC_DEVICE_KEYS.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const deviceKeys = parseDeviceKeys(parsed.SYNC_DEVICE_KEYS)
   const corsOrigins = parsed.CORS_ORIGINS.split(',')
     .map((s) => s.trim())
     .filter(Boolean)

@@ -65,8 +65,30 @@ suite('Midtrans QRIS pay (integrasi)', () => {
     vi.restoreAllMocks()
   })
 
-  it('order belum dikonfirmasi kasir (PENDING_CONFIRMATION) → 409, tidak memanggil gateway', async () => {
+  it('order belum dikonfirmasi kasir (PENDING_CONFIRMATION) → tetap bisa dibayar online (checkout memilih online)', async () => {
     await seedTableAndOrder('PENDING_CONFIRMATION')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          status_code: '201',
+          transaction_id: 'mt-txn-pending-confirm',
+          order_id: 'o1_abcd1234',
+          gross_amount: '57800.00',
+          transaction_status: 'pending',
+          qr_string: '00020101021226...',
+          expiry_time: '2026-01-01 10:15:00',
+          actions: [{ name: 'generate-qr-code', method: 'GET', url: 'https://api.sandbox.midtrans.com/qr' }],
+        }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    const r = await app.inject({ method: 'POST', url: `/api/t/${TOKEN}/orders/o1/pay` })
+    expect(r.statusCode).toBe(201)
+    expect(r.json().qrString).toBe('00020101021226...')
+  })
+
+  it('order sudah ditolak/void → 409, tidak memanggil gateway', async () => {
+    await seedTableAndOrder('REJECTED')
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const r = await app.inject({ method: 'POST', url: `/api/t/${TOKEN}/orders/o1/pay` })
     expect(r.statusCode).toBe(409)
@@ -125,6 +147,7 @@ suite('Midtrans QRIS pay (integrasi)', () => {
   })
 
   it('notifikasi settlement dgn tanda tangan sah → menulis onlinePayments dgn orderId asli (tanpa nonce)', async () => {
+    await seedTableAndOrder('CONFIRMED')
     const payload = {
       order_id: 'o1_abcd1234',
       status_code: '200',

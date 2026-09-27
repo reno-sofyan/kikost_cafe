@@ -15,6 +15,7 @@ function safeEqualHex(a: string, b: string): boolean {
 export interface AuthenticatedDevice {
   deviceId: string | null
   source: 'env' | 'db'
+  tenantId: string
 }
 
 /**
@@ -30,17 +31,17 @@ export async function authenticateDeviceKey(rawKey: string): Promise<Authenticat
   const incomingHash = hashDeviceKey(key)
 
   for (const envKey of config.deviceKeys) {
-    if (safeEqualHex(hashDeviceKey(envKey), incomingHash)) {
-      return { deviceId: null, source: 'env' }
+    if (safeEqualHex(hashDeviceKey(envKey.key), incomingHash)) {
+      return { deviceId: null, source: 'env', tenantId: envKey.tenantId }
     }
   }
 
-  const { rows } = await getPool().query<{ id: string }>(
-    'SELECT id FROM sync_devices WHERE device_key_hash = $1 AND revoked = FALSE LIMIT 1',
+  const { rows } = await getPool().query<{ id: string; tenant_id: string }>(
+    'SELECT id, tenant_id FROM sync_devices WHERE device_key_hash = $1 AND revoked = FALSE LIMIT 1',
     [incomingHash],
   )
   if (rows.length === 0) return null
-  return { deviceId: rows[0].id, source: 'db' }
+  return { deviceId: rows[0].id, source: 'db', tenantId: rows[0].tenant_id }
 }
 
 export async function touchDeviceLastSeen(client: PoolClient, deviceId: string | null): Promise<void> {

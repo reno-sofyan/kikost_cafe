@@ -3,7 +3,7 @@ import { buildMenu, priceOrder, PublicOrderError, sanitizeNote, type Catalog } f
 
 function catalog(over: Partial<Catalog> = {}): Catalog {
   return {
-    settings: { businessName: 'Kopi Senja', address: '', phone: '', taxPercent: 10, serviceChargePercent: 5, roundingIncrement: 100, activeOutletId: null },
+    settings: { businessName: 'Kopi Senja', logoDataUrl: null, address: '', phone: '', taxPercent: 10, serviceChargePercent: 5, roundingIncrement: 100, activeOutletId: null },
     categories: [
       { id: 'c1', name: 'Kopi', sortOrder: 0, active: true },
       { id: 'c2', name: 'Nonaktif', sortOrder: 1, active: false },
@@ -70,7 +70,7 @@ describe('priceOrder — total dihitung server', () => {
 
 describe('buildMenu', () => {
   it('hanya produk tersedia di kategori aktif, dengan modifier', () => {
-    const menu = buildMenu(catalog(), { tableId: 't1', tableName: 'Meja 1' })
+    const menu = buildMenu(catalog(), { tableId: 't1', tableName: 'Meja 1', tenantId: 'cafe' })
     expect(menu.items.map((i) => i.id)).toEqual(['p1'])
     expect(menu.categories).toEqual([{ id: 'c1', name: 'Kopi' }])
     expect(menu.items[0].modifierGroups[0].options.map((o) => o.name)).toEqual(['Reguler', 'Large'])

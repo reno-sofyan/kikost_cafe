@@ -32,7 +32,15 @@ suite('POST /api/payments/webhook (integrasi)', () => {
     await teardownDatabase()
   })
 
-  const body = { orderId: 'o1', billId: 'bill_o1', amount: 40000, method: 'qris' as const, reference: 'gw-ref-1' }
+const body = { orderId: 'o1', billId: 'bill_o1', amount: 40000, method: 'qris' as const, reference: 'gw-ref-1' }
+
+async function seedOrder(): Promise<void> {
+  await getPool().query(
+    `INSERT INTO sync_entity_state (entity, entity_id, payload, entity_updated_at, server_seq)
+     VALUES ('orders', 'o1', $1::jsonb, 1, nextval('sync_server_seq'))`,
+    [JSON.stringify({ id: 'o1', status: 'open', updatedAt: 1 })],
+  )
+}
 
   it('tanda tangan salah → 401, tak menulis apa pun', async () => {
     const r = await app.inject({
@@ -46,6 +54,7 @@ suite('POST /api/payments/webhook (integrasi)', () => {
   })
 
   it('tanda tangan sah → menulis entitas onlinePayments; idempoten by reference', async () => {
+    await seedOrder()
     const sig = sign(body.orderId, body.billId, body.amount, body.reference)
     const r1 = await app.inject({
       method: 'POST', url: '/api/payments/webhook',
@@ -68,6 +77,7 @@ suite('POST /api/payments/webhook (integrasi)', () => {
   })
 
   it('entitas onlinePayments ikut ter-pull oleh perangkat', async () => {
+    await seedOrder()
     const sig = sign(body.orderId, body.billId, body.amount, body.reference)
     await app.inject({
       method: 'POST', url: '/api/payments/webhook',

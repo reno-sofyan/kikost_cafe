@@ -16,9 +16,16 @@ import { logPublicRequest, PublicOrderError, resolveToken } from '../lib/publicO
 
 const TOKEN_RE = /^[a-f0-9]{16,64}$/i
 
-/** Hanya order yang sudah dikonfirmasi kasir/waiter boleh dibayar online —
- * cermin dari guard yang sama di `applyOnlinePayments` (src/sync/applyRemote.ts). */
-const PAYABLE_STATUSES = new Set(['CONFIRMED', 'PREPARING', 'READY', 'SERVED'])
+/**
+ * Order boleh dibayar online sejak dikirim (checkout memilih "Pembayaran Online"),
+ * tak perlu menunggu kasir konfirmasi — keputusan produk, bukan keterbatasan teknis.
+ * Notifikasi Midtrans tetap dicatat lewat `recordOnlinePayment` apa pun statusnya;
+ * `applyOnlinePayments` (src/sync/applyRemote.ts) MENUNDA penerapan bill sampai
+ * order keluar dari PENDING_CONFIRMATION, jadi dana tercatat tapi belum "dilunaskan"
+ * secara lokal sampai kasir memutuskan. Kasir yang menolak pesanan yang sudah
+ * dibayar akan diblokir (lihat rejectQrOrder) dan diarahkan proses refund manual.
+ */
+const PAYABLE_STATUSES = new Set(['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'READY', 'SERVED'])
 
 function num(v: unknown, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
@@ -62,8 +69,8 @@ export async function registerMidtransRoutes(app: FastifyInstance): Promise<void
     try {
       const resolved = await resolveToken(client, token)
       const { rows } = await client.query<{ payload: Record<string, unknown> }>(
-        "SELECT payload FROM sync_entity_state WHERE entity = 'orders' AND entity_id = $1",
-        [orderId],
+        "SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'orders' AND entity_id = $2",
+        [resolved.tenantId, orderId],
       )
       const order = rows[0]?.payload
       if (!order || order.source !== 'qr_table' || String(order.tableId) !== resolved.tableId) {
@@ -73,12 +80,12 @@ export async function registerMidtransRoutes(app: FastifyInstance): Promise<void
       const lifecycle = String(order.lifecycleStatus ?? '')
       if (!PAYABLE_STATUSES.has(lifecycle)) {
         reply.code(409)
-        return { error: 'Pesanan belum dikonfirmasi kasir. Tunggu konfirmasi sebelum membayar online.' }
+        return { error: 'Pesanan ini sudah tidak bisa dibayar online. Hubungi kasir.' }
       }
 
       const paysRes = await client.query<{ payload: Record<string, unknown> }>(
-        "SELECT payload FROM sync_entity_state WHERE entity = 'payments' AND payload->>'orderId' = $1",
-        [orderId],
+        "SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'payments' AND payload->>'orderId' = $2",
+        [resolved.tenantId, orderId],
       )
       const paidSoFar = paysRes.rows
         .map((r) => r.payload)
@@ -97,7 +104,7 @@ export async function registerMidtransRoutes(app: FastifyInstance): Promise<void
         midtransOrderId,
         grossAmount: remaining,
       })
-      await logPublicRequest(client, 'POST /api/t/:token/orders/:id/pay', token, request.ip || null, 201, orderId)
+      await logPublicRequest(client, resolved.tenantId, 'POST /api/t/:token/orders/:id/pay', token, request.ip || null, 201, orderId)
       reply.code(201)
       return { qrString: charge.qrString, grossAmount: charge.grossAmount, expiryTime: charge.expiryTime }
     } catch (err) {

@@ -153,12 +153,18 @@ export function QrOrderInbox() {
               header={
                 <>
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-ink-50">{order.tableId ? tableName.get(order.tableId) ?? 'Meja' : 'Tanpa meja'}</span>
+                    <span className="flex items-center gap-2 font-bold text-ink-50">
+                      {order.type === 'takeaway' && (
+                        <span className="badge bg-accent-600/15 text-accent-700">Bawa Pulang</span>
+                      )}
+                      {order.tableId ? tableName.get(order.tableId) ?? 'Meja' : 'Tanpa meja'}
+                    </span>
                     <span className="text-xs text-ink-400">{durationSince(order.createdAt, now)}</span>
                   </div>
                   <div className="text-sm text-ink-300">
                     {order.orderNumber}
                     {order.notes ? <span className="ml-2 font-medium text-ink-100">• {order.notes}</span> : null}
+                    {order.customerPhone ? <span className="ml-2 text-ink-400">· {order.customerPhone}</span> : null}
                   </div>
                 </>
               }

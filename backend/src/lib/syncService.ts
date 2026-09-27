@@ -35,8 +35,11 @@ export interface PullResponse {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-async function currentServerSeq(client: PoolClient): Promise<number> {
-  const { rows } = await client.query<{ seq: string }>("SELECT last_value AS seq FROM sync_server_seq")
+async function currentServerSeq(client: PoolClient, tenantId: string): Promise<number> {
+  const { rows } = await client.query<{ seq: string }>(
+    'SELECT COALESCE(MAX(server_seq), 0) AS seq FROM sync_entity_state WHERE tenant_id = $1',
+    [tenantId],
+  )
   return Number(rows[0]?.seq ?? 0)
 }
 
@@ -47,15 +50,16 @@ interface ExistingState {
 
 export async function processPush(params: {
   deviceId: string | null
+  tenantId: string
   items: PushItem[]
 }): Promise<PushResponse> {
   const config = loadConfig()
-  const { deviceId, items } = params
+  const { deviceId, tenantId, items } = params
 
   if (items.length === 0) {
     const c = await getPool().connect()
     try {
-      return { results: [], serverTime: await currentServerSeq(c) }
+      return { results: [], serverTime: await currentServerSeq(c, tenantId) }
     } finally {
       c.release()
     }
@@ -72,7 +76,7 @@ export async function processPush(params: {
     let rejected = 0
 
     for (const item of items) {
-      const res = await processOneItem(client, deviceId, item)
+      const res = await processOneItem(client, tenantId, deviceId, item)
       results.push(res)
       if (res.status === 'accepted') accepted++
       else if (res.status === 'duplicate') duplicate++
@@ -80,18 +84,19 @@ export async function processPush(params: {
     }
 
     await client.query(
-      `INSERT INTO sync_push_log (device_id, item_count, accepted, duplicate, rejected)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [deviceId, items.length, accepted, duplicate, rejected],
+      `INSERT INTO sync_push_log (tenant_id, device_id, item_count, accepted, duplicate, rejected)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, deviceId, items.length, accepted, duplicate, rejected],
     )
 
-    const serverTime = await currentServerSeq(client)
+    const serverTime = await currentServerSeq(client, tenantId)
     return { results, serverTime }
   })
 }
 
 async function processOneItem(
   client: PoolClient,
+  tenantId: string,
   deviceId: string | null,
   item: PushItem,
 ): Promise<PushResultItem> {
@@ -103,8 +108,8 @@ async function processOneItem(
 
   // Idempotency: kunci yang sudah pernah diproses mengembalikan hasil sebelumnya.
   const prior = await client.query<{ result: string }>(
-    'SELECT result FROM sync_idempotency WHERE idempotency_key = $1',
-    [idempotencyKey],
+    'SELECT result FROM sync_idempotency WHERE tenant_id = $1 AND idempotency_key = $2',
+    [tenantId, idempotencyKey],
   )
   if (prior.rows.length > 0) {
     const priorResult = prior.rows[0].result
@@ -116,20 +121,20 @@ async function processOneItem(
   }
 
   if (!isSyncEntity(item.entity)) {
-    await recordIdempotency(client, item, deviceId, 'rejected', 'Entitas tidak dikenal', null)
+    await recordIdempotency(client, tenantId, item, deviceId, 'rejected', 'Entitas tidak dikenal', null)
     return { idempotencyKey, status: 'rejected', error: `Entitas tidak dikenal: ${item.entity}` }
   }
 
   const normalized = normalizePayload(item.entityId, item.payload)
   if ('error' in normalized) {
-    await recordIdempotency(client, item, deviceId, 'rejected', normalized.error, null)
+    await recordIdempotency(client, tenantId, item, deviceId, 'rejected', normalized.error, null)
     return { idempotencyKey, status: 'rejected', error: normalized.error }
   }
 
   // Kunci baris state (bila ada) untuk mencegah balapan antar batch paralel.
   const existing = await client.query<ExistingState>(
-    'SELECT payload, entity_updated_at FROM sync_entity_state WHERE entity = $1 AND entity_id = $2 FOR UPDATE',
-    [item.entity, item.entityId],
+    'SELECT payload, entity_updated_at FROM sync_entity_state WHERE tenant_id = $1 AND entity = $2 AND entity_id = $3 FOR UPDATE',
+    [tenantId, item.entity, item.entityId],
   )
   const currentPayload = existing.rows[0]?.payload ?? null
   const currentUpdatedAt = existing.rows[0] ? Number(existing.rows[0].entity_updated_at) : null
@@ -145,30 +150,31 @@ async function processOneItem(
   if (!decision.apply) {
     // Konflik yang ditangani eksplisit: kita ANGGAP diterima (klien tidak perlu retry),
     // tetapi state server dipertahankan. Dicatat sebagai duplicate + detail alasan.
-    await recordIdempotency(client, item, deviceId, 'duplicate', decision.reason ?? 'Konflik LWW', null)
+    await recordIdempotency(client, tenantId, item, deviceId, 'duplicate', decision.reason ?? 'Konflik LWW', null)
     return { idempotencyKey, status: 'duplicate', error: decision.reason }
   }
 
   const upserted = await client.query<{ server_seq: string }>(
-    `INSERT INTO sync_entity_state (entity, entity_id, payload, entity_updated_at, origin_device_id, server_seq, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4, $5, nextval('sync_server_seq'), now())
-     ON CONFLICT (entity, entity_id) DO UPDATE
+    `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at, origin_device_id, server_seq, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, nextval('sync_server_seq'), now())
+     ON CONFLICT (tenant_id, entity, entity_id) DO UPDATE
        SET payload = EXCLUDED.payload,
            entity_updated_at = EXCLUDED.entity_updated_at,
            origin_device_id = EXCLUDED.origin_device_id,
            server_seq = nextval('sync_server_seq'),
            updated_at = now()
      RETURNING server_seq`,
-    [item.entity, item.entityId, JSON.stringify(normalized.raw), normalized.entityUpdatedAt, deviceId],
+    [tenantId, item.entity, item.entityId, JSON.stringify(normalized.raw), normalized.entityUpdatedAt, deviceId],
   )
   const serverSeq = Number(upserted.rows[0].server_seq)
 
-  await recordIdempotency(client, item, deviceId, 'accepted', null, serverSeq)
+  await recordIdempotency(client, tenantId, item, deviceId, 'accepted', null, serverSeq)
   return { idempotencyKey, status: 'accepted' }
 }
 
 async function recordIdempotency(
   client: PoolClient,
+  tenantId: string,
   item: PushItem,
   deviceId: string | null,
   result: 'accepted' | 'duplicate' | 'rejected',
@@ -176,14 +182,14 @@ async function recordIdempotency(
   serverSeq: number | null,
 ): Promise<void> {
   await client.query(
-    `INSERT INTO sync_idempotency (idempotency_key, entity, entity_id, result, detail, device_id, server_seq)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (idempotency_key) DO NOTHING`,
-    [item.idempotencyKey, item.entity, item.entityId, result, detail, deviceId, serverSeq],
+    `INSERT INTO sync_idempotency (tenant_id, idempotency_key, entity, entity_id, result, detail, device_id, server_seq)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`,
+    [tenantId, item.idempotencyKey, item.entity, item.entityId, result, detail, deviceId, serverSeq],
   )
 }
 
-export async function processPull(sinceRaw: number): Promise<PullResponse> {
+export async function processPull(sinceRaw: number, tenantId: string): Promise<PullResponse> {
   const config = loadConfig()
   const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? Math.floor(sinceRaw) : 0
   const client = await getPool().connect()
@@ -195,10 +201,10 @@ export async function processPull(sinceRaw: number): Promise<PullResponse> {
       const { rows } = await client.query<{ payload: unknown; server_seq: string }>(
         `SELECT payload, server_seq
            FROM sync_entity_state
-          WHERE entity = $1 AND server_seq > $2 AND deleted = FALSE
+          WHERE tenant_id = $1 AND entity = $2 AND server_seq > $3 AND deleted = FALSE
           ORDER BY server_seq
-          LIMIT $3`,
-        [entity, since, config.SYNC_PULL_LIMIT],
+          LIMIT $4`,
+        [tenantId, entity, since, config.SYNC_PULL_LIMIT],
       )
       if (rows.length > 0) {
         entities[entity] = rows.map((r) => r.payload)

@@ -4,7 +4,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { HAS_DB, resetDatabase, setupDatabase, teardownDatabase } from './helpers/db.js'
 
 const DEVICE_KEY = 'test-device-key-0123456789abcdef'
-process.env.SYNC_DEVICE_KEYS = DEVICE_KEY
+const MINIMARKET_KEY = 'test-minimarket-key-0123456789abcdef'
+process.env.SYNC_DEVICE_KEYS = `cafe:${DEVICE_KEY},minimarket:${MINIMARKET_KEY}`
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'test'
 process.env.LOG_LEVEL = 'silent'
 
@@ -32,6 +33,7 @@ suite('sync API (integrasi)', () => {
   })
 
   const auth = { authorization: `Bearer ${DEVICE_KEY}` }
+  const minimarketAuth = { authorization: `Bearer ${MINIMARKET_KEY}` }
 
   function order(id: string, overrides: Record<string, unknown> = {}) {
     return {
@@ -80,6 +82,32 @@ suite('sync API (integrasi)', () => {
     expect(body.entities.orders).toHaveLength(1)
     expect(body.entities.orders[0]).toMatchObject({ id: o.entityId, status: 'open' })
     expect(body.serverTime).toBeGreaterThan(0)
+  })
+
+  it('tenant berbeda tidak dapat membaca atau menimpa data usaha lain', async () => {
+    const id = '12121212-1212-1212-1212-121212121212'
+    const cafeOrder = order(id, { notes: 'Kafe', updatedAt: 1000 })
+    const minimarketOrder = order(id, { notes: 'Minimarket', updatedAt: 1000 })
+
+    const cafePush = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: auth,
+      payload: { deviceId: 'cafe-tablet', items: [cafeOrder] },
+    })
+    const minimarketPush = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: minimarketAuth,
+      payload: { deviceId: 'minimarket-tablet', items: [minimarketOrder] },
+    })
+    expect(cafePush.json().results[0].status).toBe('accepted')
+    expect(minimarketPush.json().results[0].status).toBe('accepted')
+
+    const cafePull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+    const minimarketPull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: minimarketAuth })
+    expect(cafePull.json().entities.orders).toEqual([expect.objectContaining({ id, notes: 'Kafe' })])
+    expect(minimarketPull.json().entities.orders).toEqual([expect.objectContaining({ id, notes: 'Minimarket' })])
   })
 
   it('idempotency: mengirim ulang key yang sama tidak menduplikasi', async () => {

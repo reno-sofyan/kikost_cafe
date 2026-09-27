@@ -12,16 +12,19 @@ import { isAuthBlocked, recordAuthFailure, recordAuthSuccess } from '../lib/auth
  * EventSource tak bisa mengirim header Authorization → kunci lewat query `?key=`.
  */
 export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
-  const clients = new Set<FastifyReply>()
-  let lastSeq = 0
+  const clients = new Map<FastifyReply, string>()
+  const lastSeqByTenant = new Map<string, number>()
   let timer: NodeJS.Timeout | null = null
 
-  async function currentSeq(): Promise<number> {
+  async function currentSeq(tenantId: string): Promise<number> {
     try {
-      const { rows } = await getPool().query<{ seq: string }>('SELECT last_value AS seq FROM sync_server_seq')
+      const { rows } = await getPool().query<{ seq: string }>(
+        'SELECT COALESCE(MAX(server_seq), 0) AS seq FROM sync_entity_state WHERE tenant_id = $1',
+        [tenantId],
+      )
       return Number(rows[0]?.seq ?? 0)
     } catch {
-      return lastSeq
+      return lastSeqByTenant.get(tenantId) ?? 0
     }
   }
 
@@ -33,11 +36,15 @@ export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
         timer = null
         return
       }
-      const seq = await currentSeq()
-      if (seq > lastSeq) {
-        lastSeq = seq
+      const tenants = new Set(clients.values())
+      for (const tenantId of tenants) {
+        const seq = await currentSeq(tenantId)
+        const lastSeq = lastSeqByTenant.get(tenantId) ?? 0
+        if (seq <= lastSeq) continue
+        lastSeqByTenant.set(tenantId, seq)
         const frame = `event: sync\ndata: ${seq}\n\n`
-        for (const reply of clients) {
+        for (const [reply, clientTenantId] of clients) {
+          if (clientTenantId !== tenantId) continue
           try {
             reply.raw.write(frame)
           } catch {
@@ -68,9 +75,10 @@ export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     })
-    reply.raw.write(`event: hello\ndata: ${await currentSeq()}\n\n`)
-    lastSeq = Math.max(lastSeq, await currentSeq())
-    clients.add(reply)
+    const seq = await currentSeq(device.tenantId)
+    reply.raw.write(`event: hello\ndata: ${seq}\n\n`)
+    lastSeqByTenant.set(device.tenantId, Math.max(lastSeqByTenant.get(device.tenantId) ?? 0, seq))
+    clients.set(reply, device.tenantId)
     ensurePolling()
 
     const keepAlive = setInterval(() => {
@@ -91,7 +99,7 @@ export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
 
   app.addHook('onClose', async () => {
     if (timer) clearInterval(timer)
-    for (const reply of clients) {
+    for (const reply of clients.keys()) {
       try {
         reply.raw.end()
       } catch {
@@ -99,5 +107,6 @@ export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     clients.clear()
+    lastSeqByTenant.clear()
   })
 }

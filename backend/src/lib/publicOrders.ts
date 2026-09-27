@@ -25,6 +25,7 @@ interface CatalogProduct {
   id: string
   categoryId: string
   name: string
+  description: string
   price: number
   photoDataUrl: string | null
   isAvailable: boolean
@@ -65,6 +66,7 @@ export interface Catalog {
 export interface ResolvedToken {
   tableId: string
   tableName: string
+  tenantId: string
 }
 
 export class PublicOrderError extends Error {
@@ -92,21 +94,21 @@ function num(v: unknown, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
 }
 
-async function readEntity<T = Record<string, unknown>>(client: PoolClient, entity: string): Promise<T[]> {
+async function readEntity<T = Record<string, unknown>>(client: PoolClient, tenantId: string, entity: string): Promise<T[]> {
   const { rows } = await client.query<{ payload: T }>(
-    'SELECT payload FROM sync_entity_state WHERE entity = $1 AND deleted = FALSE',
-    [entity],
+    'SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = $2 AND deleted = FALSE',
+    [tenantId, entity],
   )
   return rows.map((r) => r.payload)
 }
 
-export async function loadCatalog(client: PoolClient): Promise<Catalog> {
+export async function loadCatalog(client: PoolClient, tenantId: string): Promise<Catalog> {
   // Berurutan: satu koneksi pg tidak boleh menjalankan query paralel.
-  const settingsRows = await readEntity<Record<string, unknown>>(client, 'settings')
-  const products = await readEntity<Record<string, unknown>>(client, 'products')
-  const categories = await readEntity<Record<string, unknown>>(client, 'categories')
-  const modifierGroups = await readEntity<Record<string, unknown>>(client, 'modifierGroups')
-  const modifierOptions = await readEntity<Record<string, unknown>>(client, 'modifierOptions')
+  const settingsRows = await readEntity<Record<string, unknown>>(client, tenantId, 'settings')
+  const products = await readEntity<Record<string, unknown>>(client, tenantId, 'products')
+  const categories = await readEntity<Record<string, unknown>>(client, tenantId, 'categories')
+  const modifierGroups = await readEntity<Record<string, unknown>>(client, tenantId, 'modifierGroups')
+  const modifierOptions = await readEntity<Record<string, unknown>>(client, tenantId, 'modifierOptions')
 
   const s = settingsRows[0]
   const settings: CatalogSettings = s
@@ -135,6 +137,7 @@ export async function loadCatalog(client: PoolClient): Promise<Catalog> {
       id: String(p.id),
       categoryId: String(p.categoryId ?? ''),
       name: String(p.name ?? ''),
+      description: typeof p.description === 'string' ? p.description : '',
       price: num(p.price),
       photoDataUrl: typeof p.photoDataUrl === 'string' ? p.photoDataUrl : null,
       isAvailable: p.isAvailable !== false,
@@ -165,8 +168,8 @@ export async function loadCatalog(client: PoolClient): Promise<Catalog> {
 
 /** Cari meja berdasarkan token QR di payload cafeTables. Token nonaktif → 410. */
 export async function resolveToken(client: PoolClient, token: string): Promise<ResolvedToken> {
-  const { rows } = await client.query<{ payload: Record<string, unknown> }>(
-    `SELECT payload FROM sync_entity_state
+  const { rows } = await client.query<{ payload: Record<string, unknown>; tenant_id: string }>(
+    `SELECT tenant_id, payload FROM sync_entity_state
       WHERE entity = 'cafeTables' AND deleted = FALSE
         AND payload->>'qrToken' = $1
       LIMIT 1`,
@@ -175,7 +178,7 @@ export async function resolveToken(client: PoolClient, token: string): Promise<R
   const table = rows[0]?.payload
   if (!table) throw new PublicOrderError(404, 'Kode QR tidak dikenal.')
   if (table.qrActive !== true) throw new PublicOrderError(410, 'Kode QR ini sedang tidak aktif. Hubungi kasir.')
-  return { tableId: String(table.id), tableName: String(table.name ?? 'Meja') }
+  return { tableId: String(table.id), tableName: String(table.name ?? 'Meja'), tenantId: rows[0].tenant_id }
 }
 
 export interface MenuResponse {
@@ -187,6 +190,7 @@ export interface MenuResponse {
     id: string
     categoryId: string
     name: string
+    description: string
     price: number
     photoDataUrl: string | null
     modifierGroups: {
@@ -215,6 +219,7 @@ export function buildMenu(catalog: Catalog, table: ResolvedToken): MenuResponse 
       id: p.id,
       categoryId: p.categoryId,
       name: p.name,
+      description: p.description,
       price: p.price,
       photoDataUrl: p.photoDataUrl,
       modifierGroups: p.modifierGroupIds
@@ -291,6 +296,13 @@ interface Quote {
 const MAX_ITEMS = 40
 const MAX_QTY = 99
 const MAX_NOTE = 180
+
+const PHONE_RE = /^[0-9+][0-9\s-]{6,19}$/
+
+/** Validasi longgar nomor HP pelanggan: digit/spasi/strip, boleh diawali +. */
+export function isValidPhone(raw: string): boolean {
+  return PHONE_RE.test(raw.trim())
+}
 
 /** Bersihkan catatan pelanggan: buang karakter kontrol, batasi panjang. */
 export function sanitizeNote(raw: unknown): string {
@@ -373,20 +385,21 @@ export function priceOrder(catalog: Catalog, items: SubmitItemInput[]): Quote {
 
 async function upsertEntity(
   client: PoolClient,
+  tenantId: string,
   entity: string,
   entityId: string,
   payload: unknown,
   entityUpdatedAt: number,
 ): Promise<void> {
   await client.query(
-    `INSERT INTO sync_entity_state (entity, entity_id, payload, entity_updated_at, server_seq, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4, nextval('sync_server_seq'), now())
-     ON CONFLICT (entity, entity_id) DO UPDATE
+    `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at, server_seq, updated_at)
+       VALUES ($1, $2, $3, $4::jsonb, $5, nextval('sync_server_seq'), now())
+     ON CONFLICT (tenant_id, entity, entity_id) DO UPDATE
        SET payload = EXCLUDED.payload,
            entity_updated_at = EXCLUDED.entity_updated_at,
            server_seq = nextval('sync_server_seq'),
            updated_at = now()`,
-    [entity, entityId, JSON.stringify(payload), entityUpdatedAt],
+    [tenantId, entity, entityId, JSON.stringify(payload), entityUpdatedAt],
   )
 }
 
@@ -404,32 +417,41 @@ export async function submitPublicOrder(params: {
   token: string
   idempotencyKey: string
   customerName: string
+  customerPhone: string
+  orderType: 'dine_in' | 'takeaway'
   items: SubmitItemInput[]
   ip: string | null
 }): Promise<SubmitResult> {
   return withTransaction(async (client) => {
+    const token = await resolveToken(client, params.token)
     // Idempotency: kunci yang sama → kembalikan respons tersimpan.
     const prior = await client.query<{ response: SubmitResult }>(
-      'SELECT response FROM public_order_idempotency WHERE idempotency_key = $1',
-      [params.idempotencyKey],
+      'SELECT response FROM public_order_idempotency WHERE tenant_id = $1 AND idempotency_key = $2',
+      [token.tenantId, params.idempotencyKey],
     )
     if (prior.rows.length > 0) return prior.rows[0].response
 
-    const token = await resolveToken(client, params.token)
-    const catalog = await loadCatalog(client)
+    const customerName = sanitizeNote(params.customerName).slice(0, 60)
+    if (!customerName) throw new PublicOrderError(400, 'Nama wajib diisi.')
+    const customerPhone = params.customerPhone.trim().slice(0, 20)
+    if (!isValidPhone(customerPhone)) throw new PublicOrderError(400, 'Nomor HP tidak valid.')
+
+    const catalog = await loadCatalog(client, token.tenantId)
     const quote = priceOrder(catalog, params.items)
 
     const now = Date.now()
     const orderId = randomUUID()
     const seq = await client.query<{ n: string }>("SELECT nextval('qr_order_seq') AS n")
     const orderNumber = `QR${String(seq.rows[0].n).padStart(5, '0')}`
-    const customerName = sanitizeNote(params.customerName).slice(0, 60)
 
     const order = {
       id: orderId,
       orderNumber,
-      type: 'dine_in',
+      type: params.orderType,
+      // Meja tempat QR dipindai tetap dicatat walau "Bawa Pulang" — berguna bagi
+      // staf untuk tahu titik jemput/asal pesanan, meski tak ditampilkan ke pelanggan.
       tableId: token.tableId,
+      customerPhone,
       customerId: null,
       queueNumber: null,
       guestCount: null,
@@ -466,7 +488,7 @@ export async function submitPublicOrder(params: {
       paidAt: null,
     }
 
-    await upsertEntity(client, 'orders', orderId, order, now)
+    await upsertEntity(client, token.tenantId, 'orders', orderId, order, now)
 
     let idx = 0
     for (const it of quote.items) {
@@ -495,7 +517,7 @@ export async function submitPublicOrder(params: {
         createdAt: now + idx,
         updatedAt: now + idx,
       }
-      await upsertEntity(client, 'orderItems', itemId, item, now + idx)
+      await upsertEntity(client, token.tenantId, 'orderItems', itemId, item, now + idx)
       idx++
     }
 
@@ -510,12 +532,12 @@ export async function submitPublicOrder(params: {
     }
 
     await client.query(
-      `INSERT INTO public_order_idempotency (idempotency_key, token, order_id, response)
-       VALUES ($1, $2, $3, $4::jsonb)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
-      [params.idempotencyKey, params.token, orderId, JSON.stringify(result)],
+      `INSERT INTO public_order_idempotency (tenant_id, idempotency_key, token, order_id, response)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
+       ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`,
+      [token.tenantId, params.idempotencyKey, params.token, orderId, JSON.stringify(result)],
     )
-    await logPublicRequest(client, 'POST /api/t/:token/orders', params.token, params.ip, 201, orderNumber)
+    await logPublicRequest(client, token.tenantId, 'POST /api/t/:token/orders', params.token, params.ip, 201, orderNumber)
 
     return result
   })
@@ -549,8 +571,8 @@ export interface BusinessIdentity {
  * Identitas pemilik usaha saja. `loadCatalog` membaca lima entitas; halaman
  * status dipoll berkala, jadi jalur itu terlalu mahal untuk sekadar nama+logo.
  */
-export async function loadBusinessIdentity(client: PoolClient): Promise<BusinessIdentity> {
-  const rows = await readEntity<Record<string, unknown>>(client, 'settings')
+export async function loadBusinessIdentity(client: PoolClient, tenantId: string): Promise<BusinessIdentity> {
+  const rows = await readEntity<Record<string, unknown>>(client, tenantId, 'settings')
   const s = rows[0]
   if (!s) return { name: DEFAULT_SETTINGS.businessName, logoDataUrl: null }
   return {
@@ -571,24 +593,24 @@ export async function getPublicOrderStatus(
 ): Promise<PublicOrderStatus> {
   const resolved = await resolveToken(client, token)
   const { rows } = await client.query<{ payload: Record<string, unknown> }>(
-    "SELECT payload FROM sync_entity_state WHERE entity = 'orders' AND entity_id = $1",
-    [orderId],
+    "SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'orders' AND entity_id = $2",
+    [resolved.tenantId, orderId],
   )
   const order = rows[0]?.payload
   if (!order || order.source !== 'qr_table' || String(order.tableId) !== resolved.tableId) {
     throw new PublicOrderError(404, 'Pesanan tidak ditemukan.')
   }
   const itemsRes = await client.query<{ payload: Record<string, unknown> }>(
-    "SELECT payload FROM sync_entity_state WHERE entity = 'orderItems' AND payload->>'orderId' = $1",
-    [orderId],
+    "SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'orderItems' AND payload->>'orderId' = $2",
+    [resolved.tenantId, orderId],
   )
   const paysRes = await client.query<{ payload: Record<string, unknown> }>(
-    "SELECT payload FROM sync_entity_state WHERE entity = 'payments' AND payload->>'orderId' = $1",
-    [orderId],
+    "SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'payments' AND payload->>'orderId' = $2",
+    [resolved.tenantId, orderId],
   )
   const positivePays = paysRes.rows.map((r) => r.payload).filter((p) => num(p.amount) > 0)
   const status = String(order.lifecycleStatus ?? '')
-  const business = await loadBusinessIdentity(client)
+  const business = await loadBusinessIdentity(client, resolved.tenantId)
 
   return {
     business,
@@ -639,13 +661,14 @@ export async function submitTableCall(params: {
       createdAt: now,
       updatedAt: now,
     }
-    await upsertEntity(client, 'tableCalls', id, call, now)
-    await logPublicRequest(client, 'POST /api/t/:token/calls', params.token, params.ip, 201, params.type)
+    await upsertEntity(client, table.tenantId, 'tableCalls', id, call, now)
+    await logPublicRequest(client, table.tenantId, 'POST /api/t/:token/calls', params.token, params.ip, 201, params.type)
   })
 }
 
 export async function logPublicRequest(
   client: PoolClient,
+  tenantId: string,
   route: string,
   token: string | null,
   ip: string | null,
@@ -654,8 +677,8 @@ export async function logPublicRequest(
 ): Promise<void> {
   try {
     await client.query(
-      'INSERT INTO public_request_log (route, token, ip, status, detail) VALUES ($1, $2, $3, $4, $5)',
-      [route, token ? token.slice(0, 12) + '…' : null, ip, status, detail],
+      'INSERT INTO public_request_log (tenant_id, route, token, ip, status, detail) VALUES ($1, $2, $3, $4, $5, $6)',
+      [tenantId, route, token ? token.slice(0, 12) + '…' : null, ip, status, detail],
     )
   } catch {
     /* logging tak boleh menggagalkan permintaan */

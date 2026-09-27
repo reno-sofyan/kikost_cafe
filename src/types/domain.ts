@@ -267,6 +267,8 @@ export interface Product {
   /** Diarsipkan: disembunyikan dari Kasir, menu QR, dan daftar Produk (kecuali tampilan Arsip).
    *  Dipakai alih-alih hapus permanen supaya riwayat & laporan tetap utuh. */
   archived?: boolean
+  /** Deskripsi singkat — ditampilkan di halaman detail produk pesan-mandiri QR. */
+  description?: string
   modifierGroupIds: string[]
   createdAt: number
   updatedAt: number
@@ -566,6 +568,8 @@ export interface Order {
   type: OrderType
   tableId: string | null
   customerId: string | null
+  /** Nomor HP pelanggan — diisi server untuk pesanan pesan-mandiri via QR (lihat publicOrders.ts). */
+  customerPhone?: string
   queueNumber: number | null
   guestCount: number | null
   status: OrderStatus

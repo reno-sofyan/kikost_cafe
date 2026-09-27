@@ -67,7 +67,11 @@ suite('public QR order API (integrasi)', () => {
   it('POST orders → order QR di sync_entity_state; harga dari server; idempoten', async () => {
     await seedCatalog()
     const headers = { 'idempotency-key': 'cust-key-abc123', 'content-type': 'application/json' }
-    const body = { customerName: 'Budi <x>', items: [{ productId: 'p1', qty: 2, modifierOptionIds: [], note: 'panas' }] }
+    const body = {
+      customerName: 'Budi <x>',
+      customerPhone: '081234567890',
+      items: [{ productId: 'p1', qty: 2, modifierOptionIds: [], note: 'panas' }],
+    }
 
     const res1 = await app.inject({ method: 'POST', url: `/api/t/${TOKEN}/orders`, headers, payload: body })
     expect(res1.statusCode).toBe(201)
@@ -88,10 +92,43 @@ suite('public QR order API (integrasi)', () => {
     expect(rows[0].payload.source).toBe('qr_table')
     expect(rows[0].payload.grandTotal).toBe(57800)
     expect(rows[0].payload.notes).toBe('Budi x') // disanitasi
+    expect(rows[0].payload.customerPhone).toBe('081234567890')
+    expect(rows[0].payload.type).toBe('dine_in')
 
     const items = await getPool().query("SELECT payload FROM sync_entity_state WHERE entity='orderItems'")
     expect(items.rows).toHaveLength(1)
     expect(items.rows[0].payload.unitPrice).toBe(25000)
+  })
+
+  it('customerName/customerPhone wajib diisi', async () => {
+    await seedCatalog()
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/t/${TOKEN}/orders`,
+      headers: { 'idempotency-key': 'key-noname', 'content-type': 'application/json' },
+      payload: { customerName: '', customerPhone: '', items: [{ productId: 'p1', qty: 1, modifierOptionIds: [], note: '' }] },
+    })
+    expect(r.statusCode).toBe(400)
+  })
+
+  it('orderType takeaway tersimpan di order', async () => {
+    await seedCatalog()
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/t/${TOKEN}/orders`,
+      headers: { 'idempotency-key': 'key-takeaway', 'content-type': 'application/json' },
+      payload: {
+        customerName: 'Sari',
+        customerPhone: '081200000000',
+        orderType: 'takeaway',
+        items: [{ productId: 'p1', qty: 1, modifierOptionIds: [], note: '' }],
+      },
+    })
+    expect(r.statusCode).toBe(201)
+    const { rows } = await getPool().query("SELECT payload FROM sync_entity_state WHERE entity='orders'")
+    expect(rows[0].payload.type).toBe('takeaway')
+    // meja asal QR tetap dicatat untuk referensi staf walau "Bawa Pulang".
+    expect(rows[0].payload.tableId).toBe('t1')
   })
 
   it('status pesanan hanya untuk token meja yang cocok', async () => {
@@ -100,7 +137,7 @@ suite('public QR order API (integrasi)', () => {
       method: 'POST',
       url: `/api/t/${TOKEN}/orders`,
       headers: { 'idempotency-key': 'key-0001', 'content-type': 'application/json' },
-      payload: { items: [{ productId: 'p1', qty: 1, modifierOptionIds: [], note: '' }] },
+      payload: { customerName: 'Ani', customerPhone: '081200000001', items: [{ productId: 'p1', qty: 1, modifierOptionIds: [], note: '' }] },
     })
     const orderId = created.json().orderId
     const st = await app.inject({ method: 'GET', url: `/api/t/${TOKEN}/orders/${orderId}` })
@@ -136,7 +173,7 @@ suite('public QR order API (integrasi)', () => {
       method: 'POST',
       url: `/api/t/${TOKEN}/orders`,
       headers: { 'idempotency-key': 'key-xxxx', 'content-type': 'application/json' },
-      payload: { items: [{ productId: 'p1', qty: 1, modifierOptionIds: [], note: '' }] },
+      payload: { customerName: 'Budi', customerPhone: '081200000002', items: [{ productId: 'p1', qty: 1, modifierOptionIds: [], note: '' }] },
     })
     expect(r.statusCode).toBe(409)
     const { rows } = await getPool().query("SELECT 1 FROM sync_entity_state WHERE entity='orders'")

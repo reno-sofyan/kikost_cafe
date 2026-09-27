@@ -180,6 +180,13 @@ export async function rejectQrOrder(
   if (order.lifecycleStatus !== 'PENDING_CONFIRMATION') {
     throw new Error('Pesanan ini sudah diproses.')
   }
+  // Pelanggan bisa membayar QRIS online sebelum kasir konfirmasi (lihat
+  // PAYABLE_STATUSES di backend/src/routes/midtransPay.ts). Menolak begitu saja
+  // akan mendiamkan uang yang sudah masuk — wajib tangani refund manual dulu.
+  const paidOnline = await db.onlinePayments.where('orderId').equals(orderId).count()
+  if (paidOnline > 0) {
+    throw new Error('Pesanan ini sudah dibayar online. Proses refund manual dulu sebelum menolak.')
+  }
 
   await db.transaction('rw', [db.orders, db.cafeTables, db.syncQueue, db.auditLogs], async () => {
     await transitionOrder(orderId, 'REJECTED', { rejectedReason: trimmed })
@@ -237,6 +244,12 @@ export async function mergeQrOrderIntoTable(
   const qrOrder = await db.orders.get(qrOrderId)
   if (!qrOrder) throw new Error('Pesanan QR tidak ditemukan')
   if (qrOrder.lifecycleStatus !== 'PENDING_CONFIRMATION') throw new Error('Pesanan ini sudah diproses.')
+  // Order ini akan di-void saat digabung; pembayaran online yang sudah tercatat
+  // atasnya tidak akan pernah diterapkan ke pesanan target (lihat applyRemote.ts).
+  const paidOnline = await db.onlinePayments.where('orderId').equals(qrOrderId).count()
+  if (paidOnline > 0) {
+    throw new Error('Pesanan ini sudah dibayar online — tidak bisa digabung. Terima sebagai pesanan baru.')
+  }
   const target = await db.orders.get(targetOrderId)
   if (!target || target.status !== 'open') throw new Error('Pesanan meja tujuan tidak aktif.')
 

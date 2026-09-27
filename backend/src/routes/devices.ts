@@ -17,13 +17,15 @@ const enrollSchema = z.object({
 const renameSchema = z.object({ label: z.string().min(1).max(80) })
 
 export async function registerDeviceRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/api/devices', async () => {
+  app.get('/api/devices', async (request) => {
     const { rows } = await getPool().query(
       `SELECT id, label, revoked,
               extract(epoch from created_at) * 1000 AS created_at,
               extract(epoch from last_seen_at) * 1000 AS last_seen_at
          FROM sync_devices
+        WHERE tenant_id = $1
         ORDER BY created_at`,
+      [request.tenantId],
     )
     return {
       devices: rows.map((r) => ({
@@ -43,12 +45,17 @@ export async function registerDeviceRoutes(app: FastifyInstance): Promise<void> 
       return { error: 'Data tidak valid', issues: parsed.error.issues }
     }
     const hash = hashDeviceKey(parsed.data.deviceKey.trim())
-    const existing = await getPool().query('SELECT id, revoked FROM sync_devices WHERE device_key_hash = $1', [hash])
+    const existing = await getPool().query('SELECT id, revoked, tenant_id FROM sync_devices WHERE device_key_hash = $1', [hash])
     if (existing.rows.length > 0) {
+      if (existing.rows[0].tenant_id !== request.tenantId) {
+        reply.code(409)
+        return { error: 'Kunci perangkat sudah dipakai oleh usaha lain.' }
+      }
       if (existing.rows[0].revoked) {
-        await getPool().query('UPDATE sync_devices SET revoked = FALSE, label = $2 WHERE id = $1', [
+        await getPool().query('UPDATE sync_devices SET revoked = FALSE, label = $2 WHERE id = $1 AND tenant_id = $3', [
           existing.rows[0].id,
           parsed.data.label.trim(),
+          request.tenantId,
         ])
         return { id: existing.rows[0].id, reactivated: true }
       }
@@ -56,8 +63,8 @@ export async function registerDeviceRoutes(app: FastifyInstance): Promise<void> 
       return { error: 'Kunci perangkat ini sudah terdaftar.' }
     }
     const { rows } = await getPool().query<{ id: string }>(
-      'INSERT INTO sync_devices (label, device_key_hash) VALUES ($1, $2) RETURNING id',
-      [parsed.data.label.trim(), hash],
+      'INSERT INTO sync_devices (label, device_key_hash, tenant_id) VALUES ($1, $2, $3) RETURNING id',
+      [parsed.data.label.trim(), hash, request.tenantId],
     )
     reply.code(201)
     return { id: rows[0].id }
@@ -65,7 +72,7 @@ export async function registerDeviceRoutes(app: FastifyInstance): Promise<void> 
 
   app.post('/api/devices/:id/revoke', async (request, reply) => {
     const id = (request.params as { id: string }).id
-    const { rowCount } = await getPool().query('UPDATE sync_devices SET revoked = TRUE WHERE id = $1', [id])
+    const { rowCount } = await getPool().query('UPDATE sync_devices SET revoked = TRUE WHERE id = $1 AND tenant_id = $2', [id, request.tenantId])
     if (!rowCount) {
       reply.code(404)
       return { error: 'Perangkat tidak ditemukan.' }
@@ -80,9 +87,10 @@ export async function registerDeviceRoutes(app: FastifyInstance): Promise<void> 
       reply.code(400)
       return { error: 'Nama tidak valid.' }
     }
-    const { rowCount } = await getPool().query('UPDATE sync_devices SET label = $2 WHERE id = $1', [
+    const { rowCount } = await getPool().query('UPDATE sync_devices SET label = $2 WHERE id = $1 AND tenant_id = $3', [
       id,
       parsed.data.label.trim(),
+      request.tenantId,
     ])
     if (!rowCount) {
       reply.code(404)

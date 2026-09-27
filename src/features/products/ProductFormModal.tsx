@@ -21,6 +21,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const existingRecipe = useLiveQuery(() => (initial ? getRecipeForProduct(initial.id) : undefined), [initial?.id])
 
   const [name, setName] = useState(initial?.name ?? '')
+  const [description, setDescription] = useState(initial?.description ?? '')
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? categories[0]?.id ?? '')
   const [sku, setSku] = useState(initial?.sku ?? '')
   const [barcode, setBarcode] = useState(initial?.barcode ?? '')
@@ -77,6 +78,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
     const payload = {
       categoryId,
       name: name.trim(),
+      description: description.trim(),
       sku: sku.trim(),
       barcode: barcode.trim() || null,
       price,
@@ -111,6 +113,17 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
           <label className="col-span-2 sm:col-span-1">
             <span className="mb-1 block text-sm text-ink-300">Nama Produk</span>
             <input className="input-field" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <label className="col-span-2">
+            <span className="mb-1 block text-sm text-ink-300">Deskripsi (opsional, tampil di halaman pesan-mandiri QR)</span>
+            <textarea
+              className="input-field min-h-0"
+              rows={2}
+              maxLength={300}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="mis. Satu shot kopi pekat dengan crema lembut di atasnya."
+            />
           </label>
           <label className="col-span-2 sm:col-span-1">
             <span className="mb-1 block text-sm text-ink-300">Kategori</span>

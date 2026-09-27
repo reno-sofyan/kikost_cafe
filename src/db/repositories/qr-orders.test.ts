@@ -172,6 +172,25 @@ describe('QR order inbox', () => {
     expect(await db.auditLogs.where('action').equals('qr.order.merge').count()).toBe(1)
   })
 
+  it('reject ditolak bila pesanan sudah dibayar online — cegah uang hilang', async () => {
+    await seedQrOrder()
+    await db.onlinePayments.put({ id: 'op-1', orderId: 'qr-1', billId: 'bill_qr-1', amount: 20000, method: 'qris', reference: 'ref-1', createdAt: Date.now() })
+    await expect(rejectQrOrder('qr-1', 'Bahan habis', actor)).rejects.toThrow(/sudah dibayar online/i)
+    expect((await db.orders.get('qr-1'))?.lifecycleStatus).toBe('PENDING_CONFIRMATION')
+  })
+
+  it('gabung ditolak bila pesanan QR sudah dibayar online', async () => {
+    await seedProduct()
+    const table = await createTable({ name: 'Meja 3', area: '', capacity: 4 })
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'A', openingCash: 0 })
+    const tableOrder = await startOrder({ type: 'dine_in', tableId: table.id, cashierId: 'u1', cashierName: 'A', shiftId: shift.id })
+    await seedQrOrder({ tableId: table.id })
+    await db.onlinePayments.put({ id: 'op-1', orderId: 'qr-1', billId: 'bill_qr-1', amount: 20000, method: 'qris', reference: 'ref-1', createdAt: Date.now() })
+
+    await expect(mergeQrOrderIntoTable('qr-1', tableOrder.id, actor)).rejects.toThrow(/sudah dibayar online/i)
+    expect((await db.orders.get('qr-1'))?.lifecycleStatus).toBe('PENDING_CONFIRMATION')
+  })
+
   it('reject: wajib alasan, pindah ke REJECTED, bebaskan meja', async () => {
     await createTable({ name: 'Meja 1', area: '', capacity: 2 })
     const table = (await listTables())[0]
