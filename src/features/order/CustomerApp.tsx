@@ -24,7 +24,7 @@ interface MenuItem {
   modifierGroups: MenuGroup[]
 }
 interface Menu {
-  cafe: { name: string; address: string; phone: string }
+  business: { name: string; address: string; phone: string; logoDataUrl: string | null }
   table: { id: string; name: string }
   fiscal: { taxPercent: number; serviceChargePercent: number }
   categories: { id: string; name: string }[]
@@ -58,10 +58,29 @@ function Center({ children }: { children: ReactNode }) {
   return (
     <Screen>
       <div className="mx-auto mt-24 flex max-w-xs flex-col items-center gap-3 text-center text-ink-200">
-        <img src="/brand/mark.png" alt="Kinara Coffee" className="h-12 w-12 opacity-70" />
         {children}
       </div>
+      <KioneFooter />
     </Screen>
+  )
+}
+
+/**
+ * Kepala halaman pelanggan. Yang dilihat pelanggan adalah merek pemilik usaha —
+ * logo Kione tidak muncul di sini, hanya sebagai kredit kecil di kaki halaman.
+ */
+function BusinessHeader({ business }: { business: { name: string; logoDataUrl: string | null } }) {
+  if (business.logoDataUrl) {
+    return <img src={business.logoDataUrl} alt={business.name} className="h-16 w-16 rounded-2xl object-cover" />
+  }
+  return <h1 className="text-2xl font-bold text-ink-50">{business.name}</h1>
+}
+
+function KioneFooter() {
+  return (
+    <p className="mt-8 pb-2 text-center text-[0.7rem] text-ink-400">
+      Ditenagai <span className="font-semibold text-ink-300">Kione POS</span>
+    </p>
   )
 }
 
@@ -155,7 +174,8 @@ function MenuPage() {
   return (
     <Screen>
       <header className="mb-5 flex flex-col items-center pt-2 text-center">
-        <img src="/brand/logo-full.png" alt={menu.cafe.name} className="h-16 w-auto" />
+        <BusinessHeader business={menu.business} />
+        {menu.business.logoDataUrl && <p className="mt-2 text-lg font-bold text-ink-50">{menu.business.name}</p>}
         <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-900 px-3 py-1 text-xs font-semibold text-ink-200">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M4 8h16M6 8v10M18 8v10M9 3l1 5M15 3l-1 5" />
@@ -178,7 +198,7 @@ function MenuPage() {
               onClick={() => setActiveCat(c.id)}
               className={`whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors ${
                 activeCat === c.id
-                  ? 'border-brew-600 bg-brew-600 text-cream-50'
+                  ? 'border-brand-600 bg-brand-600 text-white'
                   : 'border-ink-600 bg-ink-900 text-ink-300'
               }`}
             >
@@ -198,12 +218,12 @@ function MenuPage() {
             {item.photoDataUrl && <img src={item.photoDataUrl} alt="" className="h-16 w-16 flex-none rounded-xl object-cover" />}
             <span className="min-w-0 flex-1">
               <span className="block font-semibold text-ink-50">{item.name}</span>
-              <span className="mt-0.5 block text-sm font-medium text-brew-500">{rupiah(item.price)}</span>
+              <span className="mt-0.5 block text-sm font-medium text-brand-400">{rupiah(item.price)}</span>
               {item.modifierGroups.length > 0 && (
                 <span className="mt-0.5 block text-xs text-ink-400">Ada pilihan varian</span>
               )}
             </span>
-            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-brew-600 text-lg font-bold leading-none text-cream-50">
+            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-brand-600 text-lg font-bold leading-none text-white">
               +
             </span>
           </button>
@@ -232,7 +252,7 @@ function MenuPage() {
               {cart.map((l) => (
                 <div key={l.key} className="flex items-center justify-between text-sm">
                   <span className="min-w-0 flex-1 truncate text-ink-100">
-                    <span className="font-semibold text-brew-500">{l.qty}×</span> {l.item.name}
+                    <span className="font-semibold text-brand-400">{l.qty}×</span> {l.item.name}
                     {l.optionIds.length > 0 && <span className="text-ink-400"> · varian</span>}
                   </span>
                   <button className="ml-3 flex-none text-xs font-medium text-red-400 hover:text-red-500" onClick={() => removeLine(l.key)}>
@@ -305,7 +325,7 @@ function ItemSheet({ item, onClose, onAdd }: { item: MenuItem; onClose: () => vo
                     key={o.id}
                     onClick={() => toggle(g, o.id)}
                     className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm ${
-                      on ? 'border-brew-500 bg-brew-600/15' : 'border-ink-700 bg-ink-800'
+                      on ? 'border-brand-500 bg-brand-600/15' : 'border-ink-700 bg-ink-800'
                     }`}
                   >
                     <span>{o.name}</span>
@@ -353,6 +373,7 @@ const STATUS_STEPS: { key: string; label: string }[] = [
 ]
 
 interface OrderStatus {
+  business: { name: string; logoDataUrl: string | null }
   orderNumber: string
   status: string
   queueNumber: number | null
@@ -486,10 +507,14 @@ function StatusPage() {
   return (
     <Screen>
       <header className="mb-5 flex flex-col items-center pt-2 text-center">
-        <img src="/brand/mark.png" alt="Kinara Coffee" className="h-9 w-9" />
+        {data.business.logoDataUrl ? (
+          <img src={data.business.logoDataUrl} alt={data.business.name} className="h-12 w-12 rounded-xl object-cover" />
+        ) : (
+          <p className="text-sm font-semibold text-ink-300">{data.business.name}</p>
+        )}
         <h1 className="mt-2 text-xl font-bold">Pesanan {data.orderNumber}</h1>
         {data.queueNumber != null && (
-          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brew-600 px-3 py-1 text-sm font-semibold text-cream-50">
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1 text-sm font-semibold text-white">
             Antrean #{data.queueNumber}
           </span>
         )}
@@ -509,12 +534,12 @@ function StatusPage() {
               <li
                 key={s.key}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${
-                  now ? 'bg-brew-600/12 font-semibold text-ink-50' : done ? 'text-ink-300' : 'text-ink-400'
+                  now ? 'bg-brand-600/12 font-semibold text-ink-50' : done ? 'text-ink-300' : 'text-ink-400'
                 }`}
               >
                 <span
                   className={`flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs font-bold ${
-                    done ? 'bg-sage-500 text-white' : now ? 'bg-brew-600 text-cream-50' : 'bg-ink-800 text-ink-400'
+                    done ? 'bg-success-500 text-white' : now ? 'bg-brand-600 text-white' : 'bg-ink-800 text-ink-400'
                   }`}
                 >
                   {done ? '✓' : i + 1}
@@ -550,7 +575,7 @@ function StatusPage() {
           </div>
         </div>
         {data.paid ? (
-          <p className="mt-2 text-xs text-sage-400">
+          <p className="mt-2 text-xs text-success-400">
             LUNAS — {rupiah(data.paidAmount)}
             {data.paymentMethods.length > 0 && ` (${data.paymentMethods.map((m) => METHOD_LABEL[m] ?? m).join(', ')})`}
           </p>
@@ -577,9 +602,10 @@ function StatusPage() {
           <Link to={`/order/${token}`} className="btn-ghost w-full">
             Tambah Pesanan
           </Link>
-          {callSent && <p className="text-center text-sm text-sage-400">{callSent}</p>}
+          {callSent && <p className="text-center text-sm text-success-400">{callSent}</p>}
         </div>
       )}
+      <KioneFooter />
     </Screen>
   )
 }

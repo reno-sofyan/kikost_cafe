@@ -10,7 +10,9 @@ import { withTransaction } from '../db/pool.js'
  */
 
 interface CatalogSettings {
-  cafeName: string
+  businessName: string
+  /** Logo pemilik usaha (data URL). Halaman pelanggan memakai ini, bukan logo Kione. */
+  logoDataUrl: string | null
   address: string
   phone: string
   taxPercent: number
@@ -76,7 +78,8 @@ export class PublicOrderError extends Error {
 }
 
 const DEFAULT_SETTINGS: CatalogSettings = {
-  cafeName: 'Kinara Coffee',
+  businessName: '',
+  logoDataUrl: null,
   address: '',
   phone: '',
   taxPercent: 0,
@@ -108,7 +111,15 @@ export async function loadCatalog(client: PoolClient): Promise<Catalog> {
   const s = settingsRows[0]
   const settings: CatalogSettings = s
     ? {
-        cafeName: typeof s.cafeName === 'string' ? s.cafeName : DEFAULT_SETTINGS.cafeName,
+        // `cafeName` adalah nama lama field ini (sebelum rebranding Kione POS).
+        // Tablet yang belum diperbarui masih mengirim nama itu.
+        businessName:
+          typeof s.businessName === 'string'
+            ? s.businessName
+            : typeof s.cafeName === 'string'
+              ? s.cafeName
+              : DEFAULT_SETTINGS.businessName,
+        logoDataUrl: typeof s.logoDataUrl === 'string' ? s.logoDataUrl : null,
         address: typeof s.address === 'string' ? s.address : '',
         phone: typeof s.phone === 'string' ? s.phone : '',
         taxPercent: num(s.taxPercent),
@@ -168,7 +179,7 @@ export async function resolveToken(client: PoolClient, token: string): Promise<R
 }
 
 export interface MenuResponse {
-  cafe: { name: string; address: string; phone: string }
+  business: { name: string; address: string; phone: string; logoDataUrl: string | null }
   table: { id: string; name: string }
   fiscal: { taxPercent: number; serviceChargePercent: number }
   categories: { id: string; name: string }[]
@@ -228,7 +239,12 @@ export function buildMenu(catalog: Catalog, table: ResolvedToken): MenuResponse 
     .map((c) => ({ id: c.id, name: c.name }))
 
   return {
-    cafe: { name: catalog.settings.cafeName, address: catalog.settings.address, phone: catalog.settings.phone },
+    business: {
+      name: catalog.settings.businessName,
+      address: catalog.settings.address,
+      phone: catalog.settings.phone,
+      logoDataUrl: catalog.settings.logoDataUrl,
+    },
     table: { id: table.tableId, name: table.tableName },
     fiscal: {
       taxPercent: catalog.settings.taxPercent,
@@ -521,6 +537,31 @@ export interface PublicOrderStatus {
   paidAmount: number
   paymentMethods: string[]
   items: { name: string; qty: number; modifiers: string[]; note: string; lineTotal: number }[]
+  business: BusinessIdentity
+}
+
+export interface BusinessIdentity {
+  name: string
+  logoDataUrl: string | null
+}
+
+/**
+ * Identitas pemilik usaha saja. `loadCatalog` membaca lima entitas; halaman
+ * status dipoll berkala, jadi jalur itu terlalu mahal untuk sekadar nama+logo.
+ */
+export async function loadBusinessIdentity(client: PoolClient): Promise<BusinessIdentity> {
+  const rows = await readEntity<Record<string, unknown>>(client, 'settings')
+  const s = rows[0]
+  if (!s) return { name: DEFAULT_SETTINGS.businessName, logoDataUrl: null }
+  return {
+    name:
+      typeof s.businessName === 'string'
+        ? s.businessName
+        : typeof s.cafeName === 'string'
+          ? s.cafeName
+          : DEFAULT_SETTINGS.businessName,
+    logoDataUrl: typeof s.logoDataUrl === 'string' ? s.logoDataUrl : null,
+  }
 }
 
 export async function getPublicOrderStatus(
@@ -547,8 +588,10 @@ export async function getPublicOrderStatus(
   )
   const positivePays = paysRes.rows.map((r) => r.payload).filter((p) => num(p.amount) > 0)
   const status = String(order.lifecycleStatus ?? '')
+  const business = await loadBusinessIdentity(client)
 
   return {
+    business,
     orderNumber: String(order.orderNumber ?? ''),
     status,
     queueNumber: typeof order.queueNumber === 'number' ? order.queueNumber : null,

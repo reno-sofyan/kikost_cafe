@@ -1,25 +1,26 @@
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
-import type { CafeSettings } from '@/types/domain'
+import type { AppSettings } from '@/types/domain'
 
-export const DEFAULT_SETTINGS: CafeSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   id: 'singleton',
   onboardingCompleted: false,
-  cafeName: 'Kinara Coffee',
+  businessName: '',
+  businessType: 'lainnya',
   logoDataUrl: null,
   address: '',
   phone: '',
   taxPercent: 0,
   serviceChargePercent: 0,
   roundingIncrement: 100,
-  transactionPrefix: 'KKP',
+  transactionPrefix: 'TRX',
   nextTransactionSequence: 1,
   blindClose: false,
   cashVarianceTolerance: 5000,
   allowPartialPayment: false,
   qrisImageDataUrl: null,
   qrisMerchantName: null,
-  qrOrderBaseUrl: 'https://pos.kikost.com',
+  qrOrderBaseUrl: '',
   receiptPaperSize: '58mm',
   receiptFooterNote: 'Terima kasih atas kunjungan Anda',
   autoLockMinutes: 5,
@@ -48,12 +49,24 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   updatedAt: Date.now(),
 }
 
+/** Inisial nama usaha — dipakai sebagai pengganti logo bila pemilik belum unggah. */
+export function businessInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase()
+}
+
+/** Nama yang dipakai di layar & struk. Kosong = belum lewat onboarding. */
+export function businessDisplayName(settings: Pick<AppSettings, 'businessName'> | null | undefined): string {
+  return settings?.businessName?.trim() || 'Kione POS'
+}
+
 /**
  * Membaca pengaturan. TIDAK menulis apa pun — aman dipanggil dari dalam
  * `useLiveQuery` / transaksi read-only. Bila belum ada, kembalikan default
  * (persistensi dilakukan lewat `ensureDefaultSettings()` atau `updateSettings()`).
  */
-export async function getSettings(): Promise<CafeSettings> {
+export async function getSettings(): Promise<AppSettings> {
   const existing = await db.settings.get('singleton')
   return existing ?? DEFAULT_SETTINGS
 }
@@ -66,9 +79,9 @@ export async function ensureDefaultSettings(): Promise<void> {
   }
 }
 
-export async function updateSettings(patch: Partial<Omit<CafeSettings, 'id'>>): Promise<CafeSettings> {
+export async function updateSettings(patch: Partial<Omit<AppSettings, 'id'>>): Promise<AppSettings> {
   const current = await getSettings()
-  const next: CafeSettings = { ...current, ...patch, id: 'singleton', updatedAt: Date.now() }
+  const next: AppSettings = { ...current, ...patch, id: 'singleton', updatedAt: Date.now() }
   // Ikut disinkronkan supaya endpoint publik QR bisa membaca identitas kafe +
   // pajak/service charge/pembulatan yang otoritatif (bukan dari perangkat pelanggan).
   await db.transaction('rw', db.settings, db.syncQueue, async () => {
@@ -91,7 +104,7 @@ export async function nextTransactionNumber(): Promise<string> {
 
 /**
  * Rekonsiliasi penghitung nomor transaksi lokal terhadap nomor yang datang dari
- * perangkat lain saat pull. Mencegah dua perangkat menghasilkan `KKP-00042` yang
+ * perangkat lain saat pull. Mencegah dua perangkat menghasilkan `TRX-00042` yang
  * sama setelah keduanya online kembali. `settings` bukan entitas sync — jadi
  * penghitung tetap lokal, hanya "dikejar" ke angka tertinggi yang pernah terlihat.
  */

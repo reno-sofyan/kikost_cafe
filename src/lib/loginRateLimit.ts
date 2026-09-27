@@ -1,7 +1,7 @@
 // Rate limiting percobaan login PIN sisi klien (tanpa server auth, PIN diverifikasi lokal).
 // Mencegah percobaan PIN bertubi-tubi pada perangkat yang sama.
 
-const STORAGE_KEY = 'kikost.loginAttempts'
+const STORAGE_KEY = 'kione.loginAttempts'
 const MAX_ATTEMPTS = 5
 const LOCKOUT_MS = 30_000
 

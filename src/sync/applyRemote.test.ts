@@ -7,7 +7,7 @@ import type { Order } from '@/types/domain'
 function order(partial: Partial<Order>): Order {
   return {
     id: 'o1',
-    orderNumber: 'KKP-00001',
+    orderNumber: 'TRX-00001',
     type: 'dine_in',
     tableId: null,
     customerId: null,

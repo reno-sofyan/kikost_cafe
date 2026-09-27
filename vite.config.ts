@@ -2,8 +2,14 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
+import { createRequire } from 'node:module'
+
+const { version } = createRequire(import.meta.url)('./package.json')
 
 export default defineConfig({
+  // Versi produk ditanam saat build supaya panel "Tentang" menyebut rilis nyata,
+  // bukan angka yang harus diperbarui manual di dua tempat.
+  define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [
     react(),
     VitePWA({
@@ -11,11 +17,11 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'favicon-48.png', 'apple-touch-icon.png', 'robots.txt', 'icons/*.png', 'brand/*.png', 'fonts/*.woff2'],
       manifest: {
         id: '/',
-        name: 'Kinara Coffee POS',
-        short_name: 'Kinara POS',
-        description: 'Aplikasi kasir offline-first untuk Kinara Coffee.',
-        theme_color: '#462816',
-        background_color: '#f4ede0',
+        name: 'Kione POS',
+        short_name: 'Kione',
+        description: 'Aplikasi kasir offline-first untuk kafe, restoran, dan ritel.',
+        theme_color: '#4338ca',
+        background_color: '#f1f5f9',
         display: 'standalone',
         orientation: 'landscape',
         start_url: '/',

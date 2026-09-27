@@ -1,14 +1,14 @@
 ---
-name: run-kikost-cafe-pos
-description: Build, run, and drive the Kinara Coffee POS web app (Vite/React/Dexie cashier PWA). Use when asked to start the app, run it, take a screenshot of a screen (Kasir, Produk, Laporan, Dapur, etc.), or click through a flow to verify a change actually renders — not for running the unit/e2e test suites, which have their own commands (see Test below).
+name: run-kione-pos
+description: Build, run, and drive the Kione POS web app (Vite/React/Dexie cashier PWA). Use when asked to start the app, run it, take a screenshot of a screen (Kasir, Produk, Laporan, Dapur, etc.), or click through a flow to verify a change actually renders — not for running the unit/e2e test suites, which have their own commands (see Test below).
 ---
 
 This is a Vite/React/Dexie offline-first PWA (no server-rendered auth —
 Dexie/IndexedDB is the source of truth, backend is optional sync/backup).
 Drive it by starting the dev server, then running
-`.claude/skills/run-kikost-cafe-pos/driver.mjs` (Playwright, using the
+`.claude/skills/run-kione-pos/driver.mjs` (Playwright, using the
 project's own `playwright` dependency — no extra install). All paths
-below are relative to the repo root (`Kikost Cafe/`).
+below are relative to the repo root (`Kione POS/`).
 
 ## Prerequisites
 
@@ -59,9 +59,9 @@ generic server pattern.)
 **2. Drive it:**
 
 ```bash
-node .claude/skills/run-kikost-cafe-pos/driver.mjs smoke
-node .claude/skills/run-kikost-cafe-pos/driver.mjs goto /produk
-node .claude/skills/run-kikost-cafe-pos/driver.mjs reset
+node .claude/skills/run-kione-pos/driver.mjs smoke
+node .claude/skills/run-kione-pos/driver.mjs goto /produk
+node .claude/skills/run-kione-pos/driver.mjs reset
 ```
 
 | command | what it does |
@@ -71,7 +71,7 @@ node .claude/skills/run-kikost-cafe-pos/driver.mjs reset
 | `reset` | Deletes the persistent browser profile (`.profile/`) so the next `smoke`/`goto` starts from onboarding again. Use this when you need a truly clean-state run (e.g. testing the onboarding wizard itself). |
 
 The driver reuses a **persistent Chromium profile** at
-`.claude/skills/run-kikost-cafe-pos/.profile/` (gitignored) across
+`.claude/skills/run-kione-pos/.profile/` (gitignored) across
 invocations — real IndexedDB, so once onboarding has run once, every
 later `smoke`/`goto` reopens already logged in with the shift still
 open, in ~1s instead of redoing all 7 onboarding steps. Admin account
@@ -81,7 +81,7 @@ Every run prints a console/page-error count and exits non-zero if any
 were captured — treat a nonzero exit as "something threw," not just
 "screenshot looks different."
 
-Screenshots land in `.claude/skills/run-kikost-cafe-pos/screenshots/`
+Screenshots land in `.claude/skills/run-kione-pos/screenshots/`
 (gitignored).
 
 ## Run (human path)
@@ -140,7 +140,7 @@ confusing which one a failure came from).
 - **Run the driver script from the repo root**, not by absolute path
   from elsewhere — it imports `playwright` from `node_modules`, which
   Node only resolves relative to a directory that has it (or an
-  ancestor of one). `node .claude/skills/run-kikost-cafe-pos/driver.mjs
+  ancestor of one). `node .claude/skills/run-kione-pos/driver.mjs
   smoke` from repo root works; copying the script out to `/tmp` and
   running it from there does not (`ERR_MODULE_NOT_FOUND`).
 

@@ -220,12 +220,12 @@ function SingleBillPayment({
       {priorPaid > 0 && (
         <div className="mb-2 flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3 text-sm">
           <span className="text-ink-400">Sudah dibayar sebelumnya</span>
-          <span className="font-semibold text-sage-500">{formatRupiah(priorPaid)}</span>
+          <span className="font-semibold text-success-500">{formatRupiah(priorPaid)}</span>
         </div>
       )}
       <div className="mb-4 flex items-center justify-between rounded-xl bg-ink-900 px-4 py-3">
         <span className="text-ink-300">Sisa Tagihan</span>
-        <span className={`text-lg font-bold ${remaining > 0 ? 'text-brew-400' : 'text-sage-500'}`}>{formatRupiah(remaining)}</span>
+        <span className={`text-lg font-bold ${remaining > 0 ? 'text-brand-400' : 'text-success-500'}`}>{formatRupiah(remaining)}</span>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
@@ -297,7 +297,7 @@ function BillPayCard({
     <div className={`card p-4 ${paid ? 'opacity-60' : ''}`}>
       <div className="mb-2 flex items-center justify-between">
         <span className="font-bold text-ink-50">{bill.label}</span>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${paid ? 'bg-sage-600/15 text-sage-600' : 'bg-brew-600/15 text-brew-700'}`}>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${paid ? 'bg-success-600/15 text-success-500' : 'bg-brand-600/15 text-brand-700'}`}>
           {paid ? 'Lunas' : bill.paymentStatus === 'PARTIALLY_PAID' ? `Kurang ${formatRupiah(bill.grandTotal - bill.amountPaid)}` : formatRupiah(bill.grandTotal)}
         </span>
       </div>

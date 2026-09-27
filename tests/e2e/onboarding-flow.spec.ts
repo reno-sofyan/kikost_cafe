@@ -15,9 +15,9 @@ test.describe('Onboarding → Shift → Kasir', () => {
     await expect(page.getByRole('heading', { name: 'Selamat Datang' })).toBeVisible()
     await page.getByRole('button', { name: 'Lanjut' }).click()
 
-    // 2. Profil Kafe
-    await expect(page.getByRole('heading', { name: 'Profil Kafe' })).toBeVisible()
-    await page.getByLabel('Nama Kafe').fill('Kafe Uji E2E')
+    // 2. Profil Usaha
+    await expect(page.getByRole('heading', { name: 'Profil Usaha' })).toBeVisible()
+    await page.getByLabel('Nama Usaha', { exact: true }).fill('Kafe Uji E2E')
     await page.getByLabel('Telepon').fill('081200000000')
     await page.getByRole('button', { name: 'Lanjut' }).click()
 
@@ -74,7 +74,7 @@ test.describe('Onboarding → Shift → Kasir', () => {
     await page.goto('/')
     // Jalur cepat: isi minimal lalu selesai.
     await page.getByRole('button', { name: 'Lanjut' }).click() // welcome
-    await page.getByLabel('Nama Kafe').fill('Sekali Saja')
+    await page.getByLabel('Nama Usaha', { exact: true }).fill('Sekali Saja')
     await page.getByRole('button', { name: 'Lanjut' }).click() // profile
     await page.getByRole('button', { name: 'Lanjut' }).click() // fiscal
     await page.getByRole('button', { name: 'Lanjut' }).click() // qris
@@ -88,6 +88,6 @@ test.describe('Onboarding → Shift → Kasir', () => {
 
     await page.reload()
     // Tidak kembali ke wizard (onboardingCompleted tersimpan di IndexedDB).
-    await expect(page.getByRole('heading', { name: 'Pengaturan Awal Kikost Cafe POS' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Pengaturan Awal Kione POS' })).toHaveCount(0)
   })
 })

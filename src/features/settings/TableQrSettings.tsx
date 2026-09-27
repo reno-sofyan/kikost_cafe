@@ -8,10 +8,7 @@ import { roleHasPermission } from '@/lib/permissions'
 import { saveFile } from '@/lib/saveFile'
 import { Icon } from '@/components/ui/Icon'
 import type { CafeTable } from '@/types/domain'
-
-function orderUrl(base: string, token: string): string {
-  return `${base.replace(/\/+$/, '')}/order/${token}`
-}
+import { orderUrl, qrOrderBaseUrlIsUsable } from '@/lib/qrOrderUrl'
 
 async function pngBlob(text: string): Promise<Blob> {
   const dataUrl = await QRCode.toDataURL(text, { width: 720, margin: 2, errorCorrectionLevel: 'M' })
@@ -56,11 +53,16 @@ export function TableQrSettings() {
       <section className="space-y-2">
         <h3 className="text-sm font-semibold text-ink-100">URL Halaman Pesan-Mandiri</h3>
         <p className="text-xs text-ink-500">
-          Alamat publik tempat pelanggan membuka menu. QR berisi <code>{'<url>'}/order/{'<token>'}</code>. Ubah hanya
-          jika domain berubah.
+          Alamat publik tempat pelanggan membuka menu. QR berisi <code>{'<url>'}/order/{'<token>'}</code>. Isi dengan
+          domain tempat aplikasi ini dipasang.
         </p>
         <div className="flex gap-2">
-          <input className="input-field" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://pos.kikost.com" />
+          <input
+            className="input-field"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://pesan.usahaanda.com"
+          />
           <button
             className="btn-primary !min-h-[2.75rem] !px-4"
             onClick={() =>
@@ -74,7 +76,13 @@ export function TableQrSettings() {
             Simpan
           </button>
         </div>
-        {savedBase && <p className="text-xs text-sage-500">Tersimpan</p>}
+        {savedBase && <p className="text-xs text-success-500">Tersimpan</p>}
+        {!qrOrderBaseUrlIsUsable(baseUrl) && (
+          <p className="rounded-lg bg-yellow-900 px-3 py-2 text-xs text-yellow-400">
+            Alamat ini tidak bisa dibuka dari ponsel pelanggan. Isi domain publik usaha Anda dulu — QR yang dicetak
+            sekarang akan mengarah ke alamat yang salah.
+          </p>
+        )}
       </section>
 
       {error && <p className="rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">{error}</p>}
@@ -188,7 +196,7 @@ function TableRow({
               {table.qrToken && (
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                    table.qrActive ? 'bg-sage-600/20 text-sage-400' : 'bg-red-900/30 text-red-400'
+                    table.qrActive ? 'bg-success-600/20 text-success-400' : 'bg-red-900/30 text-red-400'
                   }`}
                 >
                   {table.qrActive ? 'QR aktif' : 'QR nonaktif'}

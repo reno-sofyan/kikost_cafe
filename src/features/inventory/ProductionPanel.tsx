@@ -177,7 +177,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
         <input className="input-field !min-h-0 !py-2 text-sm" placeholder="Catatan (opsional)" value={note} onChange={(e) => setNote(e.target.value)} />
 
         {error && <p className="text-sm text-red-400">{error}</p>}
-        {done && <p className="text-sm text-sage-400">{done}</p>}
+        {done && <p className="text-sm text-success-400">{done}</p>}
         <button className="btn-primary w-full" disabled={busy} onClick={() => void submit()}>
           {busy ? 'Menyimpan…' : 'Catat & Potong Stok'}
         </button>
@@ -218,7 +218,7 @@ export function ProductionPanel({ userId, userName }: { userId: string; userName
               <span className="font-semibold text-ink-50">
                 {r.outputQty} {r.outputUnit} {r.outputItemName}
               </span>
-              <span className={`rounded-full px-2 py-0.5 text-xs ${r.status === 'completed' ? 'bg-sage-600/20 text-sage-400' : 'bg-brown-600/20 text-brown-400'}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${r.status === 'completed' ? 'bg-success-600/20 text-success-400' : 'bg-accent-600/20 text-accent-400'}`}>
                 {r.status === 'completed' ? 'Selesai' : 'Draf'}
               </span>
             </div>

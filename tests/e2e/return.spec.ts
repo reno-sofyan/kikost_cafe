@@ -42,8 +42,8 @@ test('retur sebagian: stok kembali, item ditandai voided, ada audit log', async 
 
   // Riwayat → buka transaksi → Retur.
   await page.getByRole('link', { name: 'Riwayat' }).click()
-  await page.getByRole('button', { name: /KKP-00001/ }).click()
-  const panel = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'KKP-00001' }) })
+  await page.getByRole('button', { name: /TRX-00001/ }).click()
+  const panel = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'TRX-00001' }) })
   await panel.getByRole('button', { name: 'Retur', exact: true }).click()
 
   // Pilih item + centang "Kembalikan bahan ke stok" (default OFF, admin punya izin) → Lanjut.

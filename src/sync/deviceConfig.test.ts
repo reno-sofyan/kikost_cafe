@@ -21,21 +21,21 @@ describe('deviceConfig', () => {
   })
 
   it('menyimpan & membaca konfigurasi, menghapus trailing slash', () => {
-    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.kikost.com/', deviceKey: '  abc123  ' })
-    expect(getApiBaseUrl()).toBe('https://pos.kikost.com')
+    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.contoh.com/', deviceKey: '  abc123  ' })
+    expect(getApiBaseUrl()).toBe('https://pos.contoh.com')
     expect(getDeviceKey()).toBe('abc123')
     expect(isBackendConfigured()).toBe(true)
     expect(hasStoredOverride()).toBe(true)
   })
 
   it('menambahkan https:// bila skema tak ditulis', () => {
-    saveDeviceSyncConfig({ apiBaseUrl: 'pos.kikost.com' })
-    expect(getApiBaseUrl()).toBe('https://pos.kikost.com')
+    saveDeviceSyncConfig({ apiBaseUrl: 'pos.contoh.com' })
+    expect(getApiBaseUrl()).toBe('https://pos.contoh.com')
   })
 
   it('membuang /api yang kepencet ikut ditulis di akhir URL', () => {
-    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.kikost.com/api' })
-    expect(getApiBaseUrl()).toBe('https://pos.kikost.com')
+    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.contoh.com/api' })
+    expect(getApiBaseUrl()).toBe('https://pos.contoh.com')
   })
 
   it('menyimpan string kosong = menghapus kunci itu', () => {

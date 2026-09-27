@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pemeriksaan READ-ONLY kondisi VPS sebelum deployment Kikost Cafe POS.
+# Pemeriksaan READ-ONLY kondisi VPS sebelum deployment Kione POS.
 # Skrip ini TIDAK mengubah apa pun: tanpa restart, tanpa pull, tanpa write.
 # Jalankan di VPS: bash vps-inspect.sh | tee vps-report-$(date +%F).txt
 set -u
@@ -7,7 +7,7 @@ set -u
 line() { printf '\n=== %s ===\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-echo "Kikost Cafe POS — laporan pemeriksaan VPS (read-only)"
+echo "Kione POS — laporan pemeriksaan VPS (read-only)"
 echo "Waktu: $(date -u) (UTC)  /  $(date)"
 echo "Host : $(hostname)"
 

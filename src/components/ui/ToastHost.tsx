@@ -4,8 +4,8 @@ import { Icon, type IconName } from '@/components/ui/Icon'
 
 const TONE_STYLE: Record<Toast['tone'], string> = {
   info: 'border-ink-600 bg-ink-800 text-ink-100',
-  success: 'border-sage-500/30 bg-sage-600/90 text-white',
-  error: 'border-red-300/40 bg-red-800/95 text-red-50',
+  success: 'border-success-400/40 bg-success-500 text-white',
+  error: 'border-red-300/40 bg-red-800 text-red-50',
 }
 
 const TONE_ICON: Record<Toast['tone'], IconName> = {

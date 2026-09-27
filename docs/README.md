@@ -1,4 +1,4 @@
-# Dokumentasi Kikost Cafe POS
+# Dokumentasi Kione POS
 
 Aplikasi kasir F&B offline-first untuk kafe keluarga (satu outlet). PWA + APK Android,
 backend Node.js/Fastify + PostgreSQL, deployment Docker Compose terpisah di VPS bersama

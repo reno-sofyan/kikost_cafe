@@ -59,7 +59,7 @@ export function ShiftScreen() {
             {!blindClose && (
               <div className="mt-1 flex items-center justify-between">
                 <span className="text-ink-300">Kas Seharusnya Saat Ini</span>
-                <span className="font-bold text-brew-400">{formatRupiah(openShiftData.expectedCash)}</span>
+                <span className="font-bold text-brand-400">{formatRupiah(openShiftData.expectedCash)}</span>
               </div>
             )}
             {blindClose && (
@@ -82,7 +82,7 @@ export function ShiftScreen() {
             {movements.map((m) => (
               <div key={m.id} className="flex justify-between border-b border-ink-800 py-1.5 text-sm last:border-0">
                 <span className="text-ink-300">{m.reason}</span>
-                <span className={m.type === 'in' ? 'text-sage-500' : 'text-red-400'}>
+                <span className={m.type === 'in' ? 'text-success-500' : 'text-red-400'}>
                   {m.type === 'in' ? '+' : '-'}
                   {formatRupiah(m.amount)}
                 </span>
@@ -261,7 +261,7 @@ function CloseShiftModal({
                 )}
                 <div
                   className={`mb-3 rounded-lg px-3 py-2 text-sm ${
-                    variance === 0 ? 'bg-sage-600/20 text-sage-500' : 'bg-red-900/30 text-red-400'
+                    variance === 0 ? 'bg-success-600/20 text-success-500' : 'bg-red-900/30 text-red-400'
                   }`}
                 >
                   Selisih: {formatRupiah(variance)}

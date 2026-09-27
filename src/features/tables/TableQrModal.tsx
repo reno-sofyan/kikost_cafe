@@ -9,10 +9,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import type { CafeTable } from '@/types/domain'
-
-function orderUrl(base: string, token: string): string {
-  return `${base.replace(/\/+$/, '')}/order/${token}`
-}
+import { orderUrl, qrOrderBaseUrlIsUsable } from '@/lib/qrOrderUrl'
 
 async function pngBlob(text: string): Promise<Blob> {
   const dataUrl = await QRCode.toDataURL(text, { width: 720, margin: 2, errorCorrectionLevel: 'M' })
@@ -100,6 +97,13 @@ export function TableQrModal({ table: initial, onClose }: Props) {
 
       {error && <p className="mb-3 rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">{error}</p>}
 
+      {url && !qrOrderBaseUrlIsUsable(settings?.qrOrderBaseUrl ?? '') && (
+        <p className="mb-3 rounded-lg bg-yellow-900 px-3 py-2 text-xs text-yellow-400">
+          QR ini mengarah ke <span className="font-mono">{url}</span>, yang tidak bisa dibuka pelanggan. Isi URL publik
+          di Pengaturan → Meja &amp; QR sebelum mencetak.
+        </p>
+      )}
+
       {editing && (
         <div className="mb-4 space-y-3 rounded-xl border border-ink-800 bg-ink-900/40 p-3">
           <label className="block">
@@ -152,7 +156,7 @@ export function TableQrModal({ table: initial, onClose }: Props) {
         {table.qrToken && (
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-              table.qrActive ? 'bg-sage-600/20 text-sage-400' : 'bg-red-900/30 text-red-400'
+              table.qrActive ? 'bg-success-600/20 text-success-400' : 'bg-red-900/30 text-red-400'
             }`}
           >
             {table.qrActive ? 'QR aktif' : 'QR nonaktif'}

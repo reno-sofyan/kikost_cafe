@@ -136,11 +136,11 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
                   key={b.id}
                   className={`rounded-full px-3 py-1 text-xs font-medium ${
                     b.paymentStatus === 'PAID'
-                      ? 'bg-sage-600/20 text-sage-500'
+                      ? 'bg-success-600/20 text-success-500'
                       : b.paymentStatus === 'PARTIALLY_PAID'
                         ? 'bg-yellow-900/30 text-yellow-400'
                         : b.paymentStatus.includes('REFUND')
-                          ? 'bg-brown-600/20 text-brown-400'
+                          ? 'bg-accent-600/20 text-accent-400'
                           : 'bg-ink-800 text-ink-400'
                   }`}
                 >
@@ -157,7 +157,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between text-sm">
                   <span className="text-ink-300">{p.method}</span>
-                  <span className={p.amount < 0 ? 'text-brown-400' : 'text-ink-100'}>{formatRupiah(p.amount)}</span>
+                  <span className={p.amount < 0 ? 'text-accent-400' : 'text-ink-100'}>{formatRupiah(p.amount)}</span>
                 </div>
               ))}
             </div>

@@ -1,9 +1,9 @@
 import { randomUUID } from '@/lib/id'
 
 // Identitas perangkat & metadata sinkronisasi (bukan data transaksi) - aman disimpan di localStorage.
-const DEVICE_ID_KEY = 'kikost.deviceId'
-const DEVICE_LABEL_KEY = 'kikost.deviceLabel'
-const LAST_PULL_KEY = 'kikost.lastPullAt'
+const DEVICE_ID_KEY = 'kione.deviceId'
+const DEVICE_LABEL_KEY = 'kione.deviceLabel'
+const LAST_PULL_KEY = 'kione.lastPullAt'
 
 export function getDeviceId(): string {
   let id = localStorage.getItem(DEVICE_ID_KEY)

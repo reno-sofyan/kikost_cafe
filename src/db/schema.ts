@@ -2,7 +2,7 @@ import Dexie, { type Table } from 'dexie'
 import type {
   AuditLogEntry,
   Bill,
-  CafeSettings,
+  AppSettings,
   CafeTable,
   CashMovement,
   Category,
@@ -42,8 +42,8 @@ function lifecycleFromLegacy(status: string, hasKitchenActivity: boolean): Order
   return hasKitchenActivity ? 'CONFIRMED' : 'DRAFT'
 }
 
-export class KikostDatabase extends Dexie {
-  settings!: Table<CafeSettings, string>
+export class KioneDatabase extends Dexie {
+  settings!: Table<AppSettings, string>
   users!: Table<User, string>
   auditLogs!: Table<AuditLogEntry, string>
   categories!: Table<Category, string>
@@ -77,7 +77,7 @@ export class KikostDatabase extends Dexie {
   syncQueue!: Table<SyncQueueEntry, string>
 
   constructor() {
-    super('kikost-cafe-pos')
+    super('kione-pos')
 
     this.version(1).stores({
       settings: 'id',
@@ -330,7 +330,7 @@ export class KikostDatabase extends Dexie {
         if (settings) {
           await tx.table('settings').put({
             ...settings,
-            qrOrderBaseUrl: settings.qrOrderBaseUrl ?? 'https://pos.kikost.com',
+            qrOrderBaseUrl: settings.qrOrderBaseUrl ?? '',
           })
         }
         await tx
@@ -386,7 +386,7 @@ export class KikostDatabase extends Dexie {
           outletId = outletId || `outlet_${now.toString(36)}`
           await tx.table('outlets').add({
             id: outletId,
-            name: settings?.cafeName || 'Kinara Coffee',
+            name: settings?.businessName || 'Outlet Utama',
             address: settings?.address || '',
             phone: settings?.phone || '',
             timezone: 'Asia/Jakarta',
@@ -444,7 +444,21 @@ export class KikostDatabase extends Dexie {
           if (o.pagerNumber === undefined) o.pagerNumber = null
         })
     })
+
+    // v14: `settings.businessType` (Kafe & Restoran / Kantin / Minimarket & Ritel /
+    // Lainnya) — menentukan fitur mana yang relevan ditampilkan di navigasi (lihat
+    // src/lib/businessType.ts). Baris lama di-backfill ke `lainnya`, yang menampilkan
+    // SEMUA fitur — perilaku sebelum migrasi ini tidak berubah sampai pemilik
+    // memilih jenis usaha secara eksplisit di Pengaturan → Profil Usaha.
+    this.version(14).upgrade(async (tx) => {
+      await tx
+        .table('settings')
+        .toCollection()
+        .modify((s: { businessType?: string }) => {
+          if (s.businessType === undefined) s.businessType = 'lainnya'
+        })
+    })
   }
 }
 
-export const db = new KikostDatabase()
+export const db = new KioneDatabase()

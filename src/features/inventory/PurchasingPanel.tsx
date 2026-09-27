@@ -48,9 +48,9 @@ export function PurchasingPanel({ userId, userName }: Props) {
               </p>
             </div>
             <div className="text-right">
-              <p className="font-bold text-brew-400">{formatRupiah(p.totalCost)}</p>
+              <p className="font-bold text-brand-400">{formatRupiah(p.totalCost)}</p>
               {p.status === 'received' ? (
-                <span className="text-xs text-sage-500">Diterima</span>
+                <span className="text-xs text-success-500">Diterima</span>
               ) : (
                 <button className="btn-primary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void handleReceive(p.id)}>
                   Terima Barang

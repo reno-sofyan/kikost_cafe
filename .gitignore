@@ -57,3 +57,4 @@ android/*.keystore
 
 # PWA dev build artifacts (vite-plugin-pwa)
 dev-dist/
+build-output/

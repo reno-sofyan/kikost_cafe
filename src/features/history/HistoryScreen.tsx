@@ -15,9 +15,9 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 
 const STATUS_COLORS: Record<OrderStatus, string> = {
   open: 'text-yellow-400',
-  paid: 'text-sage-500',
+  paid: 'text-success-500',
   void: 'text-red-400',
-  completed: 'text-sage-500',
+  completed: 'text-success-500',
 }
 
 export function HistoryScreen() {

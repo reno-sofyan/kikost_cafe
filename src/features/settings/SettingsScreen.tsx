@@ -12,8 +12,10 @@ import { TableQrSettings } from '@/features/settings/TableQrSettings'
 import { OutletSettings } from '@/features/settings/OutletSettings'
 import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
+import { AboutPanel } from '@/features/settings/AboutPanel'
 import { readFileAsResizedDataUrl } from '@/lib/image'
-import type { ReceiptPaperSize } from '@/types/domain'
+import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
+import type { BusinessType, ReceiptPaperSize } from '@/types/domain'
 
 type Tab =
   | 'profil'
@@ -27,8 +29,22 @@ type Tab =
   | 'sinkronisasi'
   | 'backup'
   | 'audit'
+  | 'tentang'
 
-const TAB_KEYS: Tab[] = ['profil', 'outlet', 'pajak', 'qris', 'printer', 'pager', 'meja-qr', 'pengguna', 'sinkronisasi', 'backup', 'audit']
+const TAB_KEYS: Tab[] = [
+  'profil',
+  'outlet',
+  'pajak',
+  'qris',
+  'printer',
+  'pager',
+  'meja-qr',
+  'pengguna',
+  'sinkronisasi',
+  'backup',
+  'audit',
+  'tentang',
+]
 
 export function SettingsScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
@@ -37,18 +53,23 @@ export function SettingsScreen() {
   const [tab, setTab] = useState<Tab>(initialTab)
   const settings = useLiveQuery(() => getSettings(), [])
 
+  // Sebelum `settings` termuat, anggap semua fitur relevan (aman: tidak pernah
+  // menyembunyikan tab sekejap lalu memunculkannya lagi setelah data siap).
+  const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
-    { key: 'profil', label: 'Profil Kafe', visible: true },
+    { key: 'profil', label: 'Profil Usaha', visible: true },
     { key: 'outlet', label: 'Outlet', visible: roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'pajak', label: 'Pajak & Struk', visible: true },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
-    { key: 'pager', label: 'Pager', visible: roleHasPermission(currentUser.role, 'settings.manage') },
-    { key: 'meja-qr', label: 'Meja & QR', visible: roleHasPermission(currentUser.role, 'qr.manage') },
+    { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
+    { key: 'meja-qr', label: 'Meja & QR', visible: features.qrOrdering && roleHasPermission(currentUser.role, 'qr.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'sinkronisasi', label: 'Sinkronisasi', visible: true },
     { key: 'backup', label: 'Backup', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'audit', label: 'Log Aktivitas', visible: roleHasPermission(currentUser.role, 'users.manage') },
+    { key: 'tentang', label: 'Tentang', visible: true },
   ]
 
   if (!settings) return null
@@ -78,6 +99,7 @@ export function SettingsScreen() {
         {tab === 'sinkronisasi' && <SyncPanel />}
         {tab === 'backup' && <BackupManager />}
         {tab === 'audit' && <AuditLogPanel />}
+        {tab === 'tentang' && <AboutPanel />}
       </div>
     </div>
   )
@@ -85,7 +107,8 @@ export function SettingsScreen() {
 
 function ProfileForm() {
   const settings = useLiveQuery(() => getSettings(), [])
-  const [cafeName, setCafeName] = useState('')
+  const [businessName, setBusinessName] = useState('')
+  const [businessType, setBusinessType] = useState<BusinessType>('lainnya')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
@@ -94,7 +117,8 @@ function ProfileForm() {
 
   useEffect(() => {
     if (!settings) return
-    setCafeName(settings.cafeName)
+    setBusinessName(settings.businessName)
+    setBusinessType(settings.businessType)
     setAddress(settings.address)
     setPhone(settings.phone)
     setLogoDataUrl(settings.logoDataUrl)
@@ -104,10 +128,36 @@ function ProfileForm() {
 
   return (
     <div className="max-w-md space-y-4">
+      <p className="text-sm text-ink-300">
+        Identitas ini yang muncul di layar masuk, struk, tiket dapur, dan halaman pesanan pelanggan.
+      </p>
       <label className="block">
-        <span className="mb-1 block text-sm text-ink-300">Nama Kafe</span>
-        <input className="input-field" value={cafeName} onChange={(e) => setCafeName(e.target.value)} />
+        <span className="mb-1 block text-sm text-ink-300">Nama Usaha</span>
+        <input
+          className="input-field"
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+          placeholder="mis. Kopi Senja"
+        />
       </label>
+      <div className="block">
+        <span className="mb-1 block text-sm text-ink-300">Jenis Usaha</span>
+        <div className="grid grid-cols-2 gap-2">
+          {BUSINESS_TYPE_ORDER.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setBusinessType(t)}
+              className={`rounded-xl border p-2.5 text-left text-sm transition-colors ${
+                businessType === t ? 'border-brand-500 bg-brand-600/12 font-semibold text-ink-50' : 'border-ink-700 bg-ink-900 text-ink-200 hover:border-ink-500'
+              }`}
+            >
+              {BUSINESS_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-ink-500">{BUSINESS_TYPE_DESCRIPTIONS[businessType]}</p>
+      </div>
       <label className="block">
         <span className="mb-1 block text-sm text-ink-300">Alamat</span>
         <textarea className="input-field" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
@@ -117,7 +167,7 @@ function ProfileForm() {
         <input className="input-field" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </label>
       <div>
-        <span className="mb-1 block text-sm text-ink-300">Logo</span>
+        <span className="mb-1 block text-sm text-ink-300">Logo Usaha</span>
         <input
           ref={logoInputRef}
           type="file"
@@ -130,23 +180,30 @@ function ProfileForm() {
           }}
         />
         <div className="flex items-center gap-3">
-          {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="h-16 w-16 rounded-full object-cover" />}
+          {logoDataUrl && <img src={logoDataUrl} alt="Pratinjau logo" className="h-16 w-16 rounded-xl border border-ink-600 object-cover" />}
           <button type="button" className="btn-secondary btn-compact" onClick={() => logoInputRef.current?.click()}>
             {logoDataUrl ? 'Ganti Logo' : 'Pilih Logo'}
           </button>
+          {logoDataUrl && (
+            <button type="button" className="btn-ghost btn-compact text-sm" onClick={() => setLogoDataUrl(null)}>
+              Hapus
+            </button>
+          )}
         </div>
+        <p className="mt-1 text-xs text-ink-400">Gambar persegi paling rapi. Tanpa logo, inisial nama usaha yang dipakai.</p>
       </div>
       <button
         className="btn-primary"
+        disabled={!businessName.trim()}
         onClick={async () => {
-          await updateSettings({ cafeName, address, phone, logoDataUrl })
+          await updateSettings({ businessName: businessName.trim(), businessType, address, phone, logoDataUrl })
           setSaved(true)
           setTimeout(() => setSaved(false), 2000)
         }}
       >
         Simpan
       </button>
-      {saved && <p className="text-sm text-sage-500">Tersimpan</p>}
+      {saved && <p className="text-sm text-success-500">Tersimpan</p>}
     </div>
   )
 }
@@ -277,7 +334,7 @@ function FiscalForm() {
       >
         Simpan
       </button>
-      {saved && <p className="text-sm text-sage-500">Tersimpan</p>}
+      {saved && <p className="text-sm text-success-500">Tersimpan</p>}
     </div>
   )
 }
@@ -333,7 +390,7 @@ function QrisForm() {
       >
         Simpan
       </button>
-      {saved && <p className="text-sm text-sage-500">Tersimpan</p>}
+      {saved && <p className="text-sm text-success-500">Tersimpan</p>}
     </div>
   )
 }

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: Kikost Cafe POS — Sync API
+  title: Kione POS — Sync API
   version: 0.1.0
   description: >
-    API sinkronisasi offline-first untuk Kikost Cafe POS. Klien (PWA/APK) menyimpan
+    API sinkronisasi offline-first untuk Kione POS. Klien (PWA/APK) menyimpan
     seluruh data secara lokal di IndexedDB dan mengirim perubahan lewat antrean
     outbox. Server berperan sebagai relay multi-perangkat + sumber backup, menegakkan
     idempotency dan proteksi transaksi final.

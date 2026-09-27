@@ -35,8 +35,8 @@ test('pembatalan transaksi via UI (PIN admin): status void, pembayaran pembalik,
   expect((await idbAll<{ sku: string; stockQty: number }>(page, 'products')).find((p) => p.sku === 'SNACK-002')!.stockQty).toBe(59)
 
   await page.getByRole('link', { name: 'Riwayat' }).click()
-  await page.getByRole('button', { name: /KKP-00001/ }).click()
-  const panel = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'KKP-00001' }) })
+  await page.getByRole('button', { name: /TRX-00001/ }).click()
+  const panel = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'TRX-00001' }) })
   await panel.getByRole('button', { name: 'Batalkan Transaksi' }).click()
 
   const reason = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Batalkan Transaksi' }) })

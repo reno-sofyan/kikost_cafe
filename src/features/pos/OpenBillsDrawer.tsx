@@ -69,7 +69,7 @@ function OpenBillRow({ order, onSelect, onCancel }: { order: Order; onSelect: ()
   const isEmpty = items.filter((i) => !i.removed && !i.voided).length === 0
 
   return (
-    <div className="card w-full p-4 text-left hover:border-brew-600">
+    <div className="card w-full p-4 text-left hover:border-brand-600">
       <button className="block w-full text-left" onClick={onSelect}>
         <div className="flex items-center justify-between">
           <span className="font-semibold text-ink-50">{order.orderNumber}</span>
@@ -80,7 +80,7 @@ function OpenBillRow({ order, onSelect, onCancel }: { order: Order; onSelect: ()
           {order.queueNumber ? ` • Antrean #${order.queueNumber}` : ''}
           {isEmpty ? ' • Kosong' : ''}
         </div>
-        <div className="mt-2 font-bold text-brew-400">{formatRupiah(order.grandTotal)}</div>
+        <div className="mt-2 font-bold text-brand-400">{formatRupiah(order.grandTotal)}</div>
       </button>
       {isEmpty && (
         <button

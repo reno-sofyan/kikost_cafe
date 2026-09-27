@@ -5,6 +5,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { PinPad } from '@/components/ui/PinPad'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { BusinessLogo } from '@/components/BusinessBrand'
 import { attemptsRemaining, getLockoutRemainingMs, recordFailedAttempt, recordSuccessfulAttempt } from '@/lib/loginRateLimit'
 
 export function LockScreen() {
@@ -80,8 +81,11 @@ export function LockScreen() {
     <div className="flex h-full items-center justify-center overflow-y-auto bg-ink-950 p-6">
       <div className="flex w-full max-w-sm flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
         <div className="text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-brew-600/12 text-brew-600">
-            <Icon name="lock" size={24} />
+          <div className="relative mx-auto mb-3 w-fit">
+            <BusinessLogo size="md" />
+            <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink-900 bg-ink-800 text-ink-200">
+              <Icon name="lock" size={12} />
+            </span>
           </div>
           <h1 className="text-xl font-bold text-ink-50">Layar Terkunci</h1>
           <p className="mt-1 text-sm text-ink-300">

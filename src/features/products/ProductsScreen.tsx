@@ -54,7 +54,7 @@ export function ProductsScreen() {
 
   async function handleExport() {
     const csv = await exportProductsCsv()
-    await saveTextFile('produk-kikost-cafe.csv', csv, 'text/csv')
+    await saveTextFile('produk.csv', csv, 'text/csv')
   }
 
   function handleImportClick() {
@@ -124,7 +124,7 @@ export function ProductsScreen() {
                     key={v}
                     onClick={() => setView(v)}
                     className={`rounded-lg px-3 py-1.5 font-semibold capitalize transition-colors ${
-                      view === v ? 'bg-brew-600 text-cream-50' : 'text-ink-300'
+                      view === v ? 'bg-brand-600 text-white' : 'text-ink-300'
                     }`}
                   >
                     {v === 'arsip' ? `Arsip (${archivedProducts.length})` : 'Aktif'}
@@ -178,7 +178,7 @@ export function ProductsScreen() {
                   </div>
                   <p className="truncate text-sm font-semibold text-ink-50">{product.name}</p>
                   <p className="text-xs text-ink-500">{product.sku}</p>
-                  <p className="mt-1 font-bold text-brew-400">{formatRupiah(product.price)}</p>
+                  <p className="mt-1 font-bold text-brand-400">{formatRupiah(product.price)}</p>
 
                   {view === 'arsip' ? (
                     <div className="mt-3 flex gap-2">
@@ -208,7 +208,7 @@ export function ProductsScreen() {
                     <>
                       <div className="mt-2 flex items-center justify-between">
                         <button
-                          className={`flex items-center gap-1 text-xs ${product.isFavorite ? 'text-brown-500' : 'text-ink-400'}`}
+                          className={`flex items-center gap-1 text-xs ${product.isFavorite ? 'text-accent-500' : 'text-ink-400'}`}
                           onClick={() => void toggleFavorite(product.id)}
                         >
                           <Icon name="star" size={14} fill={product.isFavorite ? 'currentColor' : 'none'} />

@@ -1,4 +1,4 @@
-// Tipe domain inti aplikasi Kinara Coffee POS.
+// Tipe domain inti aplikasi Kione POS.
 // Semua entitas memakai UUID sebagai id agar aman untuk sinkronisasi offline-first.
 
 export type Role = 'pemilik' | 'administrator' | 'supervisor' | 'kasir' | 'pramusaji' | 'dapur'
@@ -62,10 +62,19 @@ export interface AuditLogEntry {
 
 export type ReceiptPaperSize = '58mm' | '80mm'
 
-export interface CafeSettings {
+/**
+ * Jenis usaha — menentukan fitur mana yang relevan ditampilkan (Meja, Dapur,
+ * Pesanan QR, Pager). Lihat `src/lib/businessType.ts` untuk pemetaan lengkapnya.
+ * `lainnya` (dan nilai tak dikenal apa pun) SENGAJA menampilkan semua fitur —
+ * jangan pernah menyembunyikan sesuatu untuk jenis usaha yang tidak dikenali.
+ */
+export type BusinessType = 'cafe_resto' | 'kantin' | 'minimarket' | 'lainnya'
+
+export interface AppSettings {
   id: 'singleton'
   onboardingCompleted: boolean
-  cafeName: string
+  businessName: string
+  businessType: BusinessType
   logoDataUrl: string | null
   address: string
   phone: string
@@ -82,7 +91,7 @@ export interface CafeSettings {
   allowPartialPayment: boolean
   qrisImageDataUrl: string | null
   qrisMerchantName: string | null
-  /** Basis URL publik halaman pesan-mandiri (mis. https://pos.kikost.com). QR berisi `<base>/order/<token>`. */
+  /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
   qrOrderBaseUrl: string
   /** Outlet aktif di perangkat ini (Fase 3). */
   activeOutletId?: string

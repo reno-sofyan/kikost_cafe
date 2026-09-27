@@ -15,7 +15,7 @@ export function QrisPaymentModal({ amount, onCancel, onConfirm }: Props) {
   return (
     <Modal onClose={onCancel} className="w-full max-w-sm rounded-2xl bg-ink-900 p-6 text-center">
         <h2 className="mb-1 text-lg font-bold text-ink-50">Pembayaran QRIS</h2>
-        <p className="mb-4 text-2xl font-bold text-brew-400">{formatRupiah(amount)}</p>
+        <p className="mb-4 text-2xl font-bold text-brand-400">{formatRupiah(amount)}</p>
 
         {settings?.qrisImageDataUrl ? (
           <img src={settings.qrisImageDataUrl} alt="QRIS" className="mx-auto mb-4 h-64 w-64 rounded-xl bg-white object-contain p-2" />

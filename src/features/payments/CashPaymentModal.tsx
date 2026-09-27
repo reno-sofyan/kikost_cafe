@@ -72,7 +72,7 @@ export function CashPaymentModal({ remaining, onCancel, onConfirm }: Props) {
             </div>
             <div className="mb-4 flex items-center justify-between rounded-xl bg-ink-800 px-4 py-3">
               <span className="text-ink-300">Kembalian</span>
-              <span className="text-lg font-bold text-sage-500">{formatRupiah(change)}</span>
+              <span className="text-lg font-bold text-success-500">{formatRupiah(change)}</span>
             </div>
           </>
         )}

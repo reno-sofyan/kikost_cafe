@@ -1,4 +1,4 @@
-# Kikost Cafe POS — stack produksi (TERPISAH dari kikost.com).
+# Kione POS — stack produksi (TERPISAH dari kikost.com).
 #
 # Prinsip isolasi:
 #  - project name khusus: cafe-pos  (jalankan dengan: docker compose -p cafe-pos ...)
@@ -142,7 +142,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ""
-        VITE_BUILD_LABEL: kikost-cafe-pos
+        VITE_BUILD_LABEL: kione-pos
     container_name: cafe-pos-web
     restart: unless-stopped
     depends_on:
@@ -204,13 +204,17 @@ services:
     volumes:
       - cafe-pos-backups:/backups
     healthcheck:
-      # Sehat bila crond hidup DAN (belum ada backup — hari pertama — ATAU backup
-      # terakhir < 26 jam). Tidak lagi menandai unhealthy sebelum cron pertama jalan.
-      test: ["CMD-SHELL", "pgrep -x crond >/dev/null && { [ ! -f /backups/.last_success ] || find /backups/.last_success -mmin -1560 | grep -q .; } || exit 1"]
+      # Sehat HANYA bila ada backup sukses < 26 jam — TIDAK LAGI menganggap "belum ada
+      # backup" sebagai sehat. Toleransi awal ditangani lewat `start_period` Docker
+      # (kegagalan di dalam jendela ini tak dihitung ke `retries`), bukan lewat celah di
+      # tesnya sendiri. Versi lama punya celah `[ ! -f .last_success ]` yang membuat
+      # container tetap "healthy" SELAMANYA kalau backup gagal terus — itulah yang
+      # menyembunyikan bug `entrypoint.sh` (env tanpa quote) berhari-hari tanpa alarm.
+      test: ["CMD-SHELL", "pgrep -x crond >/dev/null && find /backups/.last_success -mmin -1560 | grep -q ."]
       interval: 5m
       timeout: 10s
       retries: 3
-      start_period: 1m
+      start_period: 10m
     deploy:
       resources:
         limits:

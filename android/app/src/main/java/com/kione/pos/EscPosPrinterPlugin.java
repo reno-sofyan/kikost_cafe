@@ -1,4 +1,4 @@
-package cafe.kikost.pos;
+package com.kione.pos;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Plugin ESC/POS untuk Kikost Cafe POS.
+ * Plugin ESC/POS untuk Kione POS.
  * Mendukung printer thermal via Bluetooth SPP (Serial Port Profile) dan via WiFi/LAN (TCP, umumnya port 9100).
  * Dipanggil dari src/native/escPosPrinterPlugin.ts.
  */

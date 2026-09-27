@@ -102,4 +102,4 @@ ASCII yang dimengerti firmware ESP32. Firmware ditulis terpisah.
 | Engine background | `src/features/pager/pagerEngine.ts` (dipasang di `src/App.tsx`) |
 | Panggil manual / tes | `src/features/pager/callPager.ts` |
 | UI setelan | `src/features/settings/PagerSettings.tsx` |
-| Plugin native | `android/app/src/main/java/cafe/kikost/pos/UsbSerialPlugin.java`, `src/native/usbSerialPlugin.ts` |
+| Plugin native | `android/app/src/main/java/com/kione/pos/UsbSerialPlugin.java`, `src/native/usbSerialPlugin.ts` |

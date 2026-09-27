@@ -25,14 +25,14 @@ npm run android:assembleDebug
 
 # 2b. Release (untuk pemasangan produksi)
 #    Perlu keystore — buat SEKALI, simpan aman (JANGAN commit):
-keytool -genkey -v -keystore kikost-pos-release.jks \
-  -alias kikost-pos -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore kione-pos-release.jks \
+  -alias kione-pos -keyalg RSA -keysize 2048 -validity 10000
 
 #    android/keystore.properties (di-gitignore):
 cat > android/keystore.properties <<'EOF'
-storeFile=/path/absolut/kikost-pos-release.jks
+storeFile=/path/absolut/kione-pos-release.jks
 storePassword=***
-keyAlias=kikost-pos
+keyAlias=kione-pos
 keyPassword=***
 EOF
 
@@ -76,5 +76,5 @@ barcode scanner (mode HID keyboard), orientasi landscape terkunci, performa di
 ## Ikon & splash
 
 Ganti aset di `android/app/src/main/res/mipmap-*` dan `drawable*/splash.png`
-(atau pakai `@capacitor/assets`). `appId` = `cafe.kikost.pos`, `appName` = "Kikost Cafe POS"
+(atau pakai `@capacitor/assets`). `appId` = `com.kione.pos`, `appName` = "Kione POS"
 (`capacitor.config.ts`). Nama tampilan awal aplikasi bisa diubah di `strings.xml`.

@@ -21,7 +21,7 @@ async function seedEntity(entity: string, id: string, payload: Record<string, un
 
 async function seedCatalog(): Promise<void> {
   await seedEntity('settings', 'singleton', {
-    id: 'singleton', cafeName: 'Kikost', address: 'Jl. Test', phone: '',
+    id: 'singleton', businessName: 'Kopi Senja', address: 'Jl. Test', phone: '',
     taxPercent: 10, serviceChargePercent: 5, roundingIncrement: 100, updatedAt: 1,
   })
   await seedEntity('cafeTables', 't1', {

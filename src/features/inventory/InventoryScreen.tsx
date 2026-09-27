@@ -101,7 +101,7 @@ export function InventoryScreen() {
                     {m.note ? ` • ${m.note}` : ''}
                   </p>
                 </div>
-                <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-sage-500' : 'text-red-400'}`}>
+                <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-success-500' : 'text-red-400'}`}>
                   {m.qtyDelta >= 0 ? '+' : ''}
                   {m.qtyDelta}
                 </span>

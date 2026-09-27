@@ -128,7 +128,7 @@ export function SyncPanel() {
               dikonfigurasi. Pakai sekali saat menyambungkan perangkat lama ke backend baru.
             </p>
             {resyncState === 'done' && resyncCount !== null && (
-              <p className="mt-2 text-sm text-sage-500">{resyncCount} item dimasukkan ke antrean & sedang disinkron.</p>
+              <p className="mt-2 text-sm text-success-500">{resyncCount} item dimasukkan ke antrean & sedang disinkron.</p>
             )}
           </div>
         )}
@@ -146,7 +146,7 @@ export function SyncPanel() {
           <span className="mb-1 block text-sm text-ink-300">URL Backend</span>
           <input
             className="input-field"
-            placeholder="https://pos.kikost.com"
+            placeholder="https://pos.usahaanda.com"
             value={apiUrl}
             onChange={(e) => {
               setApiUrl(e.target.value)
@@ -167,15 +167,15 @@ export function SyncPanel() {
             }}
           />
         </label>
-        <button className="mb-3 text-xs text-brew-400 hover:underline" onClick={generateKey}>
+        <button className="mb-3 text-xs text-brand-400 hover:underline" onClick={generateKey}>
           Buat kunci acak
         </button>
 
-        {testState === 'ok' && <p className="mb-2 text-sm text-sage-500">Koneksi backend berhasil.</p>}
+        {testState === 'ok' && <p className="mb-2 text-sm text-success-500">Koneksi backend berhasil.</p>}
         {testState === 'fail' && (
           <p className="mb-2 text-sm text-red-400">Gagal terhubung. Periksa URL, kunci, dan koneksi internet.</p>
         )}
-        {saved && <p className="mb-2 text-sm text-sage-500">Konfigurasi disimpan.</p>}
+        {saved && <p className="mb-2 text-sm text-success-500">Konfigurasi disimpan.</p>}
 
         <div className="flex flex-wrap gap-2">
           <button className="btn-secondary" disabled={testState === 'testing' || !apiUrl.trim()} onClick={() => void handleTest()}>

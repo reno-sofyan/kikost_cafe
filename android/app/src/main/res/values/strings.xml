@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Kinara Coffee POS</string>
-    <string name="title_activity_main">Kinara Coffee POS</string>
-    <string name="package_name">cafe.kikost.pos</string>
-    <string name="custom_url_scheme">cafe.kikost.pos</string>
+    <string name="app_name">Kione POS</string>
+    <string name="title_activity_main">Kione POS</string>
+    <string name="package_name">com.kione.pos</string>
+    <string name="custom_url_scheme">com.kione.pos</string>
 </resources>

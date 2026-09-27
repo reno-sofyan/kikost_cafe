@@ -1,9 +1,9 @@
 {
-  "name": "kikost-cafe-pos-api",
+  "name": "kione-pos-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Backend sinkronisasi & backup untuk Kikost Cafe POS (Fastify + PostgreSQL)",
+  "description": "Backend sinkronisasi & backup untuk Kione POS (Fastify + PostgreSQL)",
   "engines": {
     "node": ">=20"
   },

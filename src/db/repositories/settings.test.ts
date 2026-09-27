@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db/schema'
-import { ensureDefaultSettings, getSettings, nextTransactionNumber, updateSettings } from './settings'
+import { businessDisplayName, ensureDefaultSettings, getSettings, nextTransactionNumber, updateSettings } from './settings'
 import { resetLocalDb } from '@/test/db'
 
 beforeEach(async () => {
@@ -10,14 +10,39 @@ beforeEach(async () => {
 describe('getSettings', () => {
   it('TIDAK menulis ke DB saat baris belum ada (aman untuk useLiveQuery read-only)', async () => {
     const s = await getSettings()
-    expect(s.cafeName).toBeTruthy()
+    expect(s.id).toBe('singleton')
     expect(await db.settings.count()).toBe(0)
+  })
+
+  // Nama usaha sengaja kosong sampai onboarding mengisinya — aplikasi dijual ke
+  // banyak usaha, jadi tidak boleh ada nama bawaan yang ikut tercetak di struk.
+  it('tidak punya nama usaha bawaan', async () => {
+    expect((await getSettings()).businessName).toBe('')
+  })
+
+  // 'lainnya' menampilkan SEMUA fitur (lihat src/lib/businessType.ts) — default yang aman
+  // untuk baris yang belum pernah lewat pemilihan jenis usaha di onboarding.
+  it('jenis usaha bawaan adalah lainnya (menampilkan semua fitur)', async () => {
+    expect((await getSettings()).businessType).toBe('lainnya')
   })
 
   it('mengembalikan baris tersimpan bila ada', async () => {
     await ensureDefaultSettings()
-    await updateSettings({ cafeName: 'Kafe Uji' })
-    expect((await getSettings()).cafeName).toBe('Kafe Uji')
+    await updateSettings({ businessName: 'Kafe Uji' })
+    expect((await getSettings()).businessName).toBe('Kafe Uji')
+  })
+})
+
+describe('businessDisplayName', () => {
+  it('memakai nama usaha bila terisi', () => {
+    expect(businessDisplayName({ businessName: 'Kopi Senja' })).toBe('Kopi Senja')
+  })
+
+  it('jatuh ke nama produk saat kosong, null, atau hanya spasi', () => {
+    expect(businessDisplayName({ businessName: '' })).toBe('Kione POS')
+    expect(businessDisplayName({ businessName: '   ' })).toBe('Kione POS')
+    expect(businessDisplayName(null)).toBe('Kione POS')
+    expect(businessDisplayName(undefined)).toBe('Kione POS')
   })
 })
 

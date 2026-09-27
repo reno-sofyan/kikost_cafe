@@ -161,7 +161,7 @@ function OptionRow({
           onChange={(e) => setPrice(Number(e.target.value))}
         />
         <button
-          className="text-sage-500 hover:text-sage-600"
+          className="text-success-500 hover:text-success-400"
           title="Simpan"
           onClick={async () => {
             if (!name.trim()) return

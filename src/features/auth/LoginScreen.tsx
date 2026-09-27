@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listUsers, verifyUserPin } from '@/db/repositories/users'
-import { getSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { useSessionStore } from '@/state/sessionStore'
 import { PinPad } from '@/components/ui/PinPad'
 import { Icon } from '@/components/ui/Icon'
+import { BusinessBrand } from '@/components/BusinessBrand'
+import { PoweredByKione } from '@/components/PoweredByKione'
 import { ROLE_LABELS } from '@/lib/permissions'
 import { attemptsRemaining, getLockoutRemainingMs, recordFailedAttempt, recordSuccessfulAttempt } from '@/lib/loginRateLimit'
 import type { User } from '@/types/domain'
@@ -18,25 +19,13 @@ function initials(name: string): string {
 export function LoginScreen() {
   const users = useLiveQuery(() => listUsers(), []) ?? []
   const activeUsers = users.filter((u) => u.active)
-  const settings = useLiveQuery(() => getSettings(), [])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-
-  const header = (
-    <div className="text-center">
-      {settings?.logoDataUrl ? (
-        <img src={settings.logoDataUrl} alt="Logo" className="mx-auto mb-4 h-16 w-16 rounded-full object-cover" />
-      ) : (
-        <img src="/brand/logo-full.png" alt="Kinara Coffee" className="mx-auto mb-4 h-20 w-auto" />
-      )}
-      <h1 className="text-2xl font-bold text-ink-50">{settings?.cafeName ?? 'Kinara Coffee'}</h1>
-    </div>
-  )
 
   if (!selectedUser) {
     return (
       <div className="flex h-full items-center justify-center overflow-y-auto bg-ink-950 p-6">
         <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
-          {header}
+          <BusinessBrand />
           <p className="-mt-2 text-sm text-ink-300">Pilih akun untuk masuk</p>
 
           {activeUsers.length === 0 ? (
@@ -49,9 +38,9 @@ export function LoginScreen() {
                 <button
                   key={u.id}
                   onClick={() => setSelectedUser(u)}
-                  className="flex w-full flex-col items-center gap-2 rounded-2xl border border-ink-700 bg-ink-800 p-4 transition-colors hover:border-brew-500 hover:bg-ink-700"
+                  className="flex w-full flex-col items-center gap-2 rounded-2xl border border-ink-700 bg-ink-800 p-4 transition-colors hover:border-brand-500 hover:bg-ink-700"
                 >
-                  <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-brew-600/15 text-lg font-bold text-brew-600">
+                  <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-brand-600/15 text-lg font-bold text-brand-600">
                     {initials(u.name)}
                   </span>
                   <span className="line-clamp-2 w-full text-center text-sm font-semibold text-ink-50">{u.name}</span>
@@ -60,6 +49,7 @@ export function LoginScreen() {
               ))}
             </div>
           )}
+          <PoweredByKione showVersion />
         </div>
       </div>
     )
@@ -123,7 +113,7 @@ function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
         </button>
 
         <div className="text-center">
-          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-brew-600/15 text-lg font-bold text-brew-600">
+          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600/15 text-lg font-bold text-brand-600">
             {initials(user.name)}
           </span>
           <h1 className="text-xl font-bold text-ink-50">{user.name}</h1>
@@ -135,7 +125,7 @@ function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
             <span
               key={i}
               className={`h-3.5 w-3.5 rounded-full border-2 transition-colors ${
-                i < pin.length ? 'border-brew-600 bg-brew-600' : 'border-ink-600'
+                i < pin.length ? 'border-brand-600 bg-brand-600' : 'border-ink-600'
               }`}
             />
           ))}

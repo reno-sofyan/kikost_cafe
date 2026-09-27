@@ -3,6 +3,9 @@ import path from 'node:path'
 
 // Konfigurasi vitest terpisah dari vite.config.ts supaya plugin PWA tidak ikut dimuat saat test.
 export default defineConfig({
+  // Cocokkan `define` di vite.config.ts — `src/lib/brand.ts` membaca konstanta ini
+  // saat modul dimuat, jadi tanpa ini setiap test yang menyentuhnya akan gagal.
+  define: { __APP_VERSION__: JSON.stringify('0.0.0-test') },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

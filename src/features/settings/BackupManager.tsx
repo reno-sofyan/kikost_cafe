@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { backupFileName, exportBackup, restoreBackup, validateBackupFile } from '@/db/repositories/backup'
+import { businessDisplayName, getSettings } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { formatDateTime } from '@/lib/datetime'
@@ -15,13 +17,16 @@ export function BackupManager() {
   const [error, setError] = useState<string | null>(null)
   const [confirmRestoreFile, setConfirmRestoreFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Nama berkas backup memakai nama usaha — pemilik beberapa outlet perlu tahu
+  // berkas mana milik siapa tanpa membukanya.
+  const settings = useLiveQuery(() => getSettings(), [])
 
   async function handleExport() {
     setBusy(true)
     setError(null)
     try {
       const backup = await exportBackup()
-      await saveTextFile(backupFileName('kikost-cafe'), JSON.stringify(backup, null, 2), 'application/json')
+      await saveTextFile(backupFileName(businessDisplayName(settings)), JSON.stringify(backup, null, 2), 'application/json')
       markBackupDone()
       await recordAuditLog({
         userId: currentUser.id,
@@ -50,7 +55,7 @@ export function BackupManager() {
       const text = await file.text()
       const data = JSON.parse(text) as unknown
       if (!validateBackupFile(data)) {
-        setError('File backup tidak valid. Pastikan file berasal dari ekspor Kinara Coffee POS.')
+        setError('File backup tidak valid. Pastikan berkas berasal dari ekspor Kione POS.')
         return
       }
       await restoreBackup(data)
@@ -107,7 +112,7 @@ export function BackupManager() {
         </button>
       </div>
 
-      {message && <p className="text-sm text-sage-500">{message}</p>}
+      {message && <p className="text-sm text-success-500">{message}</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       {confirmRestoreFile && (

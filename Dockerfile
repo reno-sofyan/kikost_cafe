@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Image web PWA Kikost Cafe POS (build statis dilayani oleh nginx).
+# Image web PWA Kione POS (build statis dilayani oleh nginx).
 
 # ---- Builder ----
 FROM node:20-bookworm-slim AS builder
@@ -13,7 +13,7 @@ COPY . .
 
 # URL API relatif secara default ("" -> same-origin /api). Reverse proxy meneruskan /api ke backend.
 ARG VITE_API_BASE_URL=""
-ARG VITE_BUILD_LABEL="kikost-cafe-pos"
+ARG VITE_BUILD_LABEL="kione-pos"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_BUILD_LABEL=$VITE_BUILD_LABEL
 

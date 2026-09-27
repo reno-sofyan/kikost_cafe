@@ -1,4 +1,4 @@
-package cafe.kikost.pos;
+package com.kione.pos;
 
 import android.os.Bundle;
 

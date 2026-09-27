@@ -15,6 +15,9 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { db } from '@/db/schema'
 import { Icon, type IconName } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { BusinessLogo } from '@/components/BusinessBrand'
+import { getSettings, businessDisplayName } from '@/db/repositories/settings'
+import { featuresForBusinessType, type BusinessFeatures } from '@/lib/businessType'
 import type { Role } from '@/types/domain'
 
 interface NavItem {
@@ -23,13 +26,15 @@ interface NavItem {
   icon: IconName
   permission?: Parameters<typeof roleHasPermission>[1]
   roles?: Role[]
+  /** Item hanya tampil bila fitur ini aktif untuk jenis usaha perangkat. `undefined` = selalu tampil. */
+  feature?: keyof BusinessFeatures
 }
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
-  { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'] },
-  { to: '/meja', label: 'Meja', icon: 'table', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'] },
-  { to: '/dapur', label: 'Dapur', icon: 'chef' },
+  { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'], feature: 'qrOrdering' },
+  { to: '/meja', label: 'Meja', icon: 'table', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'], feature: 'tables' },
+  { to: '/dapur', label: 'Dapur', icon: 'chef', feature: 'kitchen' },
   { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji', 'dapur'] },
   { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
   { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
@@ -56,6 +61,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       return failed + retrying
     }, []) ?? 0
   const pendingQr = useLiveQuery(() => countPendingQrOrders(), []) ?? 0
+  const settings = useLiveQuery(() => getSettings(), [])
+  const businessName = businessDisplayName(settings)
 
   // Pengingat backup (hanya relevan bila TIDAK pakai sinkronisasi server sebagai backup).
   // `now` di-refresh berkala supaya labelnya ikut menua tanpa perlu reload.
@@ -91,18 +98,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate('/')
   }
 
+  // Sebelum `settings` termuat, anggap semua fitur relevan — lebih baik sekejap
+  // menampilkan item ekstra daripada nav "berkedip" hilang-lalu-muncul.
+  const businessFeatures = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.roles && !item.roles.includes(currentUser.role)) return false
     if (item.permission && !roleHasPermission(currentUser.role, item.permission)) return false
+    if (item.feature && !businessFeatures[item.feature]) return false
     return true
   })
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-ink-950">
       <nav className="flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3">
-        <div className="mb-2 flex flex-col items-center gap-1 px-2 pb-3">
-          <img src="/brand/mark.png" alt="Kinara Coffee" className="h-8 w-8" />
-          <span className="font-display text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-brew-500">Kinara</span>
+        <div className="mb-2 flex flex-col items-center gap-1.5 px-2 pb-3" title={businessName}>
+          <BusinessLogo size="sm" />
+          <span className="line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight text-ink-300">
+            {businessName}
+          </span>
         </div>
         {visibleItems.map((item) => (
           <NavLink
@@ -110,7 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             to={item.to}
             className={({ isActive }) =>
               `group relative mx-2 flex flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] font-medium transition-colors ${
-                isActive ? 'bg-brew-600 text-cream-50 shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
+                isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
               }`
             }
           >
@@ -135,13 +148,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Icon name={sync.isOnline ? 'wifi' : 'wifiOff'} size={16} />
               {sync.isSyncing ? 'Menyinkronkan...' : sync.failedCount > 0 ? 'Gagal Sinkron' : sync.isOnline ? 'Online' : 'Offline'}
               {sync.pendingCount > 0 && (
-                <span className="rounded-full bg-brew-600 px-1.5 text-white">{sync.pendingCount}</span>
+                <span className="rounded-full bg-brand-600 px-1.5 text-white">{sync.pendingCount}</span>
               )}
               <Icon name="refresh" size={14} className={sync.isSyncing ? 'animate-spin' : ''} />
             </button>
             {openShift ? (
-              <span className="badge border border-sage-500/30 bg-sage-600/15 text-sage-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-sage-500" />
+              <span className="badge border border-success-500/30 bg-success-600/15 text-success-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
                 Shift aktif • Kas {formatRupiah(openShift.expectedCash)}
               </span>
             ) : (
@@ -150,7 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {showBackupWarning && (
               <button
                 onClick={() => navigate('/pengaturan?tab=backup')}
-                className="flex items-center gap-1.5 rounded-full bg-brown-600/20 px-3 py-1.5 text-xs font-medium text-brown-400 hover:bg-brown-600/30"
+                className="flex items-center gap-1.5 rounded-full bg-accent-600/20 px-3 py-1.5 text-xs font-medium text-accent-400 hover:bg-accent-600/30"
                 title="Buka Pengaturan → Backup"
               >
                 <Icon name="alertTriangle" size={14} />
@@ -160,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {pendingQr > 0 && (
               <button
                 onClick={() => navigate('/pesanan-qr')}
-                className="flex items-center gap-1.5 rounded-full border border-brew-500/30 bg-brew-600/12 px-3 py-1.5 text-xs font-medium text-brew-700 hover:bg-brew-600/20"
+                className="flex items-center gap-1.5 rounded-full border border-brand-500/30 bg-brand-600/12 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-600/20"
                 title="Buka Pesanan QR"
               >
                 <Icon name="bell" size={14} />

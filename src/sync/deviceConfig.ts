@@ -5,8 +5,8 @@
 // beberapa tablet dan dikonfigurasi (URL + kunci perangkat) langsung di tablet,
 // tanpa build ulang.
 
-const API_BASE_URL_KEY = 'kikost.sync.apiBaseUrl'
-const DEVICE_KEY_KEY = 'kikost.sync.deviceKey'
+const API_BASE_URL_KEY = 'kione.sync.apiBaseUrl'
+const DEVICE_KEY_KEY = 'kione.sync.deviceKey'
 
 export interface DeviceSyncConfig {
   apiBaseUrl: string
@@ -30,7 +30,7 @@ function envDeviceKey(): string {
 }
 
 /**
- * Perbaiki salah ketik umum: lupa skema (`pos.kikost.com` -> `https://pos.kikost.com`)
+ * Perbaiki salah ketik umum: lupa skema (`pos.contoh.com` -> `https://pos.contoh.com`)
  * atau kepencet nempelin `/api` di akhir (bikin path jadi dobel, mis. `/api/api/sync/...`).
  * Tanpa ini, salah ketik begini bikin fetch() nyasar ke bundel HTML lokal aplikasi
  * sendiri alih-alih server, dan errornya jadi "Unexpected token '<'" yang membingungkan.

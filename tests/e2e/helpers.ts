@@ -3,12 +3,12 @@ import { expect, type Page } from '@playwright/test'
 /** Selesaikan onboarding (context IndexedDB harus kosong) → login admin otomatis. */
 export async function completeOnboarding(
   page: Page,
-  opts: { cafeName?: string; taxPercent?: string; servicePercent?: string; pin?: string } = {},
+  opts: { businessName?: string; taxPercent?: string; servicePercent?: string; pin?: string } = {},
 ): Promise<void> {
-  const { cafeName = 'Kafe E2E', taxPercent = '11', servicePercent = '5', pin = '246810' } = opts
+  const { businessName = 'Usaha E2E', taxPercent = '11', servicePercent = '5', pin = '246810' } = opts
   await page.goto('/')
   await page.getByRole('button', { name: 'Lanjut' }).click() // welcome
-  await page.getByLabel('Nama Kafe').fill(cafeName)
+  await page.getByLabel('Nama Usaha', { exact: true }).fill(businessName)
   await page.getByRole('button', { name: 'Lanjut' }).click() // profile
   await page.getByLabel('Pajak (%)').fill(taxPercent)
   await page.getByLabel('Service Charge (%)').fill(servicePercent)
@@ -39,7 +39,7 @@ export async function idbGet<T = unknown>(page: Page, store: string, id: string)
   return page.evaluate(
     ({ store, id }) =>
       new Promise((resolve, reject) => {
-        const req = indexedDB.open('kikost-cafe-pos')
+        const req = indexedDB.open('kione-pos')
         req.onerror = () => reject(req.error)
         req.onsuccess = () => {
           const db = req.result
@@ -58,7 +58,7 @@ export async function idbAll<T = unknown>(page: Page, store: string): Promise<T[
   return page.evaluate(
     ({ store }) =>
       new Promise((resolve, reject) => {
-        const req = indexedDB.open('kikost-cafe-pos')
+        const req = indexedDB.open('kione-pos')
         req.onerror = () => reject(req.error)
         req.onsuccess = () => {
           const db = req.result

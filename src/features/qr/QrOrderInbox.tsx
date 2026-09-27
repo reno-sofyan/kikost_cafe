@@ -108,7 +108,7 @@ export function QrOrderInbox() {
       <div className="flex flex-none items-center gap-3 border-b border-ink-800 px-6 py-4">
         <h1 className="text-xl font-bold text-ink-50">Pesanan QR</h1>
         {pending.length > 0 && (
-          <span className="rounded-full bg-brew-600 px-2 py-0.5 text-sm font-semibold text-white">{pending.length}</span>
+          <span className="rounded-full bg-brand-600 px-2 py-0.5 text-sm font-semibold text-white">{pending.length}</span>
         )}
         {!canConfirm && <span className="text-sm text-ink-400">Anda tidak berwenang menerima/menolak pesanan.</span>}
       </div>
@@ -116,7 +116,7 @@ export function QrOrderInbox() {
       <div className="flex-1 overflow-y-auto p-4">
         {error && <p className="mb-3 rounded-lg bg-red-900/30 px-3 py-2 text-sm text-red-400">{error}</p>}
         {notice && (
-          <p className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-sage-600/15 px-3 py-2 text-sm text-sage-600">
+          <p className="mb-3 flex items-start justify-between gap-3 rounded-lg bg-success-600/15 px-3 py-2 text-sm text-success-500">
             <span>{notice}</span>
             <button className="flex-none text-ink-400" onClick={() => setNotice(null)}>
               tutup
@@ -127,8 +127,8 @@ export function QrOrderInbox() {
         {calls.length > 0 && (
           <div className="mb-4 space-y-2">
             {calls.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-xl border border-brown-600/40 bg-brown-600/10 px-4 py-3">
-                <span className="text-sm font-medium text-brown-700">
+              <div key={c.id} className="flex items-center justify-between rounded-xl border border-accent-600/40 bg-accent-600/10 px-4 py-3">
+                <span className="text-sm font-medium text-accent-700">
                   <Icon name="bell" size={15} className="mr-1.5 inline" />
                   {tableName.get(c.tableId) ?? 'Meja'} — {CALL_LABEL[c.type]}
                   <span className="ml-2 text-xs text-ink-400">{durationSince(c.createdAt, now)}</span>

@@ -77,7 +77,7 @@ export function ReportsScreen() {
             <StatCard label="Omzet" value={formatRupiah(report.revenue)} />
             <StatCard label="Jumlah Transaksi" value={String(report.transactionCount)} />
             <StatCard label="Rata-rata Transaksi" value={formatRupiah(report.averageTransaction)} />
-            <StatCard label="Laba Kotor" value={formatRupiah(report.grossProfit)} accent="text-sage-500" />
+            <StatCard label="Laba Kotor" value={formatRupiah(report.grossProfit)} accent="text-success-500" />
             <StatCard label="Diskon" value={formatRupiah(report.discountTotal)} />
             <StatCard label="Pajak" value={formatRupiah(report.taxTotal)} />
             <StatCard label="Service Charge" value={formatRupiah(report.serviceChargeTotal)} />
@@ -127,7 +127,7 @@ export function ReportsScreen() {
                       <td className="px-4 py-2 text-ink-200">
                         {row.stockQty} {row.unit}
                       </td>
-                      <td className={`px-4 py-2 ${row.isLow ? 'text-red-400' : 'text-sage-500'}`}>{row.isLow ? 'Menipis' : 'Aman'}</td>
+                      <td className={`px-4 py-2 ${row.isLow ? 'text-red-400' : 'text-success-500'}`}>{row.isLow ? 'Menipis' : 'Aman'}</td>
                     </tr>
                   ))}
                 </tbody>

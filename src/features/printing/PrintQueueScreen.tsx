@@ -16,8 +16,8 @@ const STATION_LABEL: Record<'cashier' | 'kitchen' | 'bar', string> = {
 
 const STATUS_STYLE: Record<PrintJobStatus, string> = {
   QUEUED: 'bg-ink-800 text-ink-300',
-  PRINTING: 'bg-brew-600/20 text-brew-400',
-  PRINTED: 'bg-sage-600/20 text-sage-500',
+  PRINTING: 'bg-brand-600/20 text-brand-400',
+  PRINTED: 'bg-success-600/20 text-success-500',
   FAILED: 'bg-red-900/30 text-red-400',
   RETRYING: 'bg-yellow-900/30 text-yellow-400',
   PERMANENTLY_FAILED: 'bg-red-900/40 text-red-300',
@@ -56,7 +56,7 @@ export function PrintQueueScreen() {
               <div className="min-w-0">
                 <p className="truncate font-medium text-ink-100">
                   {job.title}
-                  {job.isReprint && <span className="ml-2 text-xs text-brown-400">CETAK ULANG</span>}
+                  {job.isReprint && <span className="ml-2 text-xs text-accent-400">CETAK ULANG</span>}
                 </p>
                 <p className="text-xs text-ink-500">
                   {STATION_LABEL[job.station as 'cashier' | 'kitchen' | 'bar'] ?? job.station} · {formatDateTime(job.createdAt)}

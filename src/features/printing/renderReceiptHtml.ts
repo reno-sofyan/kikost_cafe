@@ -17,7 +17,7 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   if (data.logoDataUrl) {
     rows.push(`<img class="logo" src="${data.logoDataUrl}" alt="logo" />`)
   }
-  rows.push(`<div class="center bold big">${escapeHtml(data.cafeName)}</div>`)
+  rows.push(`<div class="center bold big">${escapeHtml(data.businessName)}</div>`)
   if (data.address) rows.push(`<div class="center">${escapeHtml(data.address)}</div>`)
   if (data.phone) rows.push(`<div class="center">${escapeHtml(data.phone)}</div>`)
   rows.push('<hr />')

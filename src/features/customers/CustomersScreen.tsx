@@ -30,7 +30,7 @@ export function CustomersScreen() {
             <button
               key={c.id}
               onClick={() => setSelected(c)}
-              className={`mb-2 block w-full rounded-xl p-3 text-left ${selected?.id === c.id ? 'bg-brew-600/20 border border-brew-600' : 'bg-ink-900 border border-ink-800'}`}
+              className={`mb-2 block w-full rounded-xl p-3 text-left ${selected?.id === c.id ? 'bg-brand-600/20 border border-brand-600' : 'bg-ink-900 border border-ink-800'}`}
             >
               <p className="font-semibold text-ink-50">{c.name}</p>
               <p className="text-sm text-ink-400">{c.phone}</p>
@@ -67,7 +67,7 @@ export function CustomersScreen() {
                     <p className="font-medium text-ink-50">{order.orderNumber}</p>
                     <p className="text-xs text-ink-400">{formatDateTime(order.createdAt)}</p>
                   </div>
-                  <p className="font-bold text-brew-400">{formatRupiah(order.grandTotal)}</p>
+                  <p className="font-bold text-brand-400">{formatRupiah(order.grandTotal)}</p>
                 </div>
               ))}
               {history.length === 0 && <p className="text-sm text-ink-500">Belum ada transaksi</p>}

@@ -124,7 +124,7 @@ export function TablesScreen() {
                       aria-label={`QR meja ${table.name}`}
                       title="Lihat / cetak QR meja"
                       onClick={() => setQrTable(table)}
-                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink-950/70 text-ink-200 backdrop-blur hover:bg-ink-950 hover:text-cream-50"
+                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-ink-950/70 text-ink-200 backdrop-blur hover:bg-ink-950 hover:text-white"
                     >
                       <Icon name="barcode" size={13} />
                     </button>

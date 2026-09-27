@@ -20,14 +20,15 @@
     user-select: none;
   }
 
-  /* Judul memakai Fraunces (serif) — memberi nuansa kedai kopi yang hangat. */
+  /* Judul dibedakan lewat bobot + tracking rapat, bukan keluarga huruf lain —
+     satu typeface membuat produk terasa lebih tenang dan netral lintas usaha. */
   h1,
   h2,
   h3,
   .font-display {
     font-family: theme('fontFamily.display');
-    letter-spacing: -0.01em;
-    font-feature-settings: 'opsz' 40;
+    font-weight: 700;
+    letter-spacing: -0.021em;
   }
 
   input,
@@ -42,7 +43,7 @@
   }
 
   ::selection {
-    background: theme('colors.brew.500');
+    background: theme('colors.brand.500');
     color: #fff;
   }
 }
@@ -52,10 +53,10 @@
     @apply inline-flex select-none items-center justify-center gap-2 rounded-xl font-sans font-semibold tracking-[0.01em] transition-all duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
   }
   .btn:focus-visible {
-    @apply outline-none ring-2 ring-brew-500/50 ring-offset-2 ring-offset-ink-950;
+    @apply outline-none ring-2 ring-brand-500/50 ring-offset-2 ring-offset-ink-950;
   }
   .btn-primary {
-    @apply btn min-h-touch bg-brew-600 px-5 text-cream-50 shadow-sm hover:bg-brew-700;
+    @apply btn min-h-touch bg-brand-600 px-5 text-white shadow-sm hover:bg-brand-700;
   }
   .btn-secondary {
     @apply btn min-h-touch border border-ink-600 bg-ink-900 px-5 text-ink-100 hover:bg-ink-800;
@@ -70,7 +71,7 @@
     @apply rounded-2xl border border-ink-700 bg-ink-900 shadow-card;
   }
   .input-field {
-    @apply min-h-touch w-full rounded-xl border border-ink-600 bg-ink-900 px-4 py-3 text-ink-50 transition-colors placeholder:text-ink-400 focus:border-brew-500 focus:outline-none focus:ring-2 focus:ring-brew-500/25;
+    @apply min-h-touch w-full rounded-xl border border-ink-600 bg-ink-900 px-4 py-3 text-ink-50 transition-colors placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25;
   }
   .numpad-key {
     @apply btn aspect-square w-full border border-ink-700 bg-ink-900 text-2xl font-bold text-ink-50 hover:bg-ink-800;
@@ -132,7 +133,7 @@
     gap: 0.75rem;
   }
   #portrait-lock .portrait-lock__logo {
-    width: 4.5rem;
+    width: 11rem;
     height: auto;
     margin-bottom: 0.25rem;
   }

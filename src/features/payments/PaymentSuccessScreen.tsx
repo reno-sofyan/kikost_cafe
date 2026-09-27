@@ -45,12 +45,12 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-sage-600/20 text-sage-500">
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success-600/20 text-success-500">
         <Icon name="checkCircle" size={44} />
       </div>
       <h1 className="text-2xl font-bold text-ink-50">Pembayaran Berhasil</h1>
       <p className="text-ink-400">Transaksi {order.orderNumber}</p>
-      <p className="text-3xl font-bold text-sage-500">{formatRupiah(order.grandTotal)}</p>
+      <p className="text-3xl font-bold text-success-500">{formatRupiah(order.grandTotal)}</p>
 
       <div className="mt-4 flex w-full max-w-xs flex-col gap-3">
         <button className="btn-primary" onClick={() => setShowPreview(true)}>

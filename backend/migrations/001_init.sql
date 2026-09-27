@@ -1,5 +1,5 @@
 -- +migrate Up
--- Skema inti sinkronisasi offline-first Kikost Cafe POS.
+-- Skema inti sinkronisasi offline-first Kione POS.
 -- Server berperan sebagai relay multi-perangkat + sumber backup. Kebenaran bisnis
 -- (total, stok, shift) dihitung di klien; server menyimpan state kanonik per entitas
 -- dan menegakkan idempotency + proteksi transaksi final.

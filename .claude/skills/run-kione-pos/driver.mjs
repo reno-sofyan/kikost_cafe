@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Driver for the Kinara Coffee POS web app (Vite dev server + React/Dexie).
+// Driver for the Kione POS web app (Vite dev server + React/Dexie).
 // Uses the project's own `playwright` dependency — run this from <repo root>
 // so Node's module resolution finds node_modules. See SKILL.md.
 //
 // Usage (dev server must already be running — see SKILL.md "Build"):
-//   node .claude/skills/run-kikost-cafe-pos/driver.mjs smoke
-//   node .claude/skills/run-kikost-cafe-pos/driver.mjs goto /produk
-//   node .claude/skills/run-kikost-cafe-pos/driver.mjs reset
+//   node .claude/skills/run-kione-pos/driver.mjs smoke
+//   node .claude/skills/run-kione-pos/driver.mjs goto /produk
+//   node .claude/skills/run-kione-pos/driver.mjs reset
 //
 // `smoke` and `goto` reuse a persistent browser profile (.profile/ next to
 // this file, gitignored) so onboarding only has to run once — every
@@ -20,7 +20,8 @@ import fs from 'node:fs'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PROFILE_DIR = path.join(HERE, '.profile')
 const SHOT_DIR = path.join(HERE, 'screenshots')
-const BASE_URL = process.env.KIKOST_URL || 'http://localhost:5173'
+const BASE_URL = process.env.KIONE_URL || 'http://localhost:5173'
+const BUSINESS_NAME = 'Kopi Demo'
 const ADMIN_NAME = 'Demo Admin'
 const ADMIN_PIN = '1234'
 
@@ -60,9 +61,11 @@ async function ensureLoggedIn() {
 
   if (await page.getByText('Selamat Datang').isVisible().catch(() => false)) {
     console.log('-> onboarding kosong, mengisi wizard 7 langkah...')
-    for (const label of ['Profil Kafe', 'Pajak & Biaya', 'QRIS & Ukuran Struk', 'Konfigurasi Printer']) {
+    for (const label of ['Profil Usaha', 'Pajak & Biaya', 'QRIS & Ukuran Struk', 'Konfigurasi Printer']) {
       await page.getByRole('button', { name: 'Lanjut' }).click()
       await page.waitForSelector(`text=${label}`)
+      // Nama usaha wajib sejak rebranding Kione POS — tanpa ini langkah akhir menolak.
+      if (label === 'Profil Usaha') await page.getByLabel('Nama Usaha', { exact: true }).fill(BUSINESS_NAME)
     }
     await page.getByRole('button', { name: 'Lanjut' }).click()
     await page.waitForSelector('text=Akun Administrator')

@@ -19,7 +19,7 @@ test('onboarding menampilkan langkah wajib', async ({ page }) => {
   // Wizard bertahap: welcome -> profil -> pajak. Pastikan tiap langkah wajib benar-benar render.
   await expect(page.getByRole('heading', { name: 'Selamat Datang' })).toBeVisible()
   await page.getByRole('button', { name: 'Lanjut' }).click()
-  await expect(page.getByRole('heading', { name: 'Profil Kafe' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Profil Usaha' })).toBeVisible()
   await page.getByRole('button', { name: 'Lanjut' }).click()
   await expect(page.getByRole('heading', { name: /Pajak/ })).toBeVisible()
 })

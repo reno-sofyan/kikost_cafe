@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * E2E Kikost Cafe POS. Menjalankan build produksi lewat `vite preview`
+ * E2E Kione POS. Menjalankan build produksi lewat `vite preview`
  * agar service worker & PWA aktif (mendekati kondisi tablet).
  *
  *   npm run build && npm run test:e2e

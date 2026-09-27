@@ -5,7 +5,7 @@
  * (Pengaturan → Backup → Unduh) adalah satu-satunya jaring pengaman data. Helper
  * ini melacak kapan backup terakhir dan kapan dianggap "kedaluwarsa".
  */
-const LAST_BACKUP_KEY = 'kikost.backup.lastAt'
+const LAST_BACKUP_KEY = 'kione.backup.lastAt'
 
 /** Ambang kedaluwarsa: backup terakhir lebih lama dari ini memunculkan peringatan. */
 export const BACKUP_STALE_MS = 36 * 60 * 60 * 1000 // 36 jam (≈ lewat satu hari operasional)

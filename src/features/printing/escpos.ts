@@ -71,7 +71,7 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   if (data.isVoided) {
     b.bold(true).line('** TRANSAKSI DIBATALKAN **').bold(false)
   }
-  b.doubleHeight(true).bold(true).line(data.cafeName).bold(false).doubleHeight(false)
+  b.doubleHeight(true).bold(true).line(data.businessName).bold(false).doubleHeight(false)
   if (data.address) b.line(data.address)
   if (data.phone) b.line(data.phone)
   b.line(divider(width))

@@ -37,7 +37,7 @@ total, metode bayar, jumlah bayar, kembalian, footer. Struk void diberi tanda
 - `MockPrinterDriver` — merekam struk & byte untuk automated test (dipakai di
   `printing.test.ts` dan e2e).
 
-Native plugin: `android/app/src/main/java/cafe/kikost/pos/EscPosPrinterPlugin.java`.
+Native plugin: `android/app/src/main/java/com/kione/pos/EscPosPrinterPlugin.java`.
 
 ## Pengujian
 

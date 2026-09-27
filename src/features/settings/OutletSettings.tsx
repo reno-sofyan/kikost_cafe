@@ -50,7 +50,7 @@ export function OutletSettings() {
           <div>
             <p className="font-semibold text-ink-50">
               {o.name}
-              {o.id === activeId && <span className="ml-2 rounded-full bg-sage-600/20 px-2 py-0.5 text-xs text-sage-400">aktif</span>}
+              {o.id === activeId && <span className="ml-2 rounded-full bg-success-600/20 px-2 py-0.5 text-xs text-success-400">aktif</span>}
               {!o.active && <span className="ml-2 text-xs text-red-400">nonaktif</span>}
             </p>
             <p className="text-sm text-ink-400">{o.address || '—'} · {o.timezone}</p>

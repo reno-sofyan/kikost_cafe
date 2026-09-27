@@ -90,7 +90,7 @@ export function SplitBillModal({
                     key={b}
                     onClick={() => setAssign((p) => ({ ...p, [it.id]: b }))}
                     className={`rounded-md px-2 py-1 text-xs font-medium ${
-                      (assign[it.id] ?? 0) === b ? 'bg-brew-600 text-white' : 'bg-ink-700 text-ink-300'
+                      (assign[it.id] ?? 0) === b ? 'bg-brand-600 text-white' : 'bg-ink-700 text-ink-300'
                     }`}
                   >
                     {labels[b] || `#${b + 1}`}

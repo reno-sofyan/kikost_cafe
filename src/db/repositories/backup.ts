@@ -2,10 +2,12 @@ import { db } from '@/db/schema'
 
 const BACKUP_VERSION = 1
 
+export const APP_ID = 'kione-pos'
+
 export interface BackupFile {
   version: number
   createdAt: number
-  appId: 'kikost-cafe-pos'
+  appId: string
   tables: Record<string, unknown[]>
 }
 
@@ -39,7 +41,7 @@ export async function exportBackup(): Promise<BackupFile> {
   return {
     version: BACKUP_VERSION,
     createdAt: Date.now(),
-    appId: 'kikost-cafe-pos',
+    appId: APP_ID,
     tables,
   }
 }
@@ -47,7 +49,7 @@ export async function exportBackup(): Promise<BackupFile> {
 export function validateBackupFile(data: unknown): data is BackupFile {
   if (typeof data !== 'object' || data === null) return false
   const candidate = data as Partial<BackupFile>
-  if (candidate.appId !== 'kikost-cafe-pos') return false
+  if (candidate.appId !== APP_ID) return false
   if (typeof candidate.version !== 'number') return false
   if (typeof candidate.tables !== 'object' || candidate.tables === null) return false
   for (const name of BACKUP_TABLE_NAMES) {
@@ -73,8 +75,8 @@ export async function restoreBackup(file: BackupFile): Promise<void> {
   })
 }
 
-export function backupFileName(cafeName: string): string {
+export function backupFileName(businessName: string): string {
   const date = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-  const safeName = cafeName.replace(/[^a-zA-Z0-9-_]+/g, '_')
+  const safeName = (businessName.trim() || 'kione-pos').replace(/[^a-zA-Z0-9-_]+/g, '_')
   return `backup-${safeName}-${date}.json`
 }

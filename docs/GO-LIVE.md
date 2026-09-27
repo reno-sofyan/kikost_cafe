@@ -1,4 +1,4 @@
-# Persiapan Go-Live — Kikost Cafe (1 tablet)
+# Persiapan Go-Live — Kione POS (1 tablet)
 
 Checklist sebelum aplikasi dipakai untuk transaksi sungguhan. Setup ini untuk
 **satu tablet tanpa sinkronisasi server** — jaring pengaman datanya adalah

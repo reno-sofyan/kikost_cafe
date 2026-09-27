@@ -1,6 +1,7 @@
 import { db } from '@/db/schema'
 import { formatDateTime } from '@/lib/datetime'
-import type { CafeSettings, Order, OrderItem, Payment } from '@/types/domain'
+import { businessDisplayName } from '@/db/repositories/settings'
+import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
 
 export interface ReceiptLine {
   name: string
@@ -12,7 +13,7 @@ export interface ReceiptLine {
 }
 
 export interface ReceiptData {
-  cafeName: string
+  businessName: string
   address: string
   phone: string
   logoDataUrl: string | null
@@ -52,9 +53,9 @@ const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
   card: 'Kartu',
 }
 
-export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
+export function buildSampleReceiptData(settings: AppSettings): ReceiptData {
   return {
-    cafeName: settings.cafeName,
+    businessName: businessDisplayName(settings),
     address: settings.address,
     phone: settings.phone,
     logoDataUrl: settings.logoDataUrl,
@@ -69,7 +70,7 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
     isReprint: false,
     lines: [
       { name: 'Kopi Susu Gula Aren', qty: 2, unitPrice: 22000, lineTotal: 44000, modifierLines: ['  Ukuran: Regular'], note: null },
-      { name: 'Nasi Goreng Kinara', qty: 1, unitPrice: 28000, lineTotal: 28000, modifierLines: [], note: 'Tidak pedas' },
+      { name: 'Nasi Goreng Spesial', qty: 1, unitPrice: 28000, lineTotal: 28000, modifierLines: [], note: 'Tidak pedas' },
     ],
     subtotal: 72000,
     discountAmount: 0,
@@ -87,7 +88,7 @@ export function buildSampleReceiptData(settings: CafeSettings): ReceiptData {
 
 export async function buildReceiptData(
   order: Order,
-  settings: CafeSettings,
+  settings: AppSettings,
   opts: { isReprint?: boolean } = {},
 ): Promise<ReceiptData> {
   const items = await db.orderItems.where('orderId').equals(order.id).toArray()
@@ -106,7 +107,7 @@ export async function buildReceiptData(
     }))
 
   return {
-    cafeName: settings.cafeName,
+    businessName: businessDisplayName(settings),
     address: settings.address,
     phone: settings.phone,
     logoDataUrl: settings.logoDataUrl,

@@ -7,7 +7,9 @@ import { useSessionStore } from '@/state/sessionStore'
 import { isValidPinFormat } from '@/lib/pinHash'
 import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
-import type { PrinterConnectionType, ReceiptPaperSize } from '@/types/domain'
+import { PRODUCT_LOGO, PRODUCT_MARK, PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/brand'
+import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER } from '@/lib/businessType'
+import type { BusinessType, PrinterConnectionType, ReceiptPaperSize } from '@/types/domain'
 
 type Step = 'welcome' | 'profile' | 'fiscal' | 'qris' | 'printer' | 'admin' | 'finishing'
 
@@ -27,7 +29,8 @@ export function OnboardingWizard() {
   const [error, setError] = useState<string | null>(null)
   const login = useSessionStore((s) => s.login)
 
-  const [cafeName, setCafeName] = useState('Kinara Coffee')
+  const [businessType, setBusinessType] = useState<BusinessType>('lainnya')
+  const [businessName, setBusinessName] = useState('')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
@@ -35,7 +38,7 @@ export function OnboardingWizard() {
   const [taxPercent, setTaxPercent] = useState(0)
   const [serviceChargePercent, setServiceChargePercent] = useState(0)
   const [roundingIncrement, setRoundingIncrement] = useState(100)
-  const [transactionPrefix, setTransactionPrefix] = useState('KKP')
+  const [transactionPrefix, setTransactionPrefix] = useState('TRX')
 
   const [qrisImageDataUrl, setQrisImageDataUrl] = useState<string | null>(null)
   const [qrisMerchantName, setQrisMerchantName] = useState('')
@@ -63,6 +66,11 @@ export function OnboardingWizard() {
   }
 
   async function handleFinish() {
+    if (!businessName.trim()) {
+      setError('Nama usaha wajib diisi — nama ini muncul di struk dan halaman pesanan pelanggan')
+      setStep('profile')
+      return
+    }
     if (!adminName.trim()) {
       setError('Nama administrator wajib diisi')
       setStep('admin')
@@ -84,14 +92,15 @@ export function OnboardingWizard() {
       await withTimeout(
         (async () => {
           await updateSettings({
-            cafeName: cafeName.trim() || 'Kinara Coffee',
+            businessName: businessName.trim(),
+            businessType,
             address,
             phone,
             logoDataUrl,
             taxPercent,
             serviceChargePercent,
             roundingIncrement,
-            transactionPrefix: transactionPrefix.trim() || 'KKP',
+            transactionPrefix: transactionPrefix.trim().toUpperCase() || 'TRX',
             qrisImageDataUrl,
             qrisMerchantName: qrisMerchantName || null,
             receiptPaperSize,
@@ -133,15 +142,15 @@ export function OnboardingWizard() {
     <div className="flex h-full flex-col bg-ink-950 text-ink-50">
       <div className="flex-none border-b border-ink-700 bg-ink-900 px-6 py-4">
         <div className="mx-auto flex max-w-xl items-center gap-3">
-          <img src="/brand/mark.png" alt="Kinara Coffee" className="h-7 w-7" />
-          <h1 className="text-base font-bold">Pengaturan Awal · Kinara Coffee</h1>
+          <img src={PRODUCT_MARK} alt="" className="h-7 w-7 rounded-lg" />
+          <h1 className="text-base font-bold">Pengaturan Awal · {PRODUCT_NAME}</h1>
           <span className="ml-auto text-xs font-medium text-ink-400">
             Langkah {stepIndex + 1} / {STEP_ORDER.length}
           </span>
         </div>
         <div className="mx-auto mt-3 flex max-w-xl gap-1">
           {STEP_ORDER.map((s, i) => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= stepIndex ? 'bg-brew-600' : 'bg-ink-700'}`} />
+            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= stepIndex ? 'bg-brand-600' : 'bg-ink-700'}`} />
           ))}
         </div>
       </div>
@@ -154,17 +163,18 @@ export function OnboardingWizard() {
 
           {step === 'welcome' && (
             <div className="flex flex-col items-center gap-5 pt-8 text-center">
-              <img src="/brand/logo-full.png" alt="Kinara Coffee" className="h-28 w-auto" />
+              <img src={PRODUCT_LOGO} alt={PRODUCT_NAME} className="h-14 w-auto" />
               <div>
                 <h2 className="text-2xl font-bold">Selamat Datang</h2>
                 <p className="mx-auto mt-2 max-w-sm text-ink-300">
-                  Lengkapi konfigurasi awal untuk mulai memakai aplikasi kasir Kinara Coffee. Proses ini hanya perlu dilakukan sekali.
+                  {PRODUCT_TAGLINE}. Lengkapi konfigurasi berikut untuk menyiapkan aplikasi dengan identitas usaha Anda
+                  — cukup sekali, dan semuanya masih bisa diubah nanti lewat menu Pengaturan.
                 </p>
               </div>
               <ul className="mt-2 w-full max-w-sm space-y-2 text-left text-sm text-ink-200">
-                {['Profil kedai & logo', 'Pajak, biaya layanan & format struk', 'QRIS & printer', 'Akun administrator'].map((t) => (
+                {['Nama, alamat & logo usaha Anda', 'Pajak, biaya layanan & format struk', 'QRIS & printer', 'Akun administrator'].map((t) => (
                   <li key={t} className="flex items-center gap-2.5 rounded-xl border border-ink-700 bg-ink-900 px-3.5 py-2.5">
-                    <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-brew-600/15 text-brew-600">
+                    <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-brand-600/15 text-brand-600">
                       <Icon name="check" size={13} />
                     </span>
                     {t}
@@ -176,9 +186,44 @@ export function OnboardingWizard() {
 
           {step === 'profile' && (
             <div className="space-y-4">
-              <h2 className="text-xl font-bold">Profil Kafe</h2>
-              <Field label="Nama Kafe">
-                <input className="input-field" value={cafeName} onChange={(e) => setCafeName(e.target.value)} />
+              <h2 className="text-xl font-bold">Profil Usaha</h2>
+              <p className="text-sm text-ink-300">
+                Nama dan logo ini yang tampil di aplikasi, struk, dan halaman pesanan yang dibuka pelanggan — bukan merek {PRODUCT_NAME}.
+              </p>
+              {/* BUKAN <Field> di sini dengan sengaja — Field membungkus isinya dalam SATU
+                  elemen <label>, dan sebuah <label> yang membungkus beberapa <button>
+                  (bukan satu kontrol form) membuat browser mencampur teks label ke nama
+                  aksesibel SETIAP tombol di dalamnya — pembaca layar jadi mengumumkan teks
+                  yang salah/tercampur untuk tiap kartu. Grid pilihan pakai <div> + <span>
+                  label biasa, sama seperti pola yang sudah dipakai di Pengaturan. */}
+              <div className="block">
+                <span className="mb-1.5 block text-sm font-medium text-ink-300">Jenis Usaha</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {BUSINESS_TYPE_ORDER.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setBusinessType(t)}
+                      className={`rounded-xl border p-3 text-left transition-colors ${
+                        businessType === t ? 'border-brand-500 bg-brand-600/12' : 'border-ink-700 bg-ink-900 hover:border-ink-500'
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold text-ink-50">{BUSINESS_TYPE_LABELS[t]}</span>
+                      <span className="mt-0.5 block text-xs text-ink-400">{BUSINESS_TYPE_DESCRIPTIONS[t]}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-ink-500">
+                  Menentukan menu mana yang ditampilkan (Meja, Dapur, Pesanan QR, Pager). Bisa diubah lagi nanti di Pengaturan.
+                </p>
+              </div>
+              <Field label="Nama Usaha">
+                <input
+                  className="input-field"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="mis. Kopi Senja, Warung Bu Tuti, Toko Makmur"
+                />
               </Field>
               <Field label="Alamat">
                 <textarea className="input-field" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
@@ -186,7 +231,7 @@ export function OnboardingWizard() {
               <Field label="Telepon">
                 <input className="input-field" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </Field>
-              <Field label="Logo (opsional)">
+              <Field label="Logo Usaha (opsional)">
                 <input
                   type="file"
                   accept="image/*"
@@ -196,7 +241,10 @@ export function OnboardingWizard() {
                     if (file) setLogoDataUrl(await readFileAsResizedDataUrl(file))
                   }}
                 />
-                {logoDataUrl && <img src={logoDataUrl} alt="Logo" className="mt-2 h-16 w-16 rounded-full object-cover" />}
+                <p className="mt-1 text-xs text-ink-400">
+                  Paling rapi memakai gambar persegi. Bila dikosongkan, inisial nama usaha yang dipakai.
+                </p>
+                {logoDataUrl && <img src={logoDataUrl} alt="Pratinjau logo" className="mt-2 h-16 w-16 rounded-xl object-cover" />}
               </Field>
             </div>
           )}
@@ -220,7 +268,7 @@ export function OnboardingWizard() {
               </Field>
               <Field label="Awalan Nomor Transaksi">
                 <input className="input-field" value={transactionPrefix} onChange={(e) => setTransactionPrefix(e.target.value.toUpperCase())} />
-                <p className="mt-1 text-xs text-ink-500">Contoh hasil: {transactionPrefix || 'KKP'}-00001</p>
+                <p className="mt-1 text-xs text-ink-500">Contoh hasil: {transactionPrefix || 'TRX'}-00001</p>
               </Field>
             </div>
           )}
@@ -321,8 +369,9 @@ export function OnboardingWizard() {
 
           {step === 'finishing' && (
             <div className="space-y-4 text-center">
-              <Icon name="refresh" size={40} className="mx-auto animate-spin text-brew-600" />
-              <h2 className="text-xl font-bold">Menyiapkan aplikasi...</h2>
+              <Icon name="refresh" size={40} className="mx-auto animate-spin text-brand-600" />
+              <h2 className="text-xl font-bold">Menyiapkan aplikasi…</h2>
+              <p className="text-sm text-ink-300">Membuat akun administrator dan katalog contoh.</p>
             </div>
           )}
         </div>

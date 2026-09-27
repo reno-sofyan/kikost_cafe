@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { formatTime } from '@/lib/datetime'
-import { getSettings } from '@/db/repositories/settings'
+import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { stationForCategory } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
 import type { KitchenTicket, KitchenTicketLine, KitchenTicketPayload, OrderItem, PrinterStation } from '@/types/domain'
@@ -82,7 +82,7 @@ export async function sendOrderToKitchen(
         }
 
         const payload: KitchenTicketPayload = {
-          outletName: settings.cafeName,
+          outletName: businessDisplayName(settings),
           orderNumber: order.orderNumber,
           tableOrQueue: order.queueNumber ? `Antrean #${order.queueNumber}` : '',
           customerName: order.notes || '',
@@ -134,7 +134,7 @@ export async function reprintKitchenTicket(
       kind: 'kitchen_ticket',
       station: ticket.station as PrinterStation,
       payload: {
-        outletName: settings.cafeName,
+        outletName: businessDisplayName(settings),
         orderNumber: order.orderNumber,
         tableOrQueue: order.queueNumber ? `Antrean #${order.queueNumber}` : '',
         customerName: order.notes || '',

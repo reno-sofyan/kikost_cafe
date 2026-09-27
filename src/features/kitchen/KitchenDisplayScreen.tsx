@@ -118,7 +118,7 @@ export function KitchenDisplayScreen() {
                   order.pagerNumber != null ? (
                     <div
                       className={`mb-2 inline-flex w-fit items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${
-                        order.pagerCalledAt ? 'bg-sage-600/30 text-sage-400' : 'bg-ink-700 text-ink-300'
+                        order.pagerCalledAt ? 'bg-success-600/30 text-success-400' : 'bg-ink-700 text-ink-300'
                       }`}
                     >
                       <Icon name="pager" size={13} />
@@ -149,7 +149,7 @@ export function KitchenDisplayScreen() {
                           {item.qty}x {item.productName}
                         </span>
                         {seq > 1 && (
-                          <span className="flex-none rounded bg-brown-600/30 px-1.5 py-0.5 text-[10px] font-semibold text-brown-400">
+                          <span className="flex-none rounded bg-accent-600/30 px-1.5 py-0.5 text-[10px] font-semibold text-accent-400">
                             TAMBAHAN #{seq}
                           </span>
                         )}

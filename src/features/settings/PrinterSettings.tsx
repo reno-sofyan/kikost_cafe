@@ -43,7 +43,7 @@ export function PrinterSettings() {
     await enqueuePrintJob({
       kind: 'receipt',
       station: printer.station,
-      payload: { ...data, cafeName: `TEST — ${printer.name}` },
+      payload: { ...data, businessName: `TEST — ${printer.name}` },
       title: `Test print — ${printer.name}`,
       idempotencyKey: `test_${printer.id}_${Date.now()}`,
       requestedBy: currentUser.id,
@@ -72,7 +72,7 @@ export function PrinterSettings() {
           Printer Bluetooth/WiFi hanya berfungsi pada aplikasi Android (APK). Di PWA/browser, cetak lewat dialog sistem.
         </p>
       )}
-      {msg && <p className="text-sm text-sage-500">{msg}</p>}
+      {msg && <p className="text-sm text-success-500">{msg}</p>}
 
       {tab === 'printers' && (
         <>
@@ -246,7 +246,7 @@ function PrinterFormModal({
               {paired.map((d) => (
                 <button
                   key={d.address}
-                  className={`block w-full rounded-lg px-2 py-1.5 text-left text-xs ${btAddress === d.address ? 'bg-brew-600 text-white' : 'bg-ink-800 text-ink-200'}`}
+                  className={`block w-full rounded-lg px-2 py-1.5 text-left text-xs ${btAddress === d.address ? 'bg-brand-600 text-white' : 'bg-ink-800 text-ink-200'}`}
                   onClick={() => {
                     setBtAddress(d.address)
                     setBtName(d.name)

@@ -4,10 +4,16 @@ import { BrowserRouter } from 'react-router-dom'
 import { ErrorBoundary } from '@/app/ErrorBoundary'
 import { ToastHost } from '@/components/ui/ToastHost'
 import { installGlobalErrorHandlers } from '@/lib/globalErrorHandler'
+import { cleanupLegacyBrand } from '@/lib/legacyCleanup'
 import '@/index.css'
 
 // Dipasang sebelum apa pun lain dirender — lihat globalErrorHandler.ts untuk alasannya.
 installGlobalErrorHandlers()
+
+// Sisa IndexedDB/localStorage dari nama produk sebelum rebranding (Kikost Cafe POS /
+// Kinara Coffee) — tidak pernah berisi data produksi nyata, aman dihapus tanpa migrasi.
+// Tidak diblokir render: berjalan paralel, bukan prasyarat aplikasi tampil.
+void cleanupLegacyBrand()
 
 const rootEl = document.getElementById('root')!
 

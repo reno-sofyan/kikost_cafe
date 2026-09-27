@@ -218,12 +218,12 @@ export function PagerSettings() {
         </>
       )}
 
-      {msg && <p className={`text-sm ${msg.kind === 'ok' ? 'text-sage-500' : 'text-red-400'}`}>{msg.text}</p>}
+      {msg && <p className={`text-sm ${msg.kind === 'ok' ? 'text-success-500' : 'text-red-400'}`}>{msg.text}</p>}
 
       <button className="btn-primary" onClick={() => void save()}>
         Simpan
       </button>
-      {saved && <p className="text-sm text-sage-500">Tersimpan</p>}
+      {saved && <p className="text-sm text-success-500">Tersimpan</p>}
     </div>
   )
 }

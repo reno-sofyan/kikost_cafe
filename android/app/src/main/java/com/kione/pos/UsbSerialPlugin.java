@@ -1,4 +1,4 @@
-package cafe.kikost.pos;
+package com.kione.pos;
 
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -26,7 +26,7 @@ import com.hoho.android.usbserial.driver.UsbSerialProber;
 import java.util.List;
 
 /**
- * Plugin USB-serial untuk Kikost Cafe POS. Dipakai untuk bicara ke base station
+ * Plugin USB-serial untuk Kione POS. Dipakai untuk bicara ke base station
  * pager restoran Retekess yang dicolok ke tablet lewat USB-OTG (langsung, atau
  * via adapter USB-to-RS232 FTDI / CP21xx / CH34x / Prolific).
  * Dipanggil dari src/native/usbSerialPlugin.ts.
@@ -34,7 +34,7 @@ import java.util.List;
 @CapacitorPlugin(name = "UsbSerial")
 public class UsbSerialPlugin extends Plugin {
 
-    private static final String ACTION_USB_PERMISSION = "cafe.kikost.pos.USB_PERMISSION";
+    private static final String ACTION_USB_PERMISSION = "com.kione.pos.USB_PERMISSION";
     private static final int WRITE_TIMEOUT_MS = 2000;
 
     private UsbSerialPort port;

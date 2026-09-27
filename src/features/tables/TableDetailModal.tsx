@@ -57,7 +57,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
             {table.occupiedSince && <p className="text-sm text-ink-400">Lama pemakaian: {durationSince(table.occupiedSince, Date.now())}</p>}
             {table.guestCount && <p className="text-sm text-ink-400">{table.guestCount} tamu</p>}
             {order && (
-              <p className="text-lg font-bold text-brew-400">
+              <p className="text-lg font-bold text-brand-400">
                 {order.orderNumber} • {formatRupiah(order.grandTotal)}
               </p>
             )}

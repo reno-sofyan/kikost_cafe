@@ -9,7 +9,7 @@ import { resetLocalDb } from '@/test/db'
 
 const sample: ReceiptData = buildSampleReceiptData({
   ...DEFAULT_SETTINGS,
-  cafeName: 'Kikost Cafe',
+  businessName: 'Kopi Senja',
   address: 'Jl. Contoh 1',
   phone: '0812',
   taxPercent: 11,
@@ -32,7 +32,7 @@ describe('buildEscPosReceipt', () => {
 
   it('memuat identitas kafe, nomor order, item, total, dan pembayaran', () => {
     const text = decode(buildEscPosReceipt(sample))
-    expect(text).toContain('Kikost Cafe')
+    expect(text).toContain('Kopi Senja')
     expect(text).toContain(sample.orderNumber)
     expect(text).toContain('Kopi Susu Gula Aren')
     expect(text).toContain('TOTAL')
@@ -76,9 +76,9 @@ describe('MockPrinterDriver', () => {
   it('merekam struk & byte ESC/POS tanpa hardware', async () => {
     const driver = new MockPrinterDriver()
     await driver.print(sample)
-    await driver.print({ ...sample, orderNumber: 'KKP-00002' })
+    await driver.print({ ...sample, orderNumber: 'TRX-00002' })
     expect(driver.printedReceipts).toHaveLength(2)
     expect(driver.printedBytes[0][0]).toBe(0x1b)
-    expect(driver.printedReceipts[1].orderNumber).toBe('KKP-00002')
+    expect(driver.printedReceipts[1].orderNumber).toBe('TRX-00002')
   })
 })

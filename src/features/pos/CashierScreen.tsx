@@ -247,10 +247,10 @@ export function CashierScreen() {
                   )}
                 </div>
                 <span className="line-clamp-2 text-sm font-semibold text-ink-50">{product.name}</span>
-                <span className="mt-1 text-sm font-bold text-brew-400">{formatRupiah(product.price)}</span>
+                <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(product.price)}</span>
                 {!product.isAvailable && <span className="mt-1 text-xs text-red-400">Habis</span>}
                 {product.isFavorite && (
-                  <span className="absolute right-2 top-2 text-brown-500">
+                  <span className="absolute right-2 top-2 text-accent-500">
                     <Icon name="star" size={14} fill="currentColor" />
                   </span>
                 )}
@@ -299,7 +299,7 @@ export function CashierScreen() {
                         ))}
                         {item.notes && <p className="mt-0.5 text-xs italic text-ink-500">"{item.notes}"</p>}
                       </div>
-                      <span className="flex-none font-semibold text-brew-400">{formatRupiah(item.lineTotal)}</span>
+                      <span className="flex-none font-semibold text-brand-400">{formatRupiah(item.lineTotal)}</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -320,7 +320,7 @@ export function CashierScreen() {
                         </button>
                       </div>
                       {item.kitchenStatus !== 'new' && (
-                        <span className="rounded bg-sage-600/20 px-2 py-0.5 text-[10px] text-sage-500">
+                        <span className="rounded bg-success-600/20 px-2 py-0.5 text-[10px] text-success-500">
                           Dapur: {item.kitchenStatus}
                         </span>
                       )}

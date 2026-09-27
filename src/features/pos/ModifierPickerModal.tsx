@@ -109,7 +109,7 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
             <div key={group.id}>
               <div className="mb-2 flex items-center gap-2">
                 <h3 className="font-semibold text-ink-100">{group.name}</h3>
-                {group.required && <span className="rounded bg-brew-600/30 px-1.5 py-0.5 text-[10px] text-brew-400">Wajib</span>}
+                {group.required && <span className="rounded bg-brand-600/30 px-1.5 py-0.5 text-[10px] text-brand-400">Wajib</span>}
               </div>
               <div className="flex flex-wrap gap-2">
                 {(optionsByGroup[group.id] ?? []).map((option) => {
@@ -120,7 +120,7 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
                       type="button"
                       onClick={() => toggleOption(group, option.id)}
                       className={`rounded-full border px-4 py-2 text-sm font-medium ${
-                        active ? 'border-brew-500 bg-brew-600 text-white' : 'border-ink-700 bg-ink-800 text-ink-200'
+                        active ? 'border-brand-500 bg-brand-600 text-white' : 'border-ink-700 bg-ink-800 text-ink-200'
                       }`}
                     >
                       {option.name}

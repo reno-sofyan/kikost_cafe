@@ -195,7 +195,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
                 type="button"
                 onClick={() => toggleModifierGroup(g.id)}
                 className={`rounded-full border px-3 py-1.5 text-sm ${
-                  selectedModifierGroupIds.includes(g.id) ? 'border-brew-500 bg-brew-600 text-white' : 'border-ink-700 bg-ink-800 text-ink-300'
+                  selectedModifierGroupIds.includes(g.id) ? 'border-brand-500 bg-brand-600 text-white' : 'border-ink-700 bg-ink-800 text-ink-300'
                 }`}
               >
                 {g.name}

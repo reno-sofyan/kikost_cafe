@@ -70,7 +70,7 @@ export function StockOpnamePanel({ userId, userName }: Props) {
                   value={raw}
                   onChange={(e) => setCounts((prev) => ({ ...prev, [line.itemId]: e.target.value }))}
                 />
-                <span className={`w-16 text-right text-xs ${delta ? (delta > 0 ? 'text-sage-500' : 'text-red-400') : 'text-ink-600'}`}>
+                <span className={`w-16 text-right text-xs ${delta ? (delta > 0 ? 'text-success-500' : 'text-red-400') : 'text-ink-600'}`}>
                   {delta === null ? '' : delta > 0 ? `+${delta}` : delta}
                 </span>
               </div>
