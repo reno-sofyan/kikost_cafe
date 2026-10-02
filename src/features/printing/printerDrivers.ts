@@ -23,6 +23,34 @@ export class PrinterUnavailableOnPlatformError extends Error {
   }
 }
 
+export class PrinterTimeoutError extends Error {
+  constructor() {
+    super('Printer tidak merespons (mati atau di luar jangkauan). Periksa printer lalu coba cetak ulang.')
+    this.name = 'PrinterTimeoutError'
+  }
+}
+
+/** Batas waktu operasi printer fisik (connect/print) — plugin native Android bisa
+ *  menggantung tanpa batas saat printer mati/di luar jangkauan (mis. Bluetooth SPP
+ *  menunggu ACK yang tak pernah datang); tanpa ini kasir terjebak di layar "Mencetak…". */
+const PRINTER_OP_TIMEOUT_MS = 3000
+
+function withPrinterTimeout<T>(op: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new PrinterTimeoutError()), PRINTER_OP_TIMEOUT_MS)
+    op.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 /** Mencetak lewat dialog print bawaan browser/sistem operasi (tersedia di PWA maupun APK). */
 export class BrowserPrintDriver implements PrinterDriver {
   async print(data: ReceiptData): Promise<void> {
@@ -65,16 +93,16 @@ export class NativeEscPosDriver implements PrinterDriver {
 
     if (this.config.connectionType === 'bluetooth') {
       if (!this.config.bluetoothAddress) throw new PrinterNotConfiguredError()
-      await EscPosPrinter.connectBluetooth({ address: this.config.bluetoothAddress })
+      await withPrinterTimeout(EscPosPrinter.connectBluetooth({ address: this.config.bluetoothAddress }))
     } else if (this.config.connectionType === 'network') {
       if (!this.config.networkHost || !this.config.networkPort) throw new PrinterNotConfiguredError()
-      await EscPosPrinter.connectNetwork({ host: this.config.networkHost, port: this.config.networkPort })
+      await withPrinterTimeout(EscPosPrinter.connectNetwork({ host: this.config.networkHost, port: this.config.networkPort }))
     } else {
       throw new PrinterNotConfiguredError()
     }
 
     const bytes = buildEscPosReceipt(data)
-    await EscPosPrinter.printBytes({ base64: toBase64(bytes) })
+    await withPrinterTimeout(EscPosPrinter.printBytes({ base64: toBase64(bytes) }))
   }
 }
 
@@ -130,12 +158,12 @@ async function defaultSender(target: EscPosTransportTarget, bytes: Uint8Array): 
   if (!Capacitor.isNativePlatform()) throw new PrinterUnavailableOnPlatformError()
   if (target.connectionType === 'bluetooth') {
     if (!target.bluetoothAddress) throw new PrinterNotConfiguredError()
-    await EscPosPrinter.connectBluetooth({ address: target.bluetoothAddress })
+    await withPrinterTimeout(EscPosPrinter.connectBluetooth({ address: target.bluetoothAddress }))
   } else {
     if (!target.networkHost || !target.networkPort) throw new PrinterNotConfiguredError()
-    await EscPosPrinter.connectNetwork({ host: target.networkHost, port: target.networkPort })
+    await withPrinterTimeout(EscPosPrinter.connectNetwork({ host: target.networkHost, port: target.networkPort }))
   }
-  await EscPosPrinter.printBytes({ base64: toBase64(bytes) })
+  await withPrinterTimeout(EscPosPrinter.printBytes({ base64: toBase64(bytes) }))
 }
 
 export function sendEscPosBytes(target: EscPosTransportTarget, bytes: Uint8Array): Promise<void> {
