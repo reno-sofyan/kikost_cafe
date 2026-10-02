@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { getDeviceId, getDeviceLabel } from '@/sync/device'
 import { getApiBaseUrl } from '@/sync/deviceConfig'
+import { ensurePersistentStorage, getStoragePersistStatus } from '@/lib/persistentStorage'
 import { Icon } from '@/components/ui/Icon'
 import { PRODUCT_LOGO, PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_VERSION } from '@/lib/brand'
 
@@ -14,6 +16,25 @@ import { PRODUCT_LOGO, PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_VERSION } from '@/
 export function AboutPanel() {
   const settings = useLiveQuery(() => getSettings(), [])
   const apiBaseUrl = getApiBaseUrl()
+  const [storageStatus, setStorageStatus] = useState(getStoragePersistStatus())
+
+  useEffect(() => {
+    // ensurePersistentStorage() sudah dipanggil sekali di main.tsx; panggilan di sini
+    // aman diulang (browser yang sudah mengizinkan langsung menjawab `true` lagi) dan
+    // memastikan panel ini menunjukkan status terkini saat dibuka, bukan status basi
+    // dari sebelum izin diberikan/ditolak oleh OS.
+    let alive = true
+    void ensurePersistentStorage().then((r) => alive && setStorageStatus(r))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const storageLabel = !storageStatus.supported
+    ? 'Tidak didukung perangkat ini'
+    : storageStatus.persisted
+      ? 'Terkunci (aman dari penghapusan otomatis)'
+      : 'Belum terkunci — cadangkan data secara berkala'
 
   const rows: { label: string; value: string }[] = [
     { label: 'Versi aplikasi', value: PRODUCT_VERSION },
@@ -22,6 +43,7 @@ export function AboutPanel() {
     { label: 'ID perangkat', value: getDeviceId() },
     { label: 'Server sinkronisasi', value: apiBaseUrl || 'Belum diatur (mode offline penuh)' },
     { label: 'Zona waktu', value: settings?.timezone ?? '—' },
+    { label: 'Penyimpanan data', value: storageLabel },
   ]
 
   return (

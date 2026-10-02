@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/app/ErrorBoundary'
 import { ToastHost } from '@/components/ui/ToastHost'
 import { installGlobalErrorHandlers } from '@/lib/globalErrorHandler'
 import { cleanupLegacyBrand } from '@/lib/legacyCleanup'
+import { ensurePersistentStorage } from '@/lib/persistentStorage'
 import '@/index.css'
 
 // Dipasang sebelum apa pun lain dirender — lihat globalErrorHandler.ts untuk alasannya.
@@ -14,6 +15,11 @@ installGlobalErrorHandlers()
 // Kinara Coffee) — tidak pernah berisi data produksi nyata, aman dihapus tanpa migrasi.
 // Tidak diblokir render: berjalan paralel, bukan prasyarat aplikasi tampil.
 void cleanupLegacyBrand()
+
+// Kunci IndexedDB sebagai "persistent storage" supaya Android tidak menghapusnya
+// otomatis saat perangkat kekurangan ruang. Tidak diblokir render — permintaan izin
+// boleh gagal/tertunda tanpa mencegah kasir memakai aplikasi. Lihat persistentStorage.ts.
+void ensurePersistentStorage()
 
 const rootEl = document.getElementById('root')!
 
