@@ -115,9 +115,9 @@ describe('applyRemoteDeletions (penghapusan dari perangkat lain)', () => {
     expect(await db.stockMovements.count()).toBe(0)
   })
 
-  it('mengabaikan entitas di luar daftar putih (pesanan tak bisa dihapus dari server)', async () => {
-    await db.orders.put({ id: 'o1' } as never)
-    await applyRemoteDeletions({ orders: ['o1'] })
-    expect(await db.orders.get('o1')).toBeDefined()
+  it('mengabaikan entitas di luar daftar putih (mis. shift tak bisa dihapus dari server)', async () => {
+    await db.shifts.put({ id: 's1' } as never)
+    await applyRemoteDeletions({ shifts: ['s1'] })
+    expect(await db.shifts.get('s1')).toBeDefined()
   })
 })

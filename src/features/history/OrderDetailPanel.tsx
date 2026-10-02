@@ -3,6 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { listOrderItems } from '@/db/repositories/orders'
 import { voidOrder, returnOrderItems } from '@/db/repositories/checkout'
+import { deleteOrder, orderDeleteBlockReason } from '@/db/repositories/orderDeletion'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { toast } from '@/state/toastStore'
 import { roleHasPermission } from '@/lib/permissions'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
@@ -32,7 +35,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
 
   const [showPrint, setShowPrint] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
-  const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'return-select' | 'return-reason' | 'return-pin'>(null)
+  const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'return-select' | 'return-reason' | 'return-pin' | 'delete-reason'>(null)
   const [reason, setReason] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [restock, setRestock] = useState(false)
@@ -41,6 +44,27 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const canVoid = roleHasPermission(currentUser.role, 'order.void')
   const canReturn = roleHasPermission(currentUser.role, 'order.return')
   const canRestock = roleHasPermission(currentUser.role, 'refund.restock')
+  const canDelete = roleHasPermission(currentUser.role, 'order.delete')
+  const deleteBlockReason = orderDeleteBlockReason(order)
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
+
+  async function handleDeleteReason(deleteReason: string) {
+    setFlow(null)
+    const ok = await confirm({
+      title: `Hapus transaksi ${order.orderNumber}?`,
+      description: `${formatRupiah(order.grandTotal)} — beserta item, pembayaran, dan returnya dihapus dari semua perangkat & laporan. Stok tidak berubah. Penghapusan ini tercatat di Audit Log.`,
+      confirmLabel: 'Ya, Hapus Transaksi',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteOrder(order.id, { userId: currentUser.id, userName: currentUser.name }, deleteReason)
+      toast.success(`Transaksi ${order.orderNumber} dihapus`)
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal menghapus transaksi')
+    }
+  }
   const activeItems = items.filter((i) => !i.voided && !i.removed)
 
   async function openPrintPreview() {
@@ -216,6 +240,16 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
               Batalkan Transaksi
             </button>
           )}
+          {canDelete && (
+            <button
+              className="btn-ghost !text-red-400 disabled:!text-ink-500"
+              disabled={!!deleteBlockReason}
+              title={deleteBlockReason ?? undefined}
+              onClick={() => setFlow('delete-reason')}
+            >
+              <Icon name="trash" size={16} /> Hapus dari Riwayat
+            </button>
+          )}
         </div>
     </Modal>
 
@@ -247,6 +281,16 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
           }}
         />
       )}
+      {flow === 'delete-reason' && (
+        <ReasonPromptModal
+          title="Alasan Menghapus Transaksi"
+          description="Wajib diisi — dicatat di Audit Log bersama nomor & nominal transaksi."
+          confirmLabel="Lanjut"
+          onCancel={() => setFlow(null)}
+          onConfirm={(r) => void handleDeleteReason(r)}
+        />
+      )}
+      {confirmDialog}
       {flow === 'return-pin' && (
         <SupervisorPinModal title="Konfirmasi Retur" onCancel={() => setFlow('return-select')} onApproved={(u) => void handleReturnApproved(u)} />
       )}

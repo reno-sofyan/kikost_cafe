@@ -11,6 +11,7 @@ export type Permission =
   | 'refund.restock'
   | 'stock.adjust'
   | 'stock.delete'
+  | 'order.delete'
   | 'reports.view'
   | 'settings.manage'
   | 'users.manage'

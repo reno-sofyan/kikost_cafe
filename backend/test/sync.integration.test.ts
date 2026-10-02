@@ -247,13 +247,36 @@ suite('sync API (integrasi)', () => {
       expect(pull.json().deletions.ingredients).toBeUndefined()
     })
 
-    it('menolak penghapusan entitas di luar daftar putih (mis. orders)', async () => {
+    it('menolak penghapusan entitas di luar daftar putih (mis. shifts, auditLogs)', async () => {
       const id = '99999999-9999-9999-9999-999999999999'
-      await push([order(id)])
-      const res = await push([deletion('orders', id, 5000)])
-      expect(res.json().results[0].status).toBe('rejected')
+      await push([{ entity: 'shifts', entityId: id, idempotencyKey: randomUUID(), payload: { id, updatedAt: 1000 } }])
+      const res = await push([deletion('shifts', id, 5000), deletion('auditLogs', id, 5000)])
+      expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['rejected', 'rejected'])
       const pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
-      expect(pull.json().entities.orders).toHaveLength(1)
+      expect(pull.json().entities.shifts).toHaveLength(1)
+    })
+
+    it('hapus transaksi: order & pembayaran hilang dari pull, pembayaran tak bisa dihidupkan lagi', async () => {
+      const orderId = '12121212-1212-1212-1212-121212121212'
+      const payId = '34343434-3434-3434-3434-343434343434'
+      const payment = () => ({
+        entity: 'payments',
+        entityId: payId,
+        idempotencyKey: randomUUID(),
+        payload: { id: payId, orderId, amount: 25000, createdAt: 1000 },
+      })
+      await push([order(orderId, { status: 'paid', updatedAt: 1000 }), payment()])
+
+      const res = await push([deletion('orders', orderId, 2000), deletion('payments', payId, 2000)])
+      expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['accepted', 'accepted'])
+
+      // Perangkat lain yang belum tahu mengirim ulang pembayaran lama → tetap terhapus.
+      await push([payment()])
+      const pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      expect(pull.json().entities.orders).toBeUndefined()
+      expect(pull.json().entities.payments).toBeUndefined()
+      expect(pull.json().deletions.orders).toEqual([orderId])
+      expect(pull.json().deletions.payments).toEqual([payId])
     })
 
     it('penghapusan ter-scope per tenant', async () => {
