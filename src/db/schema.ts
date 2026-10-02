@@ -458,6 +458,29 @@ export class KioneDatabase extends Dexie {
           if (s.businessType === undefined) s.businessType = 'lainnya'
         })
     })
+
+    // v15: rantai hash pada `auditLogs` (deviceId, deviceSeq, prevHash, hash) untuk
+    // mendeteksi entri yang diubah/dihapus lewat akses langsung ke IndexedDB — lihat
+    // src/lib/auditLogIntegrity.ts. Entri lama di-backfill null di keempatnya: tetap
+    // tersimpan apa adanya, ditandai "tak bisa diverifikasi" (bukan "rusak") saat
+    // dicek, karena memang dibuat sebelum fitur ini ada.
+    this.version(15)
+      .stores({
+        auditLogs: 'id, userId, createdAt, entityType, action, deviceId',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('auditLogs')
+          .toCollection()
+          .modify(
+            (e: { deviceId?: string | null; deviceSeq?: number | null; prevHash?: string | null; hash?: string | null }) => {
+              if (e.deviceId === undefined) e.deviceId = null
+              if (e.deviceSeq === undefined) e.deviceSeq = null
+              if (e.prevHash === undefined) e.prevHash = null
+              if (e.hash === undefined) e.hash = null
+            },
+          )
+      })
   }
 }
 

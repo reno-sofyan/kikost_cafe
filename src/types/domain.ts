@@ -58,6 +58,23 @@ export interface AuditLogEntry {
   entityId: string
   details: string
   createdAt: number
+  /**
+   * Rantai hash untuk mendeteksi (bukan mencegah) entri yang diubah/dihapus
+   * lewat akses langsung ke IndexedDB, di luar aplikasi ini — lihat
+   * `src/lib/auditLogIntegrity.ts`. Di-scope PER PERANGKAT (`deviceId`), bukan
+   * global: tablet offline-first menulis entrinya sendiri sebelum sempat
+   * sinkron, jadi tidak ada urutan tunggal lintas-perangkat yang pasti.
+   * `null` di ketiganya = entri lama, dibuat sebelum fitur ini ada — tetap
+   * tersimpan apa adanya, ditandai "tak bisa diverifikasi" saat dicek.
+   */
+  deviceId: string | null
+  /** Nomor urut menaik PER PERANGKAT (bukan `createdAt`) — beberapa entri bisa
+   *  punya `createdAt` identik (resolusi milidetik), jadi urutan penulisan yang
+   *  benar-benar bisa diandalkan untuk verifikasi rantai adalah nomor ini, bukan
+   *  waktunya. `null` = entri lama, dibuat sebelum fitur ini ada. */
+  deviceSeq: number | null
+  prevHash: string | null
+  hash: string | null
 }
 
 export type ReceiptPaperSize = '58mm' | '80mm'
