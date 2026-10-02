@@ -1,13 +1,25 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
-import { adjustIngredientStock, createIngredient, listIngredients, listLowStockIngredients } from '@/db/repositories/stock'
+import {
+  adjustIngredientStock,
+  clearStockMovements,
+  createIngredient,
+  deleteIngredient,
+  deleteStockMovement,
+  ingredientDeleteBlockReason,
+  listIngredients,
+  listLowStockIngredients,
+} from '@/db/repositories/stock'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { roleHasPermission } from '@/lib/permissions'
+import { toast } from '@/state/toastStore'
 import { PurchasingPanel } from '@/features/inventory/PurchasingPanel'
 import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
 import { ProductionPanel } from '@/features/inventory/ProductionPanel'
@@ -46,6 +58,55 @@ export function InventoryScreen() {
   const [showNewIngredient, setShowNewIngredient] = useState(false)
   const [adjustTarget, setAdjustTarget] = useState<Ingredient | null>(null)
 
+  const canDelete = roleHasPermission(currentUser.role, 'stock.delete')
+  const actor = { userId: currentUser.id, userName: currentUser.name }
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
+
+  const handleDeleteIngredient = async (ing: Ingredient) => {
+    const blockReason = await ingredientDeleteBlockReason(ing.id)
+    if (blockReason) {
+      toast.error(blockReason)
+      return
+    }
+    const ok = await confirm({
+      title: `Hapus bahan baku "${ing.name}"?`,
+      description: 'Bahan baku dihapus dari semua perangkat. Riwayat pergerakannya tetap ada sampai dihapus terpisah.',
+      confirmLabel: 'Ya, Hapus',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteIngredient(ing.id, actor)
+      toast.success(`Bahan baku "${ing.name}" dihapus`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menghapus bahan baku')
+    }
+  }
+
+  const handleDeleteMovement = async (id: string, label: string) => {
+    const ok = await confirm({
+      title: 'Hapus entri riwayat ini?',
+      description: `${label}. Hanya catatan riwayatnya yang dihapus — stok saat ini tidak berubah.`,
+      confirmLabel: 'Ya, Hapus',
+      tone: 'danger',
+    })
+    if (!ok) return
+    await deleteStockMovement(id, actor)
+  }
+
+  const handleClearMovements = async () => {
+    const total = await db.stockMovements.count()
+    const ok = await confirm({
+      title: `Hapus SELURUH riwayat pergerakan stok (${total.toLocaleString('id-ID')} entri)?`,
+      description: 'Riwayat dihapus dari semua perangkat dan tidak bisa dikembalikan. Stok saat ini tidak berubah.',
+      confirmLabel: 'Ya, Hapus Semua',
+      tone: 'danger',
+    })
+    if (!ok) return
+    const count = await clearStockMovements(actor)
+    toast.success(`${count.toLocaleString('id-ID')} entri riwayat dihapus`)
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
@@ -80,9 +141,16 @@ export function InventoryScreen() {
                       {ing.lowStockThreshold.toLocaleString('id-ID')} {ing.unit}
                     </p>
                   </div>
-                  <button className="btn-secondary" onClick={() => setAdjustTarget(ing)}>
-                    Sesuaikan Stok
-                  </button>
+                  <div className="flex gap-2">
+                    <button className="btn-secondary" onClick={() => setAdjustTarget(ing)}>
+                      Sesuaikan Stok
+                    </button>
+                    {canDelete && (
+                      <button className="btn-danger !px-3" aria-label={`Hapus ${ing.name}`} onClick={() => void handleDeleteIngredient(ing)}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               {ingredients.length === 0 && <p className="text-ink-500">Belum ada bahan baku</p>}
@@ -96,8 +164,13 @@ export function InventoryScreen() {
 
         {tab === 'riwayat' && (
           <div className="space-y-2">
+            {canDelete && movements.length > 0 && (
+              <button className="btn-danger mb-2" onClick={() => void handleClearMovements()}>
+                <Icon name="trash" size={16} /> Hapus Semua Riwayat
+              </button>
+            )}
             {movements.map((m) => (
-              <div key={m.id} className="card flex items-center justify-between p-3 text-sm">
+              <div key={m.id} className="card flex items-center justify-between gap-3 p-3 text-sm">
                 <div>
                   <p className="font-medium text-ink-100">
                     {m.itemName} • {REASON_LABELS[m.reason]}
@@ -107,10 +180,21 @@ export function InventoryScreen() {
                     {m.note ? ` • ${m.note}` : ''}
                   </p>
                 </div>
-                <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-success-500' : 'text-red-400'}`}>
-                  {m.qtyDelta >= 0 ? '+' : ''}
-                  {m.qtyDelta}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-success-500' : 'text-red-400'}`}>
+                    {m.qtyDelta >= 0 ? '+' : ''}
+                    {m.qtyDelta}
+                  </span>
+                  {canDelete && (
+                    <button
+                      className="btn-ghost !min-h-0 !p-2 !text-red-400"
+                      aria-label="Hapus entri riwayat"
+                      onClick={() => void handleDeleteMovement(m.id, `${m.itemName} • ${REASON_LABELS[m.reason]} ${m.qtyDelta >= 0 ? '+' : ''}${m.qtyDelta}`)}
+                    >
+                      <Icon name="trash" size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             {movements.length === 0 && <p className="text-ink-500">Belum ada pergerakan stok</p>}
@@ -122,6 +206,7 @@ export function InventoryScreen() {
       {adjustTarget && (
         <AdjustStockModal ingredient={adjustTarget} userId={currentUser.id} onClose={() => setAdjustTarget(null)} />
       )}
+      {confirmDialog}
     </div>
   )
 }

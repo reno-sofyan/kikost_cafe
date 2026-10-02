@@ -36,8 +36,11 @@ components:
         idempotencyKey: { type: string, format: uuid }
         payload:
           type: object
-          description: Objek entitas utuh dari klien. Harus punya `id` dan `updatedAt`/`createdAt` (epoch ms).
+          description: Objek entitas utuh dari klien. Harus punya `id` dan `updatedAt`/`createdAt` (epoch ms). Untuk `deleted=true` cukup `{ deletedAt }`.
           additionalProperties: true
+        deleted:
+          type: boolean
+          description: "`true` = hapus entitas (tombstone). Hanya untuk `ingredients` & `stockMovements`; entitas lain ditolak."
     PushResultItem:
       type: object
       properties:
@@ -57,6 +60,12 @@ components:
           additionalProperties:
             type: array
             items: { type: object, additionalProperties: true }
+        deletions:
+          type: object
+          description: ID entitas yang dihapus sejak `since`, per entitas — klien menghapusnya dari data lokal.
+          additionalProperties:
+            type: array
+            items: { type: string }
         serverTime: { type: integer }
 
 paths:

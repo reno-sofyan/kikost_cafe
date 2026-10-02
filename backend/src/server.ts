@@ -31,6 +31,7 @@ const pushBodySchema = z.object({
         entityId: z.string().min(1).max(200),
         idempotencyKey: z.string().min(1).max(64),
         payload: z.unknown(),
+        deleted: z.boolean().optional(),
       }),
     )
     .max(1000),

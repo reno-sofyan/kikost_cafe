@@ -198,4 +198,71 @@ suite('sync API (integrasi)', () => {
     expect(results.find((r: { idempotencyKey: string }) => r.idempotencyKey === good.idempotencyKey).status).toBe('accepted')
     expect(results.find((r: { idempotencyKey: string }) => r.idempotencyKey === bad.idempotencyKey).status).toBe('rejected')
   })
+
+  describe('penghapusan (tombstone)', () => {
+    const ING_ID = '88888888-8888-8888-8888-888888888888'
+    const ingredient = (updatedAt: number) => ({
+      entity: 'ingredients',
+      entityId: ING_ID,
+      idempotencyKey: randomUUID(),
+      payload: { id: ING_ID, name: 'Gula', stockQty: 10, updatedAt },
+    })
+    const deletion = (entity: string, entityId: string, deletedAt: number) => ({
+      entity,
+      entityId,
+      idempotencyKey: randomUUID(),
+      payload: { deletedAt },
+      deleted: true,
+    })
+    const push = (items: unknown[], headers = auth) =>
+      app.inject({ method: 'POST', url: '/api/sync/push', headers, payload: { deviceId: 'd', items } })
+
+    it('menghapus bahan baku: hilang dari entities, muncul di deletions, payload dikosongkan', async () => {
+      await push([ingredient(1000)])
+      const first = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      const cursor = first.json().serverTime
+
+      const res = await push([deletion('ingredients', ING_ID, 2000)])
+      expect(res.json().results[0].status).toBe('accepted')
+
+      const pull = await app.inject({ method: 'GET', url: `/api/sync/pull?since=${cursor}`, headers: auth })
+      expect(pull.json().entities.ingredients).toBeUndefined()
+      expect(pull.json().deletions.ingredients).toEqual([ING_ID])
+
+      const { getPool } = await import('../src/db/pool.js')
+      const { rows } = await getPool().query("SELECT payload, deleted FROM sync_entity_state WHERE entity_id = $1", [ING_ID])
+      expect(rows[0]).toEqual({ payload: {}, deleted: true })
+    })
+
+    it('upsert basi (lebih lama dari penghapusan) tidak menghidupkan kembali; editan lebih baru boleh', async () => {
+      await push([ingredient(1000), deletion('ingredients', ING_ID, 2000)])
+
+      expect((await push([ingredient(1500)])).json().results[0].status).toBe('duplicate')
+      let pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      expect(pull.json().entities.ingredients).toBeUndefined()
+
+      expect((await push([ingredient(3000)])).json().results[0].status).toBe('accepted')
+      pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      expect(pull.json().entities.ingredients[0].name).toBe('Gula')
+      expect(pull.json().deletions.ingredients).toBeUndefined()
+    })
+
+    it('menolak penghapusan entitas di luar daftar putih (mis. orders)', async () => {
+      const id = '99999999-9999-9999-9999-999999999999'
+      await push([order(id)])
+      const res = await push([deletion('orders', id, 5000)])
+      expect(res.json().results[0].status).toBe('rejected')
+      const pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      expect(pull.json().entities.orders).toHaveLength(1)
+    })
+
+    it('penghapusan ter-scope per tenant', async () => {
+      await push([ingredient(1000)])
+      await push([ingredient(1000)], minimarketAuth)
+      await push([deletion('ingredients', ING_ID, 2000)])
+      const mm = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: minimarketAuth })
+      expect(mm.json().entities.ingredients).toHaveLength(1)
+      expect(mm.json().deletions.ingredients).toBeUndefined()
+    })
+  })
 })

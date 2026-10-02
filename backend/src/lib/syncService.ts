@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg'
 import { getPool, withTransaction } from '../db/pool.js'
 import { loadConfig } from '../config.js'
 import {
+  DELETABLE_ENTITIES,
   isSyncEntity,
   normalizePayload,
   shouldApply,
@@ -15,6 +16,8 @@ export interface PushItem {
   entityId: string
   idempotencyKey: string
   payload?: unknown
+  /** `true` = hapus entitas ini (tombstone). `payload` opsional: `{ deletedAt }`. */
+  deleted?: boolean
 }
 
 export interface PushResultItem {
@@ -30,6 +33,8 @@ export interface PushResponse {
 
 export interface PullResponse {
   entities: Partial<Record<SyncEntity, unknown[]>>
+  /** ID entitas yang dihapus sejak `since` — klien menghapusnya dari data lokal. */
+  deletions: Partial<Record<SyncEntity, string[]>>
   serverTime: number
 }
 
@@ -125,6 +130,10 @@ async function processOneItem(
     return { idempotencyKey, status: 'rejected', error: `Entitas tidak dikenal: ${item.entity}` }
   }
 
+  if (item.deleted === true) {
+    return processDelete(client, tenantId, deviceId, item, item.entity)
+  }
+
   const normalized = normalizePayload(item.entityId, item.payload)
   if ('error' in normalized) {
     await recordIdempotency(client, tenantId, item, deviceId, 'rejected', normalized.error, null)
@@ -162,6 +171,7 @@ async function processOneItem(
            entity_updated_at = EXCLUDED.entity_updated_at,
            origin_device_id = EXCLUDED.origin_device_id,
            server_seq = nextval('sync_server_seq'),
+           deleted = FALSE,
            updated_at = now()
      RETURNING server_seq`,
     [tenantId, item.entity, item.entityId, JSON.stringify(normalized.raw), normalized.entityUpdatedAt, deviceId],
@@ -169,6 +179,45 @@ async function processOneItem(
   const serverSeq = Number(upserted.rows[0].server_seq)
 
   await recordIdempotency(client, tenantId, item, deviceId, 'accepted', null, serverSeq)
+  return { idempotencyKey, status: 'accepted' }
+}
+
+/**
+ * Tombstone: payload dikosongkan (data bisnisnya benar-benar hilang dari server) dan
+ * `deleted = TRUE`, dengan server_seq baru supaya perangkat lain ikut menghapusnya
+ * saat pull. `entity_updated_at` dinaikkan ke waktu hapus, jadi upsert basi dari
+ * perangkat yang belum tahu soal penghapusan ditolak oleh LWW — hanya editan yang
+ * LEBIH BARU dari penghapusan yang menghidupkannya kembali.
+ */
+async function processDelete(
+  client: PoolClient,
+  tenantId: string,
+  deviceId: string | null,
+  item: PushItem,
+  entity: SyncEntity,
+): Promise<PushResultItem> {
+  const { idempotencyKey } = item
+  if (!DELETABLE_ENTITIES.has(entity)) {
+    await recordIdempotency(client, tenantId, item, deviceId, 'rejected', 'Entitas tidak boleh dihapus', null)
+    return { idempotencyKey, status: 'rejected', error: `Entitas ${entity} tidak boleh dihapus lewat sync` }
+  }
+  const rawDeletedAt = (item.payload as { deletedAt?: unknown } | undefined)?.deletedAt
+  const deletedAt = typeof rawDeletedAt === 'number' && Number.isInteger(rawDeletedAt) && rawDeletedAt >= 0 ? rawDeletedAt : 0
+
+  const deleted = await client.query<{ server_seq: string }>(
+    `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at, origin_device_id, server_seq, deleted, updated_at)
+       VALUES ($1, $2, $3, '{}'::jsonb, $4, $5, nextval('sync_server_seq'), TRUE, now())
+     ON CONFLICT (tenant_id, entity, entity_id) DO UPDATE
+       SET payload = '{}'::jsonb,
+           entity_updated_at = GREATEST(sync_entity_state.entity_updated_at, EXCLUDED.entity_updated_at),
+           origin_device_id = EXCLUDED.origin_device_id,
+           server_seq = nextval('sync_server_seq'),
+           deleted = TRUE,
+           updated_at = now()
+     RETURNING server_seq`,
+    [tenantId, entity, item.entityId, deletedAt, deviceId],
+  )
+  await recordIdempotency(client, tenantId, item, deviceId, 'accepted', null, Number(deleted.rows[0].server_seq))
   return { idempotencyKey, status: 'accepted' }
 }
 
@@ -195,25 +244,29 @@ export async function processPull(sinceRaw: number, tenantId: string): Promise<P
   const client = await getPool().connect()
   try {
     const entities: Partial<Record<SyncEntity, unknown[]>> = {}
+    const deletions: Partial<Record<SyncEntity, string[]>> = {}
     let maxSeq = since
 
     for (const entity of SYNC_ENTITIES) {
-      const { rows } = await client.query<{ payload: unknown; server_seq: string }>(
-        `SELECT payload, server_seq
+      const { rows } = await client.query<{ payload: unknown; entity_id: string; deleted: boolean; server_seq: string }>(
+        `SELECT payload, entity_id, deleted, server_seq
            FROM sync_entity_state
-          WHERE tenant_id = $1 AND entity = $2 AND server_seq > $3 AND deleted = FALSE
+          WHERE tenant_id = $1 AND entity = $2 AND server_seq > $3
           ORDER BY server_seq
           LIMIT $4`,
         [tenantId, entity, since, config.SYNC_PULL_LIMIT],
       )
       if (rows.length > 0) {
-        entities[entity] = rows.map((r) => r.payload)
+        const live = rows.filter((r) => !r.deleted)
+        const gone = rows.filter((r) => r.deleted)
+        if (live.length > 0) entities[entity] = live.map((r) => r.payload)
+        if (gone.length > 0) deletions[entity] = gone.map((r) => r.entity_id)
         const localMax = Number(rows[rows.length - 1].server_seq)
         if (localMax > maxSeq) maxSeq = localMax
       }
     }
 
-    return { entities, serverTime: maxSeq }
+    return { entities, deletions, serverTime: maxSeq }
   } finally {
     client.release()
   }

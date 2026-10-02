@@ -7,6 +7,8 @@ export interface SyncPushItem {
   entityId: string
   idempotencyKey: string
   payload: unknown
+  /** `true` = hapus entitas di server (tombstone) — lihat `enqueueSyncDelete`. */
+  deleted?: boolean
 }
 
 export interface SyncPushResultItem {
@@ -22,6 +24,8 @@ export interface SyncPushResponse {
 
 export interface SyncPullResponse {
   entities: Partial<Record<SyncEntity, unknown[]>>
+  /** ID entitas yang dihapus sejak `since`. Opsional: server lama tak mengirimnya. */
+  deletions?: Partial<Record<SyncEntity, string[]>>
   serverTime: number
 }
 

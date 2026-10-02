@@ -1,5 +1,6 @@
 import { db } from '@/db/schema'
-import { enqueueSync } from '@/sync/outbox'
+import { enqueueSync, enqueueSyncDelete } from '@/sync/outbox'
+import { recordAuditLog } from '@/db/repositories/auditLog'
 import { newId } from '@/lib/id'
 import { convertQty } from '@/lib/units'
 import { getTrustedNow } from '@/lib/clockGuard'
@@ -45,6 +46,101 @@ export async function updateIngredient(
   })
 }
 
+/**
+ * Alasan sebuah bahan baku tidak bisa dihapus, untuk ditampilkan SEBELUM tombol
+ * ditekan. `null` = boleh dihapus. Dokumen yang sudah selesai (pembelian diterima,
+ * opname final, produksi selesai) tidak menghalangi — mereka menyimpan nama bahan
+ * sendiri; yang menghalangi hanya pemakaian yang masih "hidup".
+ */
+export async function ingredientDeleteBlockReason(id: string): Promise<string | null> {
+  const recipes = await db.recipes.filter((r) => r.items.some((item) => item.ingredientId === id)).toArray()
+  if (recipes.length > 0) {
+    const products = await db.products.bulkGet(recipes.map((r) => r.productId))
+    const names = products.flatMap((p) => (p ? [p.name] : []))
+    return `Masih dipakai di resep: ${names.join(', ') || `${recipes.length} produk`}. Hapus dari resep dulu.`
+  }
+  const draftPurchases = await db.purchases
+    .filter((p) => p.status === 'draft' && p.lines.some((l) => l.itemType === 'ingredient' && l.itemId === id))
+    .count()
+  if (draftPurchases > 0) return 'Masih ada di draft pembelian — terima atau hapus draft itu dulu.'
+  const draftOpnames = await db.stockOpnames
+    .filter((o) => o.status === 'draft' && o.lines.some((l) => l.itemType === 'ingredient' && l.itemId === id))
+    .count()
+  if (draftOpnames > 0) return 'Masih ada di draft stok opname — finalkan opname itu dulu.'
+  const draftProductions = await db.productions
+    .filter(
+      (p) =>
+        p.status === 'draft' &&
+        ((p.outputItemType === 'ingredient' && p.outputItemId === id) ||
+          p.inputs.some((l) => l.itemType === 'ingredient' && l.itemId === id)),
+    )
+    .count()
+  if (draftProductions > 0) return 'Masih ada di draft produksi — selesaikan atau hapus draft itu dulu.'
+  return null
+}
+
+interface DeleteActor {
+  userId: string
+  userName: string
+}
+
+/** Hapus bahan baku (khusus admin). Riwayat pergerakannya tetap ada kecuali dihapus terpisah. */
+export async function deleteIngredient(id: string, actor: DeleteActor): Promise<void> {
+  const blockReason = await ingredientDeleteBlockReason(id)
+  if (blockReason) throw new Error(blockReason)
+  await db.transaction('rw', db.ingredients, db.syncQueue, db.auditLogs, async () => {
+    const ingredient = await db.ingredients.get(id)
+    if (!ingredient) return
+    await db.ingredients.delete(id)
+    await enqueueSyncDelete('ingredients', id)
+    await recordAuditLog({
+      ...actor,
+      action: 'ingredient.deleted',
+      entityType: 'ingredient',
+      entityId: id,
+      details: `Bahan baku "${ingredient.name}" dihapus (stok terakhir ${ingredient.stockQty} ${ingredient.unit})`,
+    })
+  })
+}
+
+/**
+ * Hapus satu entri riwayat pergerakan stok (khusus admin). HANYA menghapus catatan
+ * riwayatnya — stok bahan/produk saat ini TIDAK ikut berubah.
+ */
+export async function deleteStockMovement(id: string, actor: DeleteActor): Promise<void> {
+  await db.transaction('rw', db.stockMovements, db.syncQueue, db.auditLogs, async () => {
+    const movement = await db.stockMovements.get(id)
+    if (!movement) return
+    await db.stockMovements.delete(id)
+    await enqueueSyncDelete('stockMovements', id)
+    await recordAuditLog({
+      ...actor,
+      action: 'stock_movement.deleted',
+      entityType: 'stockMovement',
+      entityId: id,
+      details: `Riwayat stok dihapus: ${movement.itemName} ${movement.qtyDelta >= 0 ? '+' : ''}${movement.qtyDelta}`,
+    })
+  })
+}
+
+/** Hapus SELURUH riwayat pergerakan stok (khusus admin). Stok saat ini tidak berubah. */
+export async function clearStockMovements(actor: DeleteActor): Promise<number> {
+  return db.transaction('rw', db.stockMovements, db.syncQueue, db.auditLogs, async () => {
+    const ids = (await db.stockMovements.toCollection().primaryKeys()) as string[]
+    if (ids.length === 0) return 0
+    await db.stockMovements.bulkDelete(ids)
+    for (const id of ids) await enqueueSyncDelete('stockMovements', id)
+    await recordAuditLog({
+      ...actor,
+      action: 'stock_movement.cleared',
+      entityType: 'stockMovement',
+      entityId: 'all',
+      details: `Seluruh riwayat pergerakan stok dihapus (${ids.length} entri)`,
+    })
+    return ids.length
+  })
+}
+
 export interface StockPostInput {
   itemType: StockMovementItemType
   itemId: string
@@ -60,7 +156,8 @@ export interface StockPostInput {
  * Memposting satu pergerakan stok — sumber tunggal kebenaran untuk semua perubahan
  * stok manual/dokumen (pembelian, opname, waste, transfer, adjustment). HARUS
  * dipanggil di dalam transaksi yang mencakup ingredients, products, stockMovements,
- * syncQueue. Menjaga histori: `stockMovements` tak pernah dihapus.
+ * syncQueue. Menjaga histori: `stockMovements` hanya bisa dihapus admin secara
+ * eksplisit (`deleteStockMovement`/`clearStockMovements`), tak pernah otomatis.
  */
 export async function postStockMovement(input: StockPostInput): Promise<void> {
   const now = getTrustedNow()

@@ -1,7 +1,7 @@
 import { db } from '@/db/schema'
 import { useSyncStore } from '@/state/syncStore'
 import { getDeviceId, getLastPullAt, setLastPullAt } from '@/sync/device'
-import { applyRemoteEntities } from '@/sync/applyRemote'
+import { applyRemoteDeletions, applyRemoteEntities } from '@/sync/applyRemote'
 import { isBackendConfigured, pullSyncChanges, pushSyncBatch, type SyncPushItem } from '@/sync/client'
 import type { SyncQueueEntry } from '@/types/domain'
 
@@ -65,6 +65,7 @@ async function pushPendingQueue(): Promise<void> {
       entityId: entry.entityId,
       idempotencyKey: entry.idempotencyKey,
       payload: entry.payload,
+      ...(entry.operation === 'delete' ? { deleted: true } : {}),
     }))
 
     try {
@@ -107,6 +108,7 @@ async function pullRemoteChanges(): Promise<void> {
   const since = getLastPullAt()
   const response = await pullSyncChanges(since)
   await applyRemoteEntities(response.entities)
+  await applyRemoteDeletions(response.deletions ?? {})
   setLastPullAt(response.serverTime)
 }
 

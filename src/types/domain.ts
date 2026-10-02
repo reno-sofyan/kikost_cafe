@@ -10,6 +10,7 @@ export type Permission =
   | 'order.return'
   | 'refund.restock'
   | 'stock.adjust'
+  | 'stock.delete'
   | 'reports.view'
   | 'settings.manage'
   | 'users.manage'
@@ -839,7 +840,7 @@ export type SyncEntity =
   | 'settings'
   | 'auditLogs'
 
-export type SyncOperation = 'upsert'
+export type SyncOperation = 'upsert' | 'delete'
 export type SyncQueueStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 
 export interface SyncQueueEntry {

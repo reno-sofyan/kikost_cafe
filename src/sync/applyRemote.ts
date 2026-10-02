@@ -1,7 +1,7 @@
 import { db } from '@/db/schema'
 import { reconcileTransactionSequence } from '@/db/repositories/settings'
 import { playNewOrderChime } from '@/lib/kitchenSound'
-import { enqueueSync } from '@/sync/outbox'
+import { DELETABLE_SYNC_ENTITIES, enqueueSync, type DeletableSyncEntity } from '@/sync/outbox'
 import type { OnlinePayment, Order, Payment, SyncEntity } from '@/types/domain'
 
 const IMMUTABLE_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
@@ -35,6 +35,19 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
       default:
         await applyGeneric(entity, rows)
     }
+  }
+}
+
+/**
+ * Menerapkan penghapusan dari perangkat lain (tombstone server). Hanya entitas di
+ * `DELETABLE_SYNC_ENTITIES` yang dihormati — daftar lain diabaikan, jadi server yang
+ * salah konfigurasi tak bisa menghapus pesanan/pembayaran lokal.
+ */
+export async function applyRemoteDeletions(deletions: Partial<Record<SyncEntity, string[]>>): Promise<void> {
+  for (const entity of DELETABLE_SYNC_ENTITIES) {
+    const ids = deletions[entity]
+    if (!ids || ids.length === 0) continue
+    await db.table<unknown, string>(entity satisfies DeletableSyncEntity).bulkDelete(ids)
   }
 }
 

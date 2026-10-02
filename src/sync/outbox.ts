@@ -91,6 +91,35 @@ export async function enqueueSync(entity: SyncEntity, entityId: string, payload:
   await db.syncQueue.add(entry)
 }
 
+/**
+ * Entitas yang boleh dihapus lewat sync. HARUS identik dengan `DELETABLE_ENTITIES`
+ * di backend (backend/src/lib/entities.ts) — server menolak penghapusan entitas lain.
+ */
+export const DELETABLE_SYNC_ENTITIES = ['ingredients', 'stockMovements'] as const
+export type DeletableSyncEntity = (typeof DELETABLE_SYNC_ENTITIES)[number]
+
+/**
+ * Mendaftarkan PENGHAPUSAN ke antrean sync (tombstone di server, lalu perangkat lain
+ * ikut menghapus saat pull). Sama seperti `enqueueSync`: panggil di dalam transaksi
+ * Dexie yang sama dengan penghapusan lokal.
+ */
+export async function enqueueSyncDelete(entity: DeletableSyncEntity, entityId: string): Promise<void> {
+  const now = Date.now()
+  await db.syncQueue.add({
+    id: newId(),
+    entity,
+    entityId,
+    operation: 'delete',
+    payload: { deletedAt: now },
+    idempotencyKey: newIdempotencyKey(),
+    status: 'pending',
+    attempts: 0,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
 export async function countPendingSync(): Promise<number> {
   return db.syncQueue.where('status').anyOf(['pending', 'failed']).count()
 }
