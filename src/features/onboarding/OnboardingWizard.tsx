@@ -30,6 +30,7 @@ export function OnboardingWizard() {
   const login = useSessionStore((s) => s.login)
 
   const [businessType, setBusinessType] = useState<BusinessType>('lainnya')
+  const [withSampleCatalog, setWithSampleCatalog] = useState(true)
   const [businessName, setBusinessName] = useState('')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
@@ -127,7 +128,7 @@ export function OnboardingWizard() {
             entityId: 'singleton',
             details: 'Onboarding aplikasi selesai, akun administrator dibuat',
           })
-          await seedInitialCatalog(businessType)
+          if (withSampleCatalog) await seedInitialCatalog(businessType)
           login(admin)
         })(),
         20_000,
@@ -218,6 +219,15 @@ export function OnboardingWizard() {
                   Menentukan menu mana yang ditampilkan (Meja, Dapur, Pesanan QR, Pager). Bisa diubah lagi nanti di Pengaturan.
                 </p>
               </div>
+              <label className="flex items-start gap-2 text-sm text-ink-200">
+                <input type="checkbox" className="mt-0.5" checked={withSampleCatalog} onChange={(e) => setWithSampleCatalog(e.target.checked)} />
+                <span>
+                  Isi katalog contoh
+                  <span className="block text-xs text-ink-500">
+                    Produk &amp; kategori contoh untuk mencoba-coba. Matikan bila ingin langsung memasukkan produk asli.
+                  </span>
+                </span>
+              </label>
               <Field label="Nama Usaha">
                 <input
                   className="input-field"
@@ -374,7 +384,7 @@ export function OnboardingWizard() {
             <div className="space-y-4 text-center">
               <Icon name="refresh" size={40} className="mx-auto animate-spin text-brand-600" />
               <h2 className="text-xl font-bold">Menyiapkan aplikasi…</h2>
-              <p className="text-sm text-ink-300">Membuat akun administrator dan katalog contoh.</p>
+              <p className="text-sm text-ink-300">{withSampleCatalog ? 'Membuat akun administrator dan katalog contoh.' : 'Membuat akun administrator.'}</p>
             </div>
           )}
         </div>
