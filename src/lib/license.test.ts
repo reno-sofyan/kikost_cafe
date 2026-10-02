@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_PUBLIC_KEY_JWK,
+  DEV_PUBLIC_KEY_JWK,
   InvalidLicenseSignatureError,
   MalformedLicenseError,
   canonicalLicenseBytes,
@@ -19,7 +20,7 @@ import {
  * Ditandatangani sungguhan lewat `scripts/license/sign-license.mjs
  *   --key scripts/license/dev-keypair.json --license-id L-TEST-0001
  *   --business "Kopi Demo" --plan pro --expires 2027-01-01 --max-devices 2`
- * — kunci publiknya SAMA PERSIS dengan DEFAULT_PUBLIC_KEY_JWK di license.ts,
+ * — kunci publiknya SAMA PERSIS dengan DEV_PUBLIC_KEY_JWK di license.ts,
  * jadi test ini membuktikan tooling CLI vendor & modul verifikasi klien
  * benar-benar saling cocok (bukan cuma masing-masing lulus sendiri-sendiri).
  */
@@ -41,8 +42,13 @@ afterEach(() => vi.useRealTimers())
 
 describe('verifySignedLicense', () => {
   it('menerima lisensi yang ditandatangani tool CLI vendor dengan kunci privat yang cocok', async () => {
-    const payload = await verifySignedLicense(VALID_LICENSE)
+    const payload = await verifySignedLicense(VALID_LICENSE, DEV_PUBLIC_KEY_JWK)
     expect(payload).toEqual(VALID_LICENSE.payload)
+  })
+
+  it('kunci default (produksi) MENOLAK lisensi bertanda tangan kunci dev — privat dev ada di repo', async () => {
+    expect(DEFAULT_PUBLIC_KEY_JWK.x).not.toBe(DEV_PUBLIC_KEY_JWK.x)
+    await expect(verifySignedLicense(VALID_LICENSE)).rejects.toThrow(InvalidLicenseSignatureError)
   })
 
   it('menolak bila SATU field saja diubah setelah ditandatangani (mis. memperpanjang expiresAt sendiri)', async () => {
@@ -50,17 +56,17 @@ describe('verifySignedLicense', () => {
       ...VALID_LICENSE,
       payload: { ...VALID_LICENSE.payload, expiresAt: VALID_LICENSE.payload.expiresAt! + 1000 * 60 * 60 * 24 * 365 },
     }
-    await expect(verifySignedLicense(tampered)).rejects.toThrow(InvalidLicenseSignatureError)
+    await expect(verifySignedLicense(tampered, DEV_PUBLIC_KEY_JWK)).rejects.toThrow(InvalidLicenseSignatureError)
   })
 
   it('menolak bila plan diubah (mis. trial dinaikkan jadi pro tanpa tanda tangan baru)', async () => {
     const tampered: SignedLicense = { ...VALID_LICENSE, payload: { ...VALID_LICENSE.payload, plan: 'standard' } }
-    await expect(verifySignedLicense(tampered)).rejects.toThrow(InvalidLicenseSignatureError)
+    await expect(verifySignedLicense(tampered, DEV_PUBLIC_KEY_JWK)).rejects.toThrow(InvalidLicenseSignatureError)
   })
 
   it('menolak tanda tangan acak/rusak', async () => {
     const tampered: SignedLicense = { ...VALID_LICENSE, signature: btoa('bukan-tanda-tangan-sah') }
-    await expect(verifySignedLicense(tampered)).rejects.toThrow(InvalidLicenseSignatureError)
+    await expect(verifySignedLicense(tampered, DEV_PUBLIC_KEY_JWK)).rejects.toThrow(InvalidLicenseSignatureError)
   })
 
   it('menolak lisensi yang ditandatangani kunci privat LAIN (bukan pasangan kunci publik aplikasi)', async () => {
@@ -75,7 +81,7 @@ describe('verifySignedLicense', () => {
       payload: VALID_LICENSE.payload,
       signature: btoa(String.fromCharCode(...new Uint8Array(signatureBytes))),
     }
-    await expect(verifySignedLicense(forged, DEFAULT_PUBLIC_KEY_JWK)).rejects.toThrow(InvalidLicenseSignatureError)
+    await expect(verifySignedLicense(forged, DEV_PUBLIC_KEY_JWK)).rejects.toThrow(InvalidLicenseSignatureError)
   })
 })
 
@@ -134,12 +140,12 @@ describe('penyimpanan lisensi di perangkat', () => {
 
 describe('getCurrentLicenseState (titik masuk gabungan verifikasi + evaluasi)', () => {
   it('unlicensed bila tidak ada lisensi tersimpan', async () => {
-    expect(await getCurrentLicenseState()).toEqual({ status: 'unlicensed', payload: null })
+    expect(await getCurrentLicenseState(DEV_PUBLIC_KEY_JWK)).toEqual({ status: 'unlicensed', payload: null })
   })
 
   it('invalid (gagal aman) bila lisensi tersimpan sudah dirusak, bukan exception yang lolos', async () => {
     saveStoredLicense({ ...VALID_LICENSE, payload: { ...VALID_LICENSE.payload, businessName: 'Usaha Lain' } })
-    await expect(getCurrentLicenseState()).resolves.toEqual({ status: 'invalid', payload: null })
+    await expect(getCurrentLicenseState(DEV_PUBLIC_KEY_JWK)).resolves.toEqual({ status: 'invalid', payload: null })
   })
 
   it('active bila lisensi sah & belum kedaluwarsa menurut jam yang dipercaya', async () => {
@@ -147,7 +153,7 @@ describe('getCurrentLicenseState (titik masuk gabungan verifikasi + evaluasi)', 
     vi.setSystemTime(VALID_LICENSE.payload.expiresAt! - 1000)
     saveStoredLicense(VALID_LICENSE)
 
-    const state = await getCurrentLicenseState()
+    const state = await getCurrentLicenseState(DEV_PUBLIC_KEY_JWK)
     expect(state.status).toBe('active')
     expect(state.payload?.licenseId).toBe('L-TEST-0001')
   })
@@ -157,6 +163,6 @@ describe('getCurrentLicenseState (titik masuk gabungan verifikasi + evaluasi)', 
     vi.setSystemTime(VALID_LICENSE.payload.expiresAt! + 1000)
     saveStoredLicense(VALID_LICENSE)
 
-    expect((await getCurrentLicenseState()).status).toBe('expired')
+    expect((await getCurrentLicenseState(DEV_PUBLIC_KEY_JWK)).status).toBe('expired')
   })
 })

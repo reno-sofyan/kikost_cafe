@@ -11,11 +11,11 @@
  * app offline-first ini, tidak perlu "phone home" ke server lisensi untuk
  * memvalidasi.
  *
- * PENTING sebelum dipakai produksi: `DEFAULT_PUBLIC_KEY_JWK` di bawah adalah
- * kunci CONTOH/DEV (dibangkitkan oleh scripts/license/generate-keypair.mjs,
- * kunci privatnya sengaja ada di scripts/license/dev-keypair.json untuk
- * memudahkan pengujian) — GANTI dengan kunci publik asli milik vendor sebelum
- * modul ini benar-benar dipakai mengunci aplikasi klien.
+ * `DEFAULT_PUBLIC_KEY_JWK` di bawah adalah kunci publik PRODUKSI vendor —
+ * pasangan privatnya disimpan di luar repo (mesin vendor + password manager),
+ * tidak pernah di-commit. `DEV_PUBLIC_KEY_JWK` adalah kunci CONTOH untuk
+ * pengujian; privatnya sengaja ada di scripts/license/dev-keypair.json, jadi
+ * lisensi bertanda tangan dev DITOLAK oleh kunci default.
  *
  * Modul ini BELUM dikaitkan ke gerbang apa pun di UI (App.tsx dll.) — ini
  * murni fondasi yang siap dipanggil kapan saja model bisnis SaaS diaktifkan.
@@ -70,10 +70,23 @@ export class MalformedLicenseError extends Error {
 }
 
 /**
- * Kunci publik CONTOH/DEV — lihat catatan di atas berkas. Pasangan privatnya:
- * scripts/license/dev-keypair.json (JANGAN PERNAH commit pasangan privat asli).
+ * Kunci publik PRODUKSI — yang dibawa aplikasi klien. Pasangan privatnya TIDAK
+ * PERNAH masuk repo ini (lihat catatan di atas berkas).
  */
 export const DEFAULT_PUBLIC_KEY_JWK: JsonWebKey = {
+  kty: 'EC',
+  crv: 'P-256',
+  x: 'uqMlD0ot2gF_64TeBdhZkZ07Pfvb1j4SXIMFRBSmx5g',
+  y: 'CYDJWlEFHjYEEonqQCCVehb8800q49kZGVA2HtrDADU',
+  ext: true,
+  key_ops: ['verify'],
+}
+
+/**
+ * Kunci publik CONTOH/DEV — hanya untuk pengujian. Pasangan privatnya:
+ * scripts/license/dev-keypair.json (sengaja di-commit; bukan kunci produksi).
+ */
+export const DEV_PUBLIC_KEY_JWK: JsonWebKey = {
   kty: 'EC',
   crv: 'P-256',
   x: 'OoqPsf3L_MdVO6McKsCOtSQRfPbSytbqJyd5c8GQwJY',
