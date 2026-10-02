@@ -137,8 +137,20 @@ function OrderFlow() {
     setLoading(true)
     fetch(`${API}/api/t/${encodeURIComponent(token)}`)
       .then(async (r) => {
-        const body = await r.json().catch(() => ({}))
-        if (!r.ok) throw new Error(body.error || 'Menu tidak dapat dimuat.')
+        let body: unknown
+        try {
+          body = await r.json()
+        } catch {
+          // Backend tidak terjangkau/salah alamat biasanya menjawab dengan HTML
+          // (mis. halaman aplikasi ini sendiri lewat fallback SPA), bukan JSON —
+          // tanpa cek ini, body kosong lolos ke bawah dan meledak sebagai
+          // "Cannot read properties of undefined" yang membingungkan pelanggan.
+          throw new Error('Server pesanan tidak dapat dihubungi. Coba pindai ulang QR atau hubungi staf.')
+        }
+        if (!r.ok) throw new Error((body as { error?: string })?.error || 'Menu tidak dapat dimuat.')
+        if (!body || typeof body !== 'object' || !Array.isArray((body as Menu).items) || !Array.isArray((body as Menu).categories)) {
+          throw new Error('Menu tidak dapat dimuat — data dari server tidak lengkap.')
+        }
         return body as Menu
       })
       .then((m) => alive && setMenu(m))
