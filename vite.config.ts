@@ -58,9 +58,20 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: { '/api': 'http://localhost:8094' },
   },
   build: {
-    target: 'es2022',
-    sourcemap: true,
+    // chrome87: WebView bawaan tablet murah (mis. Galaxy Tab A8, Android 11)
+    // bisa tertinggal versi bila Play Store tak pernah memperbaruinya. es2022
+    // meloloskan sintaks (class static block, dll.) yang baru ada di Chrome 94+.
+    target: ['es2020', 'chrome87'],
+    // Source map produksi TIDAK dibangkitkan sama sekali — sebelumnya `true`,
+    // yang membuat seluruh source code (tak diminifikasi) bisa diambil siapa
+    // pun yang tahu URL-nya, karena Dockerfile menyalin seluruh `dist/` apa
+    // adanya ke nginx tanpa memfilter `*.map` (lihat juga blok penolakan
+    // `*.map` di deploy/nginx/web.conf, sebagai lapisan jaga-jaga kedua bila
+    // suatu saat sourcemap dibangkitkan lagi lewat jalur lain). Debug error
+    // produksi tetap bisa dilakukan dengan rebuild lokal dari commit yang sama.
+    sourcemap: false,
   },
 })
