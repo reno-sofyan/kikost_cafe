@@ -9,9 +9,9 @@ function catalog(over: Partial<Catalog> = {}): Catalog {
       { id: 'c2', name: 'Nonaktif', sortOrder: 1, active: false },
     ],
     products: [
-      { id: 'p1', categoryId: 'c1', name: 'Latte', price: 25000, photoDataUrl: null, isAvailable: true, modifierGroupIds: ['g1'] },
-      { id: 'p2', categoryId: 'c1', name: 'Habis', price: 20000, photoDataUrl: null, isAvailable: false, modifierGroupIds: [] },
-      { id: 'p3', categoryId: 'c2', name: 'Tersembunyi', price: 10000, photoDataUrl: null, isAvailable: true, modifierGroupIds: [] },
+      { id: 'p1', categoryId: 'c1', name: 'Latte', description: '', price: 25000, photoDataUrl: null, isAvailable: true, modifierGroupIds: ['g1'] },
+      { id: 'p2', categoryId: 'c1', name: 'Habis', description: '', price: 20000, photoDataUrl: null, isAvailable: false, modifierGroupIds: [] },
+      { id: 'p3', categoryId: 'c2', name: 'Tersembunyi', description: '', price: 10000, photoDataUrl: null, isAvailable: true, modifierGroupIds: [] },
     ],
     modifierGroups: [{ id: 'g1', name: 'Ukuran', required: true, multiSelect: false, sortOrder: 0 }],
     modifierOptions: [
