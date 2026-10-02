@@ -17,6 +17,7 @@ backend Node.js/Fastify + PostgreSQL, deployment Docker Compose terpisah di VPS 
 | [PRINTER.md](PRINTER.md) | Konfigurasi printer thermal & pengujian hardware |
 | [PORTS-CONTAINERS.md](PORTS-CONTAINERS.md) | Daftar container, port, volume, network |
 | [TEST-PLAN.md](TEST-PLAN.md) | Daftar pengujian + hasil + item yang butuh hardware fisik |
+| [QA-CHECKLIST.md](QA-CHECKLIST.md) | Checklist testing manual di tablet/perangkat nyata, per area fitur |
 | [GUIDE-KASIR.md](GUIDE-KASIR.md) | Panduan penggunaan harian untuk kasir |
 | [GUIDE-ADMIN.md](GUIDE-ADMIN.md) | Panduan administrator (produk, pengguna, laporan, backup) |
 | [VPS-PRECHECK.md](VPS-PRECHECK.md) | Cara menjalankan & membaca `deploy/scripts/vps-inspect.sh` |
