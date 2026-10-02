@@ -51,6 +51,11 @@ const schema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+
+  // Token konsol operator (dashboard /ops lintas-tenant untuk pemilik backend).
+  // Kosong = seluruh rute /ops dimatikan & mengembalikan 404. Wajib panjang & acak:
+  //   openssl rand -hex 32
+  OPS_TOKEN: z.string().default(''),
 })
 
 export type AppConfig = z.infer<typeof schema> & {

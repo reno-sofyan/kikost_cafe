@@ -13,6 +13,7 @@ import { registerDeviceRoutes } from './routes/devices.js'
 import { registerEventRoutes } from './routes/events.js'
 import { registerPaymentWebhook } from './routes/paymentWebhook.js'
 import { registerMidtransRoutes } from './routes/midtransPay.js'
+import { registerOpsRoutes } from './routes/ops.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -134,6 +135,18 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // ---- Pembayaran QRIS Midtrans (mulai transaksi + notifikasi) ----
   await registerMidtransRoutes(app)
+
+  // ---- Konsol operator lintas-tenant (/ops) — hanya bila OPS_TOKEN diisi ----
+  // Didaftarkan sebagai plugin ter-enkapsulasi agar hook auth-nya ter-scope ke /ops
+  // saja dan tidak menyentuh rute lain. Tanpa OPS_TOKEN, /ops tidak ada (404).
+  if (config.OPS_TOKEN) {
+    await app.register(
+      async (instance) => {
+        await registerOpsRoutes(instance, config.OPS_TOKEN)
+      },
+      { prefix: '/ops' },
+    )
+  }
 
   // Bersihkan tabel throttle berkala.
   const pruneTimer = setInterval(pruneAuthThrottle, 5 * 60_000)
