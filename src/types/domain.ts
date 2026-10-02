@@ -140,13 +140,23 @@ export interface PrinterConfig extends PrinterConnectionSettings {
   autoPrintKitchenOrder: boolean
 }
 
-// ---- Integrasi pager restoran Retekess (Wireless Calling System) ----
-
-export type PagerConnectionType = 'none' | 'usb-serial'
+// ---- Integrasi pager restoran (Wireless Calling System) ----
 
 /**
- * Setelan jembatan ke base station pager Retekess yang dicolok ke tablet lewat
- * USB-OTG (butuh kabel USB-to-RS232 FTDI/CP2102/CH340/PL2303 untuk model DB9).
+ * - `usb-serial`: base station dengan antarmuka PC call (Retekess TD112/TD159/dst.)
+ *   dicolok via USB-OTG — aplikasi mengirim perintah panggil otomatis.
+ * - `manual`: base station keypad-only tanpa antarmuka software (mis. Retekess
+ *   TD157, **iWare Q10M**, dan kebanyakan "wireless calling system" murah di
+ *   marketplace) — aplikasi TIDAK bisa mengirim perintah apa pun ke perangkat
+ *   ini. Ia hanya menetapkan & menampilkan nomor coaster di Layar Dapur; staf
+ *   memencet nomor itu sendiri di keypad transmitter.
+ */
+export type PagerConnectionType = 'none' | 'usb-serial' | 'manual'
+
+/**
+ * Setelan jembatan ke base station pager restoran yang dicolok ke tablet lewat
+ * USB-OTG (butuh kabel USB-to-RS232 FTDI/CP2102/CH340/PL2303 untuk model DB9),
+ * ATAU mode manual untuk base station keypad-only tanpa kabel sama sekali.
  * Nomor coaster (`Order.pagerNumber`) didaur ulang dari kumpulan 1..maxPagerNumber
  * saat order siap, jadi terpisah dari nomor antrean harian yang terus naik.
  */

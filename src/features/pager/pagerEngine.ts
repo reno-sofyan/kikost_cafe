@@ -2,6 +2,7 @@ import { db } from '@/db/schema'
 import { getSettings } from '@/db/repositories/settings'
 import { enqueueSync } from '@/sync/outbox'
 import { jakartaDateKey } from '@/lib/datetime'
+import { getTrustedNow } from '@/lib/clockGuard'
 import { resolvePagerDriver } from '@/features/pager/pagerDrivers'
 import type { Order } from '@/types/domain'
 
@@ -13,7 +14,7 @@ const lastAttemptAt = new Map<string, number>()
 
 /** Order hari ini yang masih menunggu diambil pelanggan (memegang coaster fisik). */
 async function readyOrdersToday(): Promise<Order[]> {
-  const todayKey = jakartaDateKey(Date.now())
+  const todayKey = jakartaDateKey(getTrustedNow())
   return db.orders
     .where('lifecycleStatus')
     .equals('READY')
@@ -60,9 +61,33 @@ export async function getPagerPoolSnapshot(): Promise<PagerPoolSnapshot> {
   }
 }
 
+/** Tetapkan `pagerNumber` + `pagerCalledAt` pada sebuah order (di dalam transaksi), lalu sinkronkan. */
+async function assignPagerNumber(orderId: string, pagerNumber: number): Promise<void> {
+  await db.transaction('rw', db.orders, db.syncQueue, async () => {
+    const fresh = await db.orders.get(orderId)
+    if (!fresh || fresh.pagerCalledAt != null) return
+    await db.orders.update(orderId, {
+      pagerNumber,
+      pagerCalledAt: getTrustedNow(),
+      updatedAt: getTrustedNow(),
+    })
+    const updated = await db.orders.get(orderId)
+    if (updated) await enqueueSync('orders', orderId, updated)
+  })
+}
+
 /**
- * Memindai order yang baru siap (lifecycle READY) dan membunyikan pager Retekess
- * memakai nomor coaster dari kumpulan 1..maxPagerNumber — sekali per order.
+ * Memindai order yang baru siap (lifecycle READY) dan menetapkan nomor coaster
+ * dari kumpulan 1..maxPagerNumber — sekali per order. Perilakunya bercabang
+ * menurut `connectionType`:
+ *
+ * - `usb-serial`: mengirim perintah panggil ke base station lewat driver;
+ *   `pagerCalledAt` baru ditandai setelah pengiriman BERHASIL, dan dicoba lagi
+ *   dengan backoff bila gagal (kabel lepas, port sibuk, dst.).
+ * - `manual`: base station keypad-only (mis. iWare Q10M, Retekess TD157) tidak
+ *   punya antarmuka apa pun untuk dikirimi perintah — nomor langsung ditetapkan
+ *   & ditandai (tak ada transport yang bisa gagal/di-retry). Layar Dapur
+ *   menampilkannya sebagai instruksi untuk staf memencet manual di keypad.
  *
  * Nomor coaster didaur ulang: begitu order lepas dari READY (diambil/dibatalkan)
  * nomornya bebas dipakai order berikutnya, jadi hari sibuk dengan lebih dari
@@ -70,8 +95,8 @@ export async function getPagerPoolSnapshot(): Promise<PagerPoolSnapshot> {
  * dipakai, order menunggu dan dicoba lagi siklus berikutnya.
  *
  * `order.pagerCalledAt` + `order.pagerNumber` ikut tersinkron, jadi kalau
- * perangkat lain sudah memanggil, perangkat ini melewatinya. Perangkat tanpa
- * hardware pager (`connectionType: 'none'`) tidak melakukan apa-apa.
+ * perangkat lain sudah memanggil/menetapkan, perangkat ini melewatinya.
+ * Perangkat tanpa pager (`connectionType: 'none'`) tidak melakukan apa-apa.
  */
 export async function processPagerQueue(): Promise<void> {
   const { pagerConfig } = await getSettings()
@@ -83,8 +108,8 @@ export async function processPagerQueue(): Promise<void> {
     .sort((a, b) => a.createdAt - b.createdAt)
   if (pending.length === 0) return
 
-  const driver = resolvePagerDriver(pagerConfig)
-  const now = Date.now()
+  const driver = pagerConfig.connectionType === 'usb-serial' ? resolvePagerDriver(pagerConfig) : null
+  const now = getTrustedNow()
 
   for (const order of pending) {
     const prev = lastAttemptAt.get(order.id)
@@ -101,20 +126,17 @@ export async function processPagerQueue(): Promise<void> {
       continue
     }
 
+    if (driver == null) {
+      // Mode manual: tidak ada transport untuk dicoba/gagal — langsung tetapkan.
+      await assignPagerNumber(order.id, pagerNumber)
+      order.pagerNumber = pagerNumber
+      continue
+    }
+
     lastAttemptAt.set(order.id, now)
     try {
       await driver.call(pagerNumber)
-      await db.transaction('rw', db.orders, db.syncQueue, async () => {
-        const fresh = await db.orders.get(order.id)
-        if (!fresh || fresh.pagerCalledAt != null) return
-        await db.orders.update(order.id, {
-          pagerNumber,
-          pagerCalledAt: Date.now(),
-          updatedAt: Date.now(),
-        })
-        const updated = await db.orders.get(order.id)
-        if (updated) await enqueueSync('orders', order.id, updated)
-      })
+      await assignPagerNumber(order.id, pagerNumber)
       // Tandai lokal agar draw berikutnya di loop yang sama tidak memakai ulang nomor.
       order.pagerNumber = pagerNumber
       lastAttemptAt.delete(order.id)

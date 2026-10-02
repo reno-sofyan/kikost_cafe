@@ -47,7 +47,9 @@ export function KitchenDisplayScreen() {
   const orderIds = useMemo(() => Array.from(new Set((items ?? []).map((i) => i.orderId))), [items])
   const orders = useLiveQuery(() => db.orders.where('id').anyOf(orderIds.length ? orderIds : ['-']).toArray(), [orderIds])
   const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
-  const pagerEnabled = useLiveQuery(async () => (await getSettings()).pagerConfig.connectionType === 'usb-serial', []) ?? false
+  const pagerConnectionType = useLiveQuery(async () => (await getSettings()).pagerConfig.connectionType, [])
+  const pagerEnabled = pagerConnectionType != null && pagerConnectionType !== 'none'
+  const pagerIsManual = pagerConnectionType === 'manual'
   const ticketsRaw = useLiveQuery(
     () => db.kitchenTickets.where('orderId').anyOf(orderIds.length ? orderIds : ['-']).toArray(),
     [orderIds],
@@ -118,12 +120,17 @@ export function KitchenDisplayScreen() {
                   order.pagerNumber != null ? (
                     <div
                       className={`mb-2 inline-flex w-fit items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${
-                        order.pagerCalledAt ? 'bg-success-600/30 text-success-400' : 'bg-ink-700 text-ink-300'
+                        pagerIsManual
+                          ? 'bg-accent-600/30 text-accent-400'
+                          : order.pagerCalledAt
+                            ? 'bg-success-600/30 text-success-400'
+                            : 'bg-ink-700 text-ink-300'
                       }`}
                     >
                       <Icon name="pager" size={13} />
-                      Pager #{order.pagerNumber}
-                      {order.pagerCalledAt ? ' • dipanggil' : ' • menunggu'}
+                      {pagerIsManual
+                        ? `Panggil manual coaster #${order.pagerNumber} di keypad`
+                        : `Pager #${order.pagerNumber}${order.pagerCalledAt ? ' • dipanggil' : ' • menunggu'}`}
                     </div>
                   ) : order.pagerCalledAt == null ? (
                     <div className="mb-2 inline-flex w-fit items-center gap-1 rounded bg-yellow-900/30 px-2 py-0.5 text-xs font-semibold text-yellow-400">

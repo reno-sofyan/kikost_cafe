@@ -30,7 +30,9 @@ export function PagerSettings() {
   if (!form) return null
 
   const set = <K extends keyof PagerConfig>(key: K, value: PagerConfig[K]) => setForm({ ...form, [key]: value })
-  const enabled = form.connectionType === 'usb-serial'
+  const enabled = form.connectionType !== 'none'
+  const isUsbSerial = form.connectionType === 'usb-serial'
+  const isManual = form.connectionType === 'manual'
 
   let framePreview = ''
   try {
@@ -72,35 +74,71 @@ export function PagerSettings() {
   return (
     <div className="max-w-lg space-y-4">
       <div>
-        <h2 className="text-lg font-bold text-ink-50">Pager Restoran (Retekess)</h2>
+        <h2 className="text-lg font-bold text-ink-50">Pager Restoran</h2>
         <p className="mt-1 text-xs text-ink-500">
-          Base station Retekess dicolok ke tablet lewat USB-OTG (langsung, atau via adapter USB-to-RS232 FTDI/CP2102/CH340/PL2303).
-          Nomor antrean pesanan dipakai sebagai nomor pager.
+          Bunyikan coaster pager otomatis saat pesanan siap — atau, untuk base station keypad-only yang tidak bisa
+          dikendalikan software (mis. iWare Q10M, Retekess TD157), tampilkan nomor coasternya di Layar Dapur supaya
+          staf memencet manual.
         </p>
       </div>
 
-      {!isNative && (
+      <label className="block">
+        <span className="mb-1 block text-sm text-ink-300">Jenis pager</span>
+        <select
+          className="input-field"
+          value={form.connectionType}
+          onChange={(e) => set('connectionType', e.target.value as PagerConfig['connectionType'])}
+        >
+          <option value="none">Nonaktif</option>
+          <option value="usb-serial">USB/serial — panggil otomatis (Retekess TD112/TD159/dst. berantarmuka PC call)</option>
+          <option value="manual">Manual — hanya tampilkan nomor (base station keypad-only, mis. iWare Q10M, Retekess TD157)</option>
+        </select>
+      </label>
+
+      {isUsbSerial && !isNative && (
         <p className="rounded-lg bg-ink-800 p-3 text-xs text-ink-400">
           Integrasi pager USB hanya berfungsi pada aplikasi Android (APK), bukan di web/PWA.
         </p>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-ink-200">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => set('connectionType', e.target.checked ? 'usb-serial' : 'none')}
-        />
-        Aktifkan pager Retekess di perangkat ini
-      </label>
+      {isManual && (
+        <p className="rounded-lg bg-accent-600/10 p-3 text-xs text-accent-400">
+          Mode manual: aplikasi ini <span className="font-semibold">tidak</span> terhubung ke base station Anda sama
+          sekali — tidak ada kabel, tidak ada USB. Begitu semua item pesanan siap, Layar Dapur akan menampilkan
+          badge <span className="font-semibold">"Panggil manual coaster #N"</span>; staf tinggal memencet nomor N
+          itu di keypad transmitter Anda.
+        </p>
+      )}
 
       {enabled && (
         <>
           <label className="flex items-center gap-2 text-sm text-ink-200">
             <input type="checkbox" checked={form.autoCallOnReady} onChange={(e) => set('autoCallOnReady', e.target.checked)} />
-            Panggil otomatis saat semua item pesanan berstatus <span className="font-semibold">Siap</span>
+            {isManual
+              ? 'Tetapkan & tampilkan nomor coaster otomatis saat semua item pesanan berstatus Siap'
+              : (
+                <>
+                  Panggil otomatis saat semua item pesanan berstatus <span className="font-semibold">Siap</span>
+                </>
+              )}
           </label>
 
+          <label className="block">
+            <span className="mb-1 block text-sm text-ink-300">Nomor pager maks. (= jumlah coaster fisik Anda)</span>
+            <input
+              type="number"
+              min={1}
+              max={999}
+              className="input-field"
+              value={form.maxPagerNumber}
+              onChange={(e) => set('maxPagerNumber', Math.max(1, Number(e.target.value)))}
+            />
+          </label>
+        </>
+      )}
+
+      {isUsbSerial && (
+        <>
           <label className="block">
             <span className="mb-1 block text-sm text-ink-300">Perangkat USB</span>
             <div className="flex gap-2">
@@ -161,29 +199,16 @@ export function PagerSettings() {
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1 block text-sm text-ink-300">Baud rate</span>
-              <select className="input-field" value={form.baudRate} onChange={(e) => set('baudRate', Number(e.target.value))}>
-                {[2400, 4800, 9600, 19200, 38400, 57600, 115200].map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-sm text-ink-300">Nomor pager maks.</span>
-              <input
-                type="number"
-                min={1}
-                max={999}
-                className="input-field"
-                value={form.maxPagerNumber}
-                onChange={(e) => set('maxPagerNumber', Math.max(1, Number(e.target.value)))}
-              />
-            </label>
-          </div>
+          <label className="block">
+            <span className="mb-1 block text-sm text-ink-300">Baud rate</span>
+            <select className="input-field" value={form.baudRate} onChange={(e) => set('baudRate', Number(e.target.value))}>
+              {[2400, 4800, 9600, 19200, 38400, 57600, 115200].map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="block">
             <span className="mb-1 block text-sm text-ink-300">Jeda antar byte (ms) — biasanya 0</span>

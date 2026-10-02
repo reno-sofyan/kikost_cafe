@@ -62,6 +62,11 @@ export function resolvePagerDriver(config: PagerConfig): PagerDriver {
   switch (config.connectionType) {
     case 'usb-serial':
       return new NativeUsbSerialPagerDriver(config)
+    case 'manual':
+      // Base station keypad-only (mis. iWare Q10M, Retekess TD157) tidak punya
+      // antarmuka apa pun untuk dikirimi perintah — lihat pagerEngine.ts, yang
+      // untuk mode ini tidak pernah memanggil driver ini sama sekali.
+      return new NoopPagerDriver()
     case 'none':
     default:
       return new NoopPagerDriver()

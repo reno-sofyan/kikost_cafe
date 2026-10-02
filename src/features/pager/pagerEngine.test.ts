@@ -135,3 +135,50 @@ describe('processPagerQueue', () => {
     expect(order?.pagerNumber ?? null).toBeNull()
   })
 })
+
+const PAGER_MANUAL: PagerConfig = {
+  ...PAGER_ON,
+  connectionType: 'manual',
+}
+
+describe('processPagerQueue — mode manual (base station keypad-only, mis. iWare Q10M)', () => {
+  beforeEach(() => {
+    seq = 0
+  })
+
+  it('menetapkan & langsung menandai pagerNumber TANPA memanggil transport apa pun', async () => {
+    await updateSettings({ pagerConfig: PAGER_MANUAL })
+    const id = await readyOrder()
+
+    await processPagerQueue()
+
+    expect(sent).toHaveLength(0) // tidak ada byte terkirim — tak ada kabel ke base station
+    const order = await db.orders.get(id)
+    expect(order?.pagerNumber).toBe(1)
+    expect(order?.pagerCalledAt).toBeTypeOf('number')
+  })
+
+  it('nomor coaster tetap berurutan (FIFO) & didaur ulang seperti mode usb-serial', async () => {
+    await updateSettings({ pagerConfig: { ...PAGER_MANUAL, maxPagerNumber: 2 } })
+    const a = await readyOrder()
+    const b = await readyOrder()
+    const c = await readyOrder()
+
+    await processPagerQueue()
+    expect((await db.orders.get(a))?.pagerNumber).toBe(1)
+    expect((await db.orders.get(b))?.pagerNumber).toBe(2)
+    expect((await db.orders.get(c))?.pagerNumber ?? null).toBeNull() // kumpulan penuh, menunggu
+
+    await db.orders.update(a, { lifecycleStatus: 'SERVED' })
+    await processPagerQueue()
+    expect((await db.orders.get(c))?.pagerNumber).toBe(1)
+    expect(sent).toHaveLength(0)
+  })
+
+  it('tidak menetapkan apa pun bila autoCallOnReady mati', async () => {
+    await updateSettings({ pagerConfig: { ...PAGER_MANUAL, autoCallOnReady: false } })
+    const id = await readyOrder()
+    await processPagerQueue()
+    expect((await db.orders.get(id))?.pagerNumber ?? null).toBeNull()
+  })
+})
