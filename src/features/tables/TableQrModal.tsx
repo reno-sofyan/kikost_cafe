@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import QRCode from 'qrcode'
 import { getSettings } from '@/db/repositories/settings'
-import { deleteTableIfUnused, issueQrToken, listTables, setQrActive, updateTable } from '@/db/repositories/tables'
+import { deleteTableIfUnused, issueQrToken, listTables, setQrActive, tableDeleteBlockReason, updateTable } from '@/db/repositories/tables'
 import { useSessionStore } from '@/state/sessionStore'
 import { saveFile } from '@/lib/saveFile'
 import { Icon } from '@/components/ui/Icon'
@@ -30,6 +30,7 @@ export function TableQrModal({ table: initial, onClose }: Props) {
   const actor = { userId: currentUser.id, userName: currentUser.name }
   const settings = useLiveQuery(() => getSettings(), [])
   const table = useLiveQuery(() => listTables(), [])?.find((t) => t.id === initial.id) ?? initial
+  const deleteBlockReason = useLiveQuery(() => tableDeleteBlockReason(table.id), [table.id, table.status])
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
@@ -198,8 +199,9 @@ export function TableQrModal({ table: initial, onClose }: Props) {
           </>
         )}
         <button
-          className="btn-ghost !text-red-400"
-          disabled={busy}
+          className="btn-ghost !text-red-400 disabled:!text-ink-500"
+          disabled={busy || !!deleteBlockReason}
+          title={deleteBlockReason ?? undefined}
           onClick={() =>
             void guard(async () => {
               const ok = await confirm({
@@ -216,6 +218,7 @@ export function TableQrModal({ table: initial, onClose }: Props) {
         >
           Hapus Meja
         </button>
+        {deleteBlockReason && <p className="text-center text-xs text-ink-500">{deleteBlockReason}</p>}
       </div>
       {confirmDialog}
     </Modal>

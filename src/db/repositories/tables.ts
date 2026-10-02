@@ -3,6 +3,7 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import type { CafeTable, TableStatus } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export async function listTables(): Promise<CafeTable[]> {
   return db.cafeTables.orderBy('name').toArray()
@@ -22,7 +23,7 @@ export async function createTable(input: { name: string; area: string; capacity:
     qrActive: false,
     posX: null,
     posY: null,
-    updatedAt: Date.now(),
+    updatedAt: getTrustedNow(),
   }
   await db.transaction('rw', db.cafeTables, db.syncQueue, async () => {
     await db.cafeTables.add(table)
@@ -38,10 +39,28 @@ export async function setTablePosition(id: string, posX: number, posY: number): 
 
 export async function updateTable(id: string, patch: Partial<Omit<CafeTable, 'id'>>): Promise<void> {
   await db.transaction('rw', db.cafeTables, db.syncQueue, async () => {
-    await db.cafeTables.update(id, { ...patch, updatedAt: Date.now() })
+    await db.cafeTables.update(id, { ...patch, updatedAt: getTrustedNow() })
     const updated = await db.cafeTables.get(id)
     if (updated) await enqueueSync('cafeTables', id, updated)
   })
+}
+
+/**
+ * Alasan sebuah meja tidak bisa dihapus, untuk ditampilkan di UI SEBELUM
+ * pengguna menekan tombol Hapus (bukan cuma setelah gagal). `null` = boleh
+ * dihapus.
+ */
+export async function tableDeleteBlockReason(id: string): Promise<string | null> {
+  const table = await db.cafeTables.get(id)
+  if (!table) return null
+  if (table.status !== 'available') {
+    return 'Meja sedang terisi atau menunggu pembersihan — selesaikan dulu sebelum menghapus.'
+  }
+  const used = await db.orders.where('tableId').equals(id).count()
+  if (used > 0) {
+    return 'Meja ini pernah dipakai untuk pesanan — riwayat akan rusak jika dihapus. Nonaktifkan QR-nya saja bila sudah tak dipakai.'
+  }
+  return null
 }
 
 /**
@@ -53,13 +72,8 @@ export async function updateTable(id: string, patch: Partial<Omit<CafeTable, 'id
 export async function deleteTableIfUnused(id: string): Promise<void> {
   const table = await db.cafeTables.get(id)
   if (!table) return
-  if (table.status !== 'available') {
-    throw new Error('Meja sedang terisi atau menunggu pembersihan — selesaikan dulu sebelum menghapus.')
-  }
-  const used = await db.orders.where('tableId').equals(id).count()
-  if (used > 0) {
-    throw new Error('Meja ini pernah dipakai untuk pesanan — riwayat akan rusak jika dihapus. Nonaktifkan QR-nya saja bila sudah tak dipakai.')
-  }
+  const blockReason = await tableDeleteBlockReason(id)
+  if (blockReason) throw new Error(blockReason)
   await db.cafeTables.delete(id)
 }
 
@@ -78,7 +92,7 @@ export async function issueQrToken(
     const table = await db.cafeTables.get(tableId)
     if (!table) throw new Error('Meja tidak ditemukan')
     const wasActive = table.qrActive
-    await db.cafeTables.update(tableId, { qrToken: token, qrActive: true, updatedAt: Date.now() })
+    await db.cafeTables.update(tableId, { qrToken: token, qrActive: true, updatedAt: getTrustedNow() })
     const updated = await db.cafeTables.get(tableId)
     if (updated) await enqueueSync('cafeTables', tableId, updated)
     await recordAuditLog({
@@ -102,7 +116,7 @@ export async function setQrActive(
   await db.transaction('rw', db.cafeTables, db.syncQueue, db.auditLogs, async () => {
     const table = await db.cafeTables.get(tableId)
     if (!table) throw new Error('Meja tidak ditemukan')
-    await db.cafeTables.update(tableId, { qrActive: active, updatedAt: Date.now() })
+    await db.cafeTables.update(tableId, { qrActive: active, updatedAt: getTrustedNow() })
     const updated = await db.cafeTables.get(tableId)
     if (updated) await enqueueSync('cafeTables', tableId, updated)
     await recordAuditLog({
@@ -120,7 +134,7 @@ export async function occupyTable(id: string, orderId: string, guestCount: numbe
   await updateTable(id, {
     status: 'occupied',
     currentOrderId: orderId,
-    occupiedSince: Date.now(),
+    occupiedSince: getTrustedNow(),
     guestCount,
   })
 }
@@ -165,16 +179,16 @@ export async function moveTable(fromTableId: string, toTableId: string): Promise
       currentOrderId: fromTable.currentOrderId,
       occupiedSince: fromTable.occupiedSince,
       guestCount: fromTable.guestCount,
-      updatedAt: Date.now(),
+      updatedAt: getTrustedNow(),
     })
     await db.cafeTables.update(fromTableId, {
       status: 'available',
       currentOrderId: null,
       occupiedSince: null,
       guestCount: null,
-      updatedAt: Date.now(),
+      updatedAt: getTrustedNow(),
     })
-    await db.orders.update(fromTable.currentOrderId, { tableId: toTableId, updatedAt: Date.now() })
+    await db.orders.update(fromTable.currentOrderId, { tableId: toTableId, updatedAt: getTrustedNow() })
     const updatedOrder = await db.orders.get(fromTable.currentOrderId)
     if (updatedOrder) await enqueueSync('orders', updatedOrder.id, updatedOrder)
   })

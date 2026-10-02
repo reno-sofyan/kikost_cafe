@@ -4,7 +4,7 @@ import { resetLocalDb } from '@/test/db'
 import { addOrderItem, startOrder } from './orders'
 import { openShift } from './shifts'
 import { finalizePayment } from './checkout'
-import { createTable, deleteTableIfUnused, markAvailable, markAwaitingPayment, setTablePosition } from './tables'
+import { createTable, deleteTableIfUnused, markAvailable, markAwaitingPayment, setTablePosition, tableDeleteBlockReason } from './tables'
 import type { Product } from '@/types/domain'
 
 async function seedProduct(): Promise<void> {
@@ -97,5 +97,23 @@ describe('deleteTableIfUnused', () => {
     await markAvailable(table.id)
     await expect(deleteTableIfUnused(table.id)).rejects.toThrow('pernah dipakai')
     expect(await db.cafeTables.get(table.id)).toBeDefined()
+  })
+})
+
+describe('tableDeleteBlockReason', () => {
+  it('null untuk meja baru yang belum pernah dipakai (boleh dihapus)', async () => {
+    const table = await createTable({ name: 'Meja 6', area: '', capacity: 2 })
+    expect(await tableDeleteBlockReason(table.id)).toBeNull()
+  })
+
+  it('berisi alasan sebelum tombol ditekan, sama dengan pesan error deleteTableIfUnused', async () => {
+    const table = await createTable({ name: 'Meja 7', area: '', capacity: 2 })
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'K', openingCash: 100000 })
+    await startOrder({ type: 'dine_in', tableId: table.id, cashierId: 'u1', cashierName: 'K', shiftId: shift.id })
+
+    expect(await tableDeleteBlockReason(table.id)).toMatch('sedang terisi')
+
+    await markAvailable(table.id)
+    expect(await tableDeleteBlockReason(table.id)).toMatch('pernah dipakai')
   })
 })
