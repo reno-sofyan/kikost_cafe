@@ -29,7 +29,7 @@ diiklankan, tapi jangan jadikan mekanisme untuk menipu pengguna soal adanya pema
    ```
 2. Set env `OPS_TOKEN` di backend (lihat `deploy/.env.example`). **Kosong = `/ops`
    mati total (404).**
-3. Deploy ulang. Buka `https://<domain-backend>/ops`, tempel token.
+3. Deploy ulang. Buka `https://pos.kikost.com/ops` (Traefik merutekan `/api` dan `/ops` ke backend — lihat label `cafe-pos-api` di `deploy/docker-compose.yml`), tempel token.
 
 Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/*`
 (disimpan di `sessionStorage`, tidak pernah di URL). Perbandingan token timing-safe.

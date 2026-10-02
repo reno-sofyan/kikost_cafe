@@ -122,7 +122,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${PROXY_NETWORK:-proxy}"
-      - "traefik.http.routers.cafe-pos-api.rule=Host(`${POS_DOMAIN:-pos.kikost.com}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.cafe-pos-api.rule=Host(`${POS_DOMAIN:-pos.kikost.com}`) && (PathPrefix(`/api`) || PathPrefix(`/ops`))"
       - "traefik.http.routers.cafe-pos-api.entrypoints=${TRAEFIK_HTTPS_ENTRYPOINT:-https}"
       - "traefik.http.routers.cafe-pos-api.tls=true"
       - "traefik.http.routers.cafe-pos-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
