@@ -62,33 +62,33 @@ function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [lockoutMs, setLockoutMs] = useState(() => getLockoutRemainingMs())
+  const [lockoutMs, setLockoutMs] = useState(() => getLockoutRemainingMs(user.id))
   const login = useSessionStore((s) => s.login)
 
   useEffect(() => {
-    const timer = setInterval(() => setLockoutMs(getLockoutRemainingMs()), 1000)
+    const timer = setInterval(() => setLockoutMs(getLockoutRemainingMs(user.id)), 1000)
     return () => clearInterval(timer)
-  }, [])
+  }, [user.id])
 
   async function handleSubmit() {
-    if (getLockoutRemainingMs() > 0) return
+    if (getLockoutRemainingMs(user.id) > 0) return
     setBusy(true)
     setError(null)
     try {
       const verified = await verifyUserPin(user.id, pin)
       if (!verified) {
-        recordFailedAttempt()
-        const remaining = getLockoutRemainingMs()
+        recordFailedAttempt(user.id)
+        const remaining = getLockoutRemainingMs(user.id)
         if (remaining > 0) {
           setLockoutMs(remaining)
           setError('Terlalu banyak percobaan gagal. Coba lagi sebentar.')
         } else {
-          setError(`PIN salah. Sisa percobaan: ${attemptsRemaining()}.`)
+          setError(`PIN salah. Sisa percobaan: ${attemptsRemaining(user.id)}.`)
         }
         setPin('')
         return
       }
-      recordSuccessfulAttempt()
+      recordSuccessfulAttempt(user.id)
       await recordAuditLog({
         userId: verified.id,
         userName: verified.name,
