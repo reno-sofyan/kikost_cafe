@@ -1,0 +1,20 @@
+{
+  "_comment": "Pasangan kunci ECDSA P-256 UNTUK PENGEMBANGAN/PENGUJIAN SAJA — cocok dengan DEFAULT_PUBLIC_KEY_JWK di src/lib/license.ts. Aman di-commit karena bukan kunci produksi apa pun. JANGAN PERNAH menaruh kunci privat vendor yang sesungguhnya di repo ini — bangkitkan pasangan baru lewat generate-keypair.mjs dan simpan privatnya di luar version control.",
+  "publicKey": {
+    "key_ops": ["verify"],
+    "ext": true,
+    "kty": "EC",
+    "x": "OoqPsf3L_MdVO6McKsCOtSQRfPbSytbqJyd5c8GQwJY",
+    "y": "BlCj7yTlWg0TYYXWpuumGScsVANNeqC9gVSVIgf-H4o",
+    "crv": "P-256"
+  },
+  "privateKey": {
+    "key_ops": ["sign"],
+    "ext": true,
+    "kty": "EC",
+    "x": "OoqPsf3L_MdVO6McKsCOtSQRfPbSytbqJyd5c8GQwJY",
+    "y": "BlCj7yTlWg0TYYXWpuumGScsVANNeqC9gVSVIgf-H4o",
+    "crv": "P-256",
+    "d": "5IVHg3FjZjPWmM_FxmV7SZ8HkZwiIJjQR3qg-2ocw-E"
+  }
+}
