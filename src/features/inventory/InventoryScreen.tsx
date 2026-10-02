@@ -4,6 +4,8 @@ import { db } from '@/db/schema'
 import { adjustIngredientStock, createIngredient, listIngredients, listLowStockIngredients } from '@/db/repositories/stock'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { PurchasingPanel } from '@/features/inventory/PurchasingPanel'
@@ -37,6 +39,10 @@ export function InventoryScreen() {
   const lowStock = useLiveQuery(() => listLowStockIngredients(), []) ?? []
   const movements = useLiveQuery(() => db.stockMovements.orderBy('createdAt').reverse().limit(200).toArray(), []) ?? []
 
+  const settings = useLiveQuery(() => getSettings(), [])
+  const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+  const tabs: Tab[] = features.recipes ? ['bahan', 'pembelian', 'produksi', 'opname', 'riwayat'] : ['bahan', 'pembelian', 'opname', 'riwayat']
+
   const [showNewIngredient, setShowNewIngredient] = useState(false)
   const [adjustTarget, setAdjustTarget] = useState<Ingredient | null>(null)
 
@@ -44,7 +50,7 @@ export function InventoryScreen() {
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Stok &amp; Bahan Baku</h1>
-        {(['bahan', 'pembelian', 'produksi', 'opname', 'riwayat'] as Tab[]).map((t) => (
+        {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {{ bahan: 'Bahan Baku', pembelian: 'Pembelian', produksi: 'Produksi', opname: 'Stok Opname', riwayat: 'Riwayat Pergerakan' }[t]}
           </button>

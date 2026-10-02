@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { listCategories } from '@/db/repositories/categories'
 import { searchProducts } from '@/db/repositories/products'
 import { getOpenShift } from '@/db/repositories/shifts'
+import { getSettings } from '@/db/repositories/settings'
 import {
   addOrderItem,
   getOrder,
@@ -21,6 +22,7 @@ import { usePosStore } from '@/state/posStore'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
 import { roleHasPermission } from '@/lib/permissions'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
 import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
@@ -61,6 +63,12 @@ export function CashierScreen() {
   const order = useLiveQuery(() => (activeOrderId ? getOrder(activeOrderId) : undefined), [activeOrderId])
   const items = useLiveQuery(() => (activeOrderId ? listOrderItems(activeOrderId) : []), [activeOrderId])
 
+  const settings = useLiveQuery(() => getSettings(), [])
+  // Sebelum `settings` termuat, anggap semua fitur relevan (perilaku kafe lama).
+  const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+  // Cegah tap/pindai beruntun membuka dua transaksi sekaligus di mode kasir cepat.
+  const quickStartRef = useRef<Promise<string> | null>(null)
+
   const activeItems = useMemo(() => (items ?? []).filter((i) => !i.voided && !i.removed), [items])
 
   if (!openShift) {
@@ -89,25 +97,64 @@ export function CashierScreen() {
     })
     setActiveOrderId(newOrder.id)
     setShowNewOrder(false)
+    return newOrder.id
+  }
+
+  /** "+ Pesanan Baru": kasir cepat langsung membuka transaksi, selain itu tampilkan dialog. */
+  function handleNewOrderClick() {
+    if (features.quickSale) void handleStartOrder({ type: features.orderTypes[0] })
+    else setShowNewOrder(true)
+  }
+
+  /** Order aktif; di mode kasir cepat dibuat otomatis bila belum ada. */
+  async function ensureActiveOrder(): Promise<string | null> {
+    if (activeOrderId) return activeOrderId
+    if (!features.quickSale) return null
+    if (!quickStartRef.current) {
+      quickStartRef.current = handleStartOrder({ type: features.orderTypes[0] }).finally(() => {
+        quickStartRef.current = null
+      })
+    }
+    return quickStartRef.current
   }
 
   async function handleProductTap(product: Product) {
-    if (!activeOrderId) return
+    if (!activeOrderId && !features.quickSale) return
     if (!product.isAvailable) {
       toast.error(`${product.name} sedang habis / tidak tersedia`)
       return
     }
     if (product.modifierGroupIds.length > 0) {
+      if (!(await ensureActiveOrder())) return
       setPickerProduct(product)
       return
     }
-    const canFulfill = await canFulfillProductQty(product, 1)
+    // Kantin/minimarket: pindai/tap ulang produk yang sama → qty baris yang ada +1.
+    // Hanya baris polos yang belum diteruskan ke dapur & belum didiskon per item.
+    const stackTarget = features.stackSameItems
+      ? activeItems.find(
+          (i) =>
+            i.productId === product.id &&
+            i.modifiers.length === 0 &&
+            !i.notes &&
+            i.discountAmount === 0 &&
+            i.kitchenStatus === 'new' &&
+            i.kitchenPrintedAt == null,
+        )
+      : undefined
+    const canFulfill = await canFulfillProductQty(product, (stackTarget?.qty ?? 0) + 1)
     if (!canFulfill) {
       toast.error(`Stok bahan untuk ${product.name} tidak mencukupi`)
       return
     }
+    if (stackTarget) {
+      await updateOrderItemQty(stackTarget.id, stackTarget.qty + 1)
+      return
+    }
+    const orderId = await ensureActiveOrder()
+    if (!orderId) return
     await addOrderItem({
-      orderId: activeOrderId,
+      orderId,
       productId: product.id,
       productName: product.name,
       unitPrice: product.price,
@@ -195,6 +242,7 @@ export function CashierScreen() {
             <input
               className="input-field pl-10"
               placeholder="Cari produk, SKU, atau pindai barcode..."
+              autoFocus={features.quickSale}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -205,8 +253,8 @@ export function CashierScreen() {
           <button className="btn-secondary flex-1 whitespace-nowrap sm:flex-none" onClick={() => setShowOpenBills(true)}>
             Pesanan Terbuka
           </button>
-          <button className="btn-primary flex-1 whitespace-nowrap sm:flex-none" onClick={() => setShowNewOrder(true)}>
-            + Pesanan Baru
+          <button className="btn-primary flex-1 whitespace-nowrap sm:flex-none" onClick={handleNewOrderClick}>
+            {features.quickSale ? '+ Transaksi Baru' : '+ Pesanan Baru'}
           </button>
         </div>
 
@@ -236,14 +284,14 @@ export function CashierScreen() {
               <button
                 key={product.id}
                 onClick={() => void handleProductTap(product)}
-                disabled={!activeOrderId}
+                disabled={!activeOrderId && !features.quickSale}
                 className="card relative flex flex-col items-start p-3 text-left disabled:opacity-40"
               >
                 <div className="mb-2 flex h-20 w-full items-center justify-center rounded-lg bg-ink-800 text-3xl">
                   {product.photoDataUrl ? (
                     <img src={product.photoDataUrl} alt={product.name} className="h-full w-full rounded-lg object-cover" />
                   ) : (
-                    <Icon name="coffee" size={30} className="text-ink-400" />
+                    <Icon name={features.quickSale ? 'box' : 'coffee'} size={30} className="text-ink-400" />
                   )}
                 </div>
                 <span className="line-clamp-2 text-sm font-semibold text-ink-50">{product.name}</span>
@@ -265,16 +313,20 @@ export function CashierScreen() {
         {!activeOrderId || !order ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <Icon name="receipt" size={40} className="text-ink-400" />
-            <p className="text-ink-400">Mulai pesanan baru atau buka pesanan yang sudah ada</p>
+            <p className="text-ink-400">
+              {features.quickSale
+                ? 'Pindai barcode atau tap produk untuk memulai transaksi'
+                : 'Mulai pesanan baru atau buka pesanan yang sudah ada'}
+            </p>
           </div>
         ) : (
           <>
             <div className="flex-none border-b border-ink-800 px-4 py-3">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-ink-50">
-                  {order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
+                  {features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
                 </span>
-                <span className="text-xs text-ink-400">{ORDER_TYPE_LABELS[order.type]}</span>
+                {features.orderTypes.length > 1 && <span className="text-xs text-ink-400">{ORDER_TYPE_LABELS[order.type]}</span>}
               </div>
               <div className="mt-1 flex flex-wrap gap-x-2 text-sm text-ink-400">
                 <span>{order.orderNumber}</span>
@@ -358,7 +410,7 @@ export function CashierScreen() {
                   Kosongkan
                 </button>
               </div>
-              {activeItems.some((i) => i.kitchenPrintedAt == null) && (
+              {features.kitchen && activeItems.some((i) => i.kitchenPrintedAt == null) && (
                 <button
                   className="btn-secondary w-full"
                   onClick={async () => {
@@ -385,7 +437,14 @@ export function CashierScreen() {
         )}
       </div>
 
-      {showNewOrder && <NewOrderModal onCancel={() => setShowNewOrder(false)} onConfirm={(p) => void handleStartOrder(p)} />}
+      {showNewOrder && (
+        <NewOrderModal
+          orderTypes={features.orderTypes}
+          showTables={features.tables}
+          onCancel={() => setShowNewOrder(false)}
+          onConfirm={(p) => void handleStartOrder(p)}
+        />
+      )}
       {showOpenBills && (
         <OpenBillsDrawer
           onClose={() => setShowOpenBills(false)}

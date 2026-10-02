@@ -80,7 +80,7 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   b.line(`No: ${data.orderNumber}`)
   b.line(`Kasir: ${data.cashierName}`)
   b.line(`Waktu: ${data.createdAtLabel}`)
-  b.line(`Tipe: ${data.orderTypeLabel}${data.tableLabel ? ` (${data.tableLabel})` : ''}`)
+  if (data.orderTypeLabel) b.line(`Tipe: ${data.orderTypeLabel}${data.tableLabel ? ` (${data.tableLabel})` : ''}`)
   if (data.queueLabel) b.line(data.queueLabel)
   if (data.customerNote) b.line(`Pelanggan: ${data.customerNote}`)
   if (data.isReprint) b.line('*** CETAK ULANG ***')

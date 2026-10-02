@@ -1,6 +1,7 @@
 import { db } from '@/db/schema'
 import { formatDateTime } from '@/lib/datetime'
 import { businessDisplayName } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
 
 export interface ReceiptLine {
@@ -21,7 +22,8 @@ export interface ReceiptData {
   orderNumber: string
   cashierName: string
   createdAtLabel: string
-  orderTypeLabel: string
+  /** `null` bila jenis usaha hanya punya satu jenis pesanan (mis. minimarket). */
+  orderTypeLabel: string | null
   tableLabel: string | null
   queueLabel: string | null
   customerNote: string | null
@@ -94,6 +96,7 @@ export async function buildReceiptData(
   const items = await db.orderItems.where('orderId').equals(order.id).toArray()
   const payments = await db.payments.where('orderId').equals(order.id).toArray()
   const table = order.tableId ? await db.cafeTables.get(order.tableId) : undefined
+  const features = featuresForBusinessType(settings.businessType)
 
   const lines: ReceiptLine[] = items
     .filter((item) => !item.voided && !item.removed)
@@ -115,9 +118,9 @@ export async function buildReceiptData(
     orderNumber: order.orderNumber,
     cashierName: order.cashierName,
     createdAtLabel: formatDateTime(order.paidAt ?? order.createdAt),
-    orderTypeLabel: ORDER_TYPE_LABELS[order.type],
+    orderTypeLabel: features.orderTypes.length > 1 || table ? ORDER_TYPE_LABELS[order.type] : null,
     tableLabel: table ? table.name : null,
-    queueLabel: order.queueNumber ? `Antrean #${order.queueNumber}` : null,
+    queueLabel: features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : null,
     customerNote: order.notes.trim() || null,
     isReprint: opts.isReprint ?? false,
     lines,

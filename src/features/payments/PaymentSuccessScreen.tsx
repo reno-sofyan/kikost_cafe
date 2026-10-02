@@ -6,6 +6,7 @@ import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
 import { usePosStore } from '@/state/posStore'
 import { getSettings } from '@/db/repositories/settings'
 import { formatRupiah } from '@/lib/currency'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
 import type { Order } from '@/types/domain'
 import type { ReceiptData } from '@/features/printing/receiptData'
@@ -17,6 +18,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const [autoPrinted, setAutoPrinted] = useState(false)
+  const [showQueue, setShowQueue] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -27,6 +29,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
       setReceipt(data)
 
       const settings = await getSettings()
+      setShowQueue(featuresForBusinessType(settings.businessType).queueNumbers)
       if (settings.printerConfig.autoPrintOnPayment && !autoPrinted) {
         setAutoPrinted(true)
         setShowPreview(true)
@@ -49,6 +52,12 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         <Icon name="checkCircle" size={44} />
       </div>
       <h1 className="text-2xl font-bold text-ink-50">Pembayaran Berhasil</h1>
+      {showQueue && order.queueNumber ? (
+        <div className="rounded-2xl border border-brand-500/30 bg-brand-600/12 px-8 py-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Nomor Antrean</p>
+          <p className="text-5xl font-bold text-ink-50">#{order.queueNumber}</p>
+        </div>
+      ) : null}
       <p className="text-ink-400">Transaksi {order.orderNumber}</p>
       <p className="text-3xl font-bold text-success-500">{formatRupiah(order.grandTotal)}</p>
 

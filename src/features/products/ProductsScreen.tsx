@@ -13,6 +13,8 @@ import {
   toggleFavorite,
 } from '@/db/repositories/products'
 import { formatRupiah } from '@/lib/currency'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { saveTextFile } from '@/lib/saveFile'
 import { ProductFormModal } from '@/features/products/ProductFormModal'
 import { CategoryManager } from '@/features/products/CategoryManager'
@@ -48,6 +50,9 @@ export function ProductsScreen() {
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const categories = useLiveQuery(() => listCategories(), []) ?? []
+  const settings = useLiveQuery(() => getSettings(), [])
+  const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+  const tabs: Tab[] = features.modifiers ? ['produk', 'kategori', 'modifier'] : ['produk', 'kategori']
   const activeProducts = useLiveQuery(() => searchProducts(search, categoryId), [search, categoryId]) ?? []
   const archivedProducts = useLiveQuery(() => listArchivedProducts(), []) ?? []
   const products = view === 'arsip' ? archivedProducts : activeProducts
@@ -107,7 +112,7 @@ export function ProductsScreen() {
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
         <h1 className="mr-4 text-xl font-bold text-ink-50">Produk</h1>
-        {(['produk', 'kategori', 'modifier'] as Tab[]).map((t) => (
+        {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`btn btn-compact !px-4 text-sm capitalize ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {t}
           </button>

@@ -4,6 +4,8 @@ import { listCategories } from '@/db/repositories/categories'
 import { listModifierGroups } from '@/db/repositories/modifiers'
 import { createProduct, getRecipeForProduct, saveRecipe, updateProduct } from '@/db/repositories/products'
 import { listIngredients } from '@/db/repositories/stock'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { parseRupiahInput, formatRupiah } from '@/lib/currency'
 import { compatibleUnits } from '@/lib/units'
 import { readFileAsResizedDataUrl } from '@/lib/image'
@@ -18,6 +20,8 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const categories = useLiveQuery(() => listCategories(), []) ?? []
   const modifierGroups = useLiveQuery(() => listModifierGroups(), []) ?? []
   const ingredients = useLiveQuery(() => listIngredients(), []) ?? []
+  const settings = useLiveQuery(() => getSettings(), [])
+  const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const existingRecipe = useLiveQuery(() => (initial ? getRecipeForProduct(initial.id) : undefined), [initial?.id])
 
   const [name, setName] = useState(initial?.name ?? '')
@@ -199,82 +203,87 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
           </label>
         </div>
 
-        <div className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold text-ink-300">Modifier</h3>
-          <div className="flex flex-wrap gap-2">
-            {modifierGroups.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => toggleModifierGroup(g.id)}
-                className={`rounded-full border px-3 py-1.5 text-sm ${
-                  selectedModifierGroupIds.includes(g.id) ? 'border-brand-500 bg-brand-600 text-white' : 'border-ink-700 bg-ink-800 text-ink-300'
-                }`}
-              >
-                {g.name}
-              </button>
-            ))}
+        {/* Disembunyikan bila tak relevan untuk jenis usaha, kecuali produk ini sudah memakainya. */}
+        {(features.modifiers || selectedModifierGroupIds.length > 0) && (
+          <div className="mt-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">Modifier</h3>
+            <div className="flex flex-wrap gap-2">
+              {modifierGroups.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => toggleModifierGroup(g.id)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selectedModifierGroupIds.includes(g.id) ? 'border-brand-500 bg-brand-600 text-white' : 'border-ink-700 bg-ink-800 text-ink-300'
+                  }`}
+                >
+                  {g.name}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-ink-300">Resep / BOM (opsional)</h3>
-            <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={addRecipeItem} disabled={ingredients.length === 0}>
-              + Bahan
-            </button>
-          </div>
-          {recipeItems.map((item, index) => (
-            <div key={index} className="mb-2 flex items-center gap-2">
-              <select
-                className="input-field flex-1"
-                value={item.ingredientId}
-                onChange={(e) =>
-                  setRecipeItems((prev) => prev.map((it, i) => (i === index ? { ...it, ingredientId: e.target.value } : it)))
-                }
-              >
-                {ingredients.map((ing) => (
-                  <option key={ing.id} value={ing.id}>
-                    {ing.name} ({ing.unit})
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                step="any"
-                className="input-field w-20"
-                value={item.qty}
-                onChange={(e) => setRecipeItems((prev) => prev.map((it, i) => (i === index ? { ...it, qty: Number(e.target.value) } : it)))}
-              />
-              <select
-                className="input-field w-20"
-                value={item.unit ?? ingredients.find((g) => g.id === item.ingredientId)?.unit ?? 'g'}
-                onChange={(e) =>
-                  setRecipeItems((prev) =>
-                    prev.map((it, i) => (i === index ? { ...it, unit: e.target.value as UnitOfMeasure } : it)),
-                  )
-                }
-              >
-                {compatibleUnits(ingredients.find((g) => g.id === item.ingredientId)?.unit ?? 'g').map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-red-400 hover:bg-ink-700"
-                aria-label="Hapus bahan resep"
-                onClick={() => setRecipeItems((prev) => prev.filter((_, i) => i !== index))}
-              >
-                <Icon name="close" size={16} />
+        {(features.recipes || recipeItems.length > 0) && (
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ink-300">Resep / BOM (opsional)</h3>
+              <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={addRecipeItem} disabled={ingredients.length === 0}>
+                + Bahan
               </button>
             </div>
-          ))}
-          {recipeItems.length > 0 && (
-            <p className="text-xs text-ink-500">Jika resep diisi, stok produk otomatis dikelola lewat stok bahan baku.</p>
-          )}
-        </div>
+            {recipeItems.map((item, index) => (
+              <div key={index} className="mb-2 flex items-center gap-2">
+                <select
+                  className="input-field flex-1"
+                  value={item.ingredientId}
+                  onChange={(e) =>
+                    setRecipeItems((prev) => prev.map((it, i) => (i === index ? { ...it, ingredientId: e.target.value } : it)))
+                  }
+                >
+                  {ingredients.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      {ing.name} ({ing.unit})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  step="any"
+                  className="input-field w-20"
+                  value={item.qty}
+                  onChange={(e) => setRecipeItems((prev) => prev.map((it, i) => (i === index ? { ...it, qty: Number(e.target.value) } : it)))}
+                />
+                <select
+                  className="input-field w-20"
+                  value={item.unit ?? ingredients.find((g) => g.id === item.ingredientId)?.unit ?? 'g'}
+                  onChange={(e) =>
+                    setRecipeItems((prev) =>
+                      prev.map((it, i) => (i === index ? { ...it, unit: e.target.value as UnitOfMeasure } : it)),
+                    )
+                  }
+                >
+                  {compatibleUnits(ingredients.find((g) => g.id === item.ingredientId)?.unit ?? 'g').map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-red-400 hover:bg-ink-700"
+                  aria-label="Hapus bahan resep"
+                  onClick={() => setRecipeItems((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            ))}
+            {recipeItems.length > 0 && (
+              <p className="text-xs text-ink-500">Jika resep diisi, stok produk otomatis dikelola lewat stok bahan baku.</p>
+            )}
+          </div>
+        )}
 
         {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
 

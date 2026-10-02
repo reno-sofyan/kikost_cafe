@@ -13,10 +13,12 @@ import {
   OrderAlreadyFinalizedError,
   payBill,
 } from '@/db/repositories/billing'
+import { getTrustedNow } from '@/lib/clockGuard'
 import { activePrinterForStation } from '@/db/repositories/printers'
 import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, Refund, RefundReason, ReturnRecord } from '@/types/domain'
 
 export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError }
@@ -53,7 +55,8 @@ export async function finalizePayment(params: {
   if (result.order.lifecycleStatus === 'COMPLETED') {
     try {
       const settings = await getSettings()
-      if (settings.printerConfig.autoPrintKitchenOrder) {
+      // Usaha tanpa dapur (minimarket) tak pernah mencetak tiket dapur otomatis.
+      if (settings.printerConfig.autoPrintKitchenOrder && featuresForBusinessType(settings.businessType).kitchen) {
         await sendOrderToKitchen(params.orderId, { userId: params.confirmedByUserId, userName: '' })
       }
       if (await activePrinterForStation('cashier')) {
@@ -84,7 +87,8 @@ export async function payOrderBill(params: {
   if (result.order.lifecycleStatus === 'COMPLETED') {
     try {
       const settings = await getSettings()
-      if (settings.printerConfig.autoPrintKitchenOrder) {
+      // Usaha tanpa dapur (minimarket) tak pernah mencetak tiket dapur otomatis.
+      if (settings.printerConfig.autoPrintKitchenOrder && featuresForBusinessType(settings.businessType).kitchen) {
         await sendOrderToKitchen(result.order.id, { userId: params.confirmedByUserId, userName: '' })
       }
       if (await activePrinterForStation('cashier')) {
@@ -117,7 +121,7 @@ export async function voidOrder(params: {
       const order = await db.orders.get(params.orderId)
       if (!order) throw new Error('Pesanan tidak ditemukan')
       if (order.status === 'void') throw new Error('Pesanan sudah dibatalkan sebelumnya')
-      const now = Date.now()
+      const now = getTrustedNow()
       const wasPaid = order.status === 'paid' || order.status === 'completed'
 
       if (wasPaid) {
@@ -289,7 +293,7 @@ export async function returnOrderItems(params: {
         .toArray()
       if (items.length === 0) throw new Error('Tidak ada item valid untuk diretur')
 
-      const now = Date.now()
+      const now = getTrustedNow()
       let refundAmount = 0
       for (const item of items) {
         refundAmount += item.lineTotal

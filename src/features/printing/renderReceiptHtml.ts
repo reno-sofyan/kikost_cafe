@@ -24,7 +24,9 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   rows.push(`<div>No: ${escapeHtml(data.orderNumber)}</div>`)
   rows.push(`<div>Kasir: ${escapeHtml(data.cashierName)}</div>`)
   rows.push(`<div>Waktu: ${escapeHtml(data.createdAtLabel)}</div>`)
-  rows.push(`<div>Tipe: ${escapeHtml(data.orderTypeLabel)}${data.tableLabel ? ` (${escapeHtml(data.tableLabel)})` : ''}</div>`)
+  if (data.orderTypeLabel) {
+    rows.push(`<div>Tipe: ${escapeHtml(data.orderTypeLabel)}${data.tableLabel ? ` (${escapeHtml(data.tableLabel)})` : ''}</div>`)
+  }
   if (data.queueLabel) rows.push(`<div>${escapeHtml(data.queueLabel)}</div>`)
   if (data.customerNote) rows.push(`<div>Pelanggan: ${escapeHtml(data.customerNote)}</div>`)
   rows.push('<hr />')

@@ -237,6 +237,8 @@ function FiscalForm() {
   }, [settings])
 
   if (!settings) return null
+  // Tetap tampil bila sudah terisi, supaya nilai lama bisa dinolkan.
+  const showServiceCharge = featuresForBusinessType(settings.businessType).serviceCharge || settings.serviceChargePercent > 0
 
   return (
     <div className="max-w-md space-y-4">
@@ -244,17 +246,19 @@ function FiscalForm() {
         <span className="mb-1 block text-sm text-ink-300">Pajak (%)</span>
         <input type="number" min={0} max={100} className="input-field" value={taxPercent} onChange={(e) => setTaxPercent(Number(e.target.value))} />
       </label>
-      <label className="block">
-        <span className="mb-1 block text-sm text-ink-300">Service Charge (%)</span>
-        <input
-          type="number"
-          min={0}
-          max={100}
-          className="input-field"
-          value={serviceChargePercent}
-          onChange={(e) => setServiceChargePercent(Number(e.target.value))}
-        />
-      </label>
+      {showServiceCharge && (
+        <label className="block">
+          <span className="mb-1 block text-sm text-ink-300">Service Charge (%)</span>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            className="input-field"
+            value={serviceChargePercent}
+            onChange={(e) => setServiceChargePercent(Number(e.target.value))}
+          />
+        </label>
+      )}
       <label className="block">
         <span className="mb-1 block text-sm text-ink-300">Pembulatan Total (Rp)</span>
         <select className="input-field" value={roundingIncrement} onChange={(e) => setRoundingIncrement(Number(e.target.value))}>

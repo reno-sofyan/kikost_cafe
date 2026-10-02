@@ -8,7 +8,7 @@ import { isValidPinFormat } from '@/lib/pinHash'
 import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
 import { PRODUCT_LOGO, PRODUCT_MARK, PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/brand'
-import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER } from '@/lib/businessType'
+import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
 import type { BusinessType, PrinterConnectionType, ReceiptPaperSize } from '@/types/domain'
 
 type Step = 'welcome' | 'profile' | 'fiscal' | 'qris' | 'printer' | 'admin' | 'finishing'
@@ -98,7 +98,8 @@ export function OnboardingWizard() {
             phone,
             logoDataUrl,
             taxPercent,
-            serviceChargePercent,
+            // Jenis usaha bisa diganti setelah mengisi service charge — jangan simpan nilai yang isiannya tersembunyi.
+            serviceChargePercent: featuresForBusinessType(businessType).serviceCharge ? serviceChargePercent : 0,
             roundingIncrement,
             transactionPrefix: transactionPrefix.trim().toUpperCase() || 'TRX',
             qrisImageDataUrl,
@@ -126,7 +127,7 @@ export function OnboardingWizard() {
             entityId: 'singleton',
             details: 'Onboarding aplikasi selesai, akun administrator dibuat',
           })
-          await seedInitialCatalog()
+          await seedInitialCatalog(businessType)
           login(admin)
         })(),
         20_000,
@@ -255,9 +256,11 @@ export function OnboardingWizard() {
               <Field label="Pajak (%)">
                 <input type="number" min={0} max={100} className="input-field" value={taxPercent} onChange={(e) => setTaxPercent(Number(e.target.value))} />
               </Field>
-              <Field label="Service Charge (%)">
-                <input type="number" min={0} max={100} className="input-field" value={serviceChargePercent} onChange={(e) => setServiceChargePercent(Number(e.target.value))} />
-              </Field>
+              {featuresForBusinessType(businessType).serviceCharge && (
+                <Field label="Service Charge (%)">
+                  <input type="number" min={0} max={100} className="input-field" value={serviceChargePercent} onChange={(e) => setServiceChargePercent(Number(e.target.value))} />
+                </Field>
+              )}
               <Field label="Pembulatan Total (Rp)">
                 <select className="input-field" value={roundingIncrement} onChange={(e) => setRoundingIncrement(Number(e.target.value))}>
                   <option value={1}>Tanpa pembulatan</option>
