@@ -5,6 +5,7 @@ import { roundQty } from '@/lib/units'
 import { postStockMovement } from '@/db/repositories/stock'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import type { OpnameLine, StockOpname } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export async function listStockOpnames(limit = 50): Promise<StockOpname[]> {
   return db.stockOpnames.orderBy('createdAt').reverse().limit(limit).toArray()
@@ -21,7 +22,7 @@ export async function getStockOpname(id: string): Promise<StockOpname | undefine
 export async function createStockOpname(params: { createdBy: string; note: string }): Promise<StockOpname> {
   const ingredients = await db.ingredients.orderBy('name').toArray()
   const products = (await db.products.toArray()).filter((p) => p.trackOwnStock)
-  const now = Date.now()
+  const now = getTrustedNow()
   const lines: OpnameLine[] = [
     ...ingredients.map((i) => ({
       itemType: 'ingredient' as const,
@@ -65,7 +66,7 @@ export async function saveOpnameCounts(id: string, counts: Record<string, number
     const lines = opname.lines.map((l) =>
       l.itemId in counts ? { ...l, countedQty: counts[l.itemId] } : l,
     )
-    await db.stockOpnames.update(id, { lines, updatedAt: Date.now() })
+    await db.stockOpnames.update(id, { lines, updatedAt: getTrustedNow() })
     const updated = await db.stockOpnames.get(id)
     if (updated) await enqueueSync('stockOpnames', id, updated)
   })
@@ -91,7 +92,7 @@ export async function finalizeStockOpname(params: {
       if (!opname) throw new Error('Opname tidak ditemukan')
       if (opname.status === 'finalized') return opname
 
-      const now = Date.now()
+      const now = getTrustedNow()
       let adjustedCount = 0
       for (const line of opname.lines) {
         if (line.countedQty == null) continue

@@ -8,6 +8,7 @@ import { getOpenShift } from '@/db/repositories/shifts'
 import { roleHasPermission } from '@/lib/permissions'
 import { formatRupiah } from '@/lib/currency'
 import { backupIsStale, lastBackupLabel } from '@/lib/backupReminder'
+import { isSystemClockBehindTrusted } from '@/lib/clockGuard'
 import { isBackendConfigured } from '@/sync/deviceConfig'
 import { countActivePrintFailures } from '@/db/repositories/printQueue'
 import { countPendingQrOrders } from '@/db/repositories/qrOrders'
@@ -77,6 +78,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     !isBackendConfigured() &&
     backupIsStale(now)
 
+  // Jam sistem tampak dimundurkan sejak terakhir aplikasi mengamati waktu yang lebih
+  // maju (lihat clockGuard.ts). Re-render `now` di atas (setiap 10 menit) membuat ini
+  // ikut dievaluasi ulang berkala tanpa listener terpisah. Ditujukan untuk peran yang
+  // bisa menindaklanjuti (cek tanggal/waktu Android), bukan kasir yang tak bisa berbuat apa-apa.
+  const showClockWarning = !!currentUser && roleHasPermission(currentUser.role, 'settings.manage') && isSystemClockBehindTrusted()
+
   if (!currentUser) return null
 
   async function handleLogout() {
@@ -110,8 +117,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-ink-950">
+      {/* flex-none pada anak nav: tanpa itu, di layar pendek (mis. Galaxy Tab A8
+          landscape ≈ 1280×728 CSS px) item ikut menyusut & blok nama usaha
+          terpotong alih-alih nav bisa di-scroll. */}
       <nav className="flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3">
-        <div className="mb-2 flex flex-col items-center gap-1.5 px-2 pb-3" title={businessName}>
+        <div className="mb-2 flex flex-none flex-col items-center gap-1.5 px-2 pb-3 [@media(max-height:800px)]:mb-1 [@media(max-height:800px)]:pb-2" title={businessName}>
           <BusinessLogo size="sm" />
           <span className="line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight text-ink-300">
             {businessName}
@@ -122,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `group relative mx-2 flex flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] font-medium transition-colors ${
+              `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
                 isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
               }`
             }
@@ -169,6 +179,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Icon name="alertTriangle" size={14} />
                 Backup: {lastBackupLabel(now)}
               </button>
+            )}
+            {showClockWarning && (
+              <span
+                className="flex items-center gap-1.5 rounded-full bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-400"
+                title="Jam/tanggal perangkat ini tampak mundur dari waktu yang pernah tercatat — periksa Pengaturan tanggal & waktu Android. Transaksi & laporan bisa salah urutan/tanggal sampai ini diperbaiki."
+              >
+                <Icon name="alertTriangle" size={14} />
+                Jam perangkat mundur
+              </span>
             )}
             {pendingQr > 0 && (
               <button

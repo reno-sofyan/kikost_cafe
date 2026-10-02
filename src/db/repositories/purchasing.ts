@@ -5,6 +5,7 @@ import { convertQty } from '@/lib/units'
 import { postStockMovement } from '@/db/repositories/stock'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import type { Purchase, PurchaseLine } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export async function listPurchases(limit = 100): Promise<Purchase[]> {
   return db.purchases.orderBy('createdAt').reverse().limit(limit).toArray()
@@ -26,7 +27,7 @@ export async function createPurchase(params: {
   createdBy: string
   lines: Array<Omit<PurchaseLine, 'lineCost'>>
 }): Promise<Purchase> {
-  const now = Date.now()
+  const now = getTrustedNow()
   const lines: PurchaseLine[] = params.lines.map((l) => ({ ...l, lineCost: lineCost(l) }))
   const purchase: Purchase = {
     id: newId(),
@@ -67,7 +68,7 @@ export async function receivePurchase(params: {
       if (!purchase) throw new Error('Pembelian tidak ditemukan')
       if (purchase.status === 'received') return purchase
 
-      const now = Date.now()
+      const now = getTrustedNow()
       for (const line of purchase.lines) {
         if (line.qty <= 0) continue
         if (line.itemType === 'ingredient') {

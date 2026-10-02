@@ -3,6 +3,7 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { addExpectedCash } from '@/db/repositories/shifts'
 import type { Expense } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export const EXPENSE_CATEGORIES = [
   'Belanja Bahan Baku',
@@ -31,7 +32,7 @@ export async function createExpense(input: {
       photoDataUrl: input.photoDataUrl ?? null,
       shiftId: input.shiftId ?? null,
       userId: input.userId,
-      createdAt: Date.now(),
+      createdAt: getTrustedNow(),
     }
     await db.expenses.add(expense)
     await enqueueSync('expenses', expense.id, expense)

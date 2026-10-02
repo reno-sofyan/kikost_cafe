@@ -1,5 +1,6 @@
 import type { SyncEntity } from '@/types/domain'
 import { getApiBaseUrl, getDeviceKey, isBackendConfigured as isConfigured } from '@/sync/deviceConfig'
+import { noteTrustedTimestampFromResponse } from '@/lib/clockGuard'
 
 export interface SyncPushItem {
   entity: SyncEntity
@@ -50,6 +51,10 @@ async function authorizedFetch(path: string, init: RequestInit): Promise<Respons
       ...init.headers,
     },
   })
+  // Setiap kali backend terjangkau, majukan jam-tak-bisa-mundur perangkat ini
+  // dari header `Date` respons — lihat clockGuard.ts. Sumber waktu tepercaya
+  // untuk deteksi jam sistem dimundurkan, dipakai a.l. oleh evaluasi lisensi.
+  noteTrustedTimestampFromResponse(response)
   return response
 }
 

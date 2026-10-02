@@ -5,6 +5,7 @@ import { addExpectedCash } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
 import { deductSaleStock, findOrderStockShortages } from '@/db/repositories/stock'
 import type { Bill, BillPaymentStatus, Order, OrderItem, Payment, PaymentInput } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export class InsufficientPaymentError extends Error {
   constructor() {
@@ -55,7 +56,7 @@ export async function listOrderBills(orderId: string): Promise<Bill[]> {
 export async function ensureOrderBill(order: Order): Promise<Bill> {
   const id = implicitBillId(order.id)
   const existing = await db.bills.get(id)
-  const now = Date.now()
+  const now = getTrustedNow()
   const base = {
     subtotal: order.subtotal,
     discountAmount: order.discountAmount,
@@ -135,7 +136,7 @@ export async function payBill(params: {
       }
       if (bill.paymentStatus === 'PAID' || bill.paymentStatus === 'VOIDED') throw new OrderAlreadyFinalizedError()
 
-      const now = Date.now()
+      const now = getTrustedNow()
       const created: Payment[] = []
       let addedThisCall = 0
       for (let i = 0; i < params.payments.length; i++) {
@@ -246,7 +247,7 @@ export async function splitBillByAmount(orderId: string, amount: number, label: 
     if (main.amountPaid > 0) throw new Error('Tidak bisa memecah tagihan yang sudah ada pembayaran.')
     const portion = Math.min(Math.max(0, Math.round(amount)), main.grandTotal - 1)
     if (portion <= 0) throw new Error('Nominal pecahan tidak valid.')
-    const now = Date.now()
+    const now = getTrustedNow()
 
     const portionBill: Bill = {
       id: `bill_${orderId}_p${(await db.bills.where('orderId').equals(orderId).count()) + 1}`,
@@ -334,7 +335,7 @@ export async function splitBillByItems(
     const taxes = allocate(order.taxAmount)
     const grands = allocate(order.grandTotal)
 
-    const now = Date.now()
+    const now = getTrustedNow()
     const bills: Bill[] = []
     for (let i = 0; i < validGroups.length; i++) {
       const billId = i === 0 ? main.id : `${main.id}_i${i}`
@@ -390,10 +391,10 @@ export async function unsplitBills(orderId: string): Promise<void> {
         roundingAdjustment: 0,
         grandTotal: 0,
         paymentStatus: 'PAID',
-        updatedAt: Date.now(),
+        updatedAt: getTrustedNow(),
       })
     }
-    const now = Date.now()
+    const now = getTrustedNow()
     const main: Bill = {
       id: mainId,
       orderId,

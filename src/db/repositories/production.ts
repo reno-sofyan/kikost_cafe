@@ -5,6 +5,7 @@ import { convertQty, roundQty } from '@/lib/units'
 import { postStockMovement } from '@/db/repositories/stock'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import type { ProductionInputLine, ProductionRun, StockMovementItemType, UnitOfMeasure } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export class InsufficientProductionStockError extends Error {
   constructor(public readonly items: string[]) {
@@ -69,7 +70,7 @@ export async function createProduction(params: CreateProductionInput): Promise<P
     inputs.push({ itemType: raw.itemType, itemId: raw.itemId, itemName: name, qty: raw.qty, unit: raw.unit })
   }
 
-  const now = Date.now()
+  const now = getTrustedNow()
   const run: ProductionRun = {
     id: newId(),
     outputItemType: params.outputItemType,
@@ -151,7 +152,7 @@ export async function completeProduction(params: {
         refId: run.id,
       })
 
-      const now = Date.now()
+      const now = getTrustedNow()
       const completed: ProductionRun = {
         ...run,
         status: 'completed',

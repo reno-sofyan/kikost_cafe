@@ -2,6 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import type { Product, Recipe } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export type ProductInput = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -22,7 +23,7 @@ export async function getProduct(id: string): Promise<Product | undefined> {
 }
 
 export async function createProduct(input: ProductInput): Promise<Product> {
-  const now = Date.now()
+  const now = getTrustedNow()
   const product: Product = { ...input, id: newId(), createdAt: now, updatedAt: now }
   await db.transaction('rw', db.products, db.syncQueue, async () => {
     await db.products.add(product)
@@ -33,7 +34,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 
 export async function updateProduct(id: string, patch: Partial<ProductInput>): Promise<void> {
   await db.transaction('rw', db.products, db.syncQueue, async () => {
-    await db.products.update(id, { ...patch, updatedAt: Date.now() })
+    await db.products.update(id, { ...patch, updatedAt: getTrustedNow() })
     const updated = await db.products.get(id)
     if (updated) await enqueueSync('products', id, updated)
   })
@@ -99,7 +100,7 @@ export async function saveRecipe(productId: string, items: Recipe['items']): Pro
     id: existing?.id ?? newId(),
     productId,
     items,
-    updatedAt: Date.now(),
+    updatedAt: getTrustedNow(),
   }
   await db.recipes.put(recipe)
   return recipe

@@ -5,6 +5,7 @@ import { getDeviceId } from '@/sync/device'
 import { getSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import type { CashMovement, CashMovementType, Shift } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 /**
  * Shift yang sedang berjalan DI PERANGKAT INI, atau `null` bila tidak ada.
@@ -43,7 +44,7 @@ export async function openShift(params: {
     variance: null,
     varianceApprovedBy: null,
     status: 'open',
-    openedAt: Date.now(),
+    openedAt: getTrustedNow(),
     closedAt: null,
     notes: '',
   }
@@ -79,7 +80,7 @@ export async function addCashMovement(params: {
       amount: params.amount,
       reason: params.reason,
       userId: params.userId,
-      createdAt: Date.now(),
+      createdAt: getTrustedNow(),
     }
     await db.cashMovements.add(movement)
     await enqueueSync('cashMovements', movement.id, movement)
@@ -136,7 +137,7 @@ export async function closeShift(params: {
       variance,
       varianceApprovedBy: params.varianceApprover?.userId ?? null,
       status: 'closed',
-      closedAt: Date.now(),
+      closedAt: getTrustedNow(),
       notes: params.notes,
     }
     await db.shifts.put(updatedShift)

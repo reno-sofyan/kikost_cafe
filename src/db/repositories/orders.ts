@@ -8,6 +8,7 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { assertTransition, deriveKitchenPhase, legacyStatusFor } from '@/lib/orderState'
 import { getDeviceId } from '@/sync/device'
 import { jakartaDateKey } from '@/lib/datetime'
+import { getTrustedNow } from '@/lib/clockGuard'
 import type {
   DiscountType,
   KitchenItemStatus,
@@ -21,7 +22,7 @@ import type {
 
 /** Nomor antrean harian (reset tiap hari) untuk semua pesanan, dihitung dari data yang ada. */
 export async function drawQueueNumber(): Promise<number> {
-  const todayKey = jakartaDateKey(Date.now())
+  const todayKey = jakartaDateKey(getTrustedNow())
   const todaysOrders = await db.orders
     .filter((o) => o.queueNumber !== null && jakartaDateKey(o.createdAt) === todayKey)
     .toArray()
@@ -54,7 +55,7 @@ export async function startOrder(params: {
 
   const settings = await getSettings()
   const orderNumber = await nextTransactionNumber()
-  const now = Date.now()
+  const now = getTrustedNow()
   const order: Order = {
     id: newId(),
     orderNumber,
@@ -127,7 +128,7 @@ export async function transitionOrder(
   await db.orders.update(orderId, {
     lifecycleStatus: to,
     status: legacyStatusFor(to),
-    updatedAt: Date.now(),
+    updatedAt: getTrustedNow(),
     ...extra,
   })
   const updated = await db.orders.get(orderId)
@@ -148,7 +149,7 @@ async function syncKitchenPhase(orderId: string): Promise<void> {
     items.map((i) => i.kitchenStatus),
   )
   if (derived !== order.lifecycleStatus) {
-    await db.orders.update(orderId, { lifecycleStatus: derived, updatedAt: Date.now() })
+    await db.orders.update(orderId, { lifecycleStatus: derived, updatedAt: getTrustedNow() })
     const updated = await db.orders.get(orderId)
     if (updated) await enqueueSync('orders', orderId, updated)
   }
@@ -192,7 +193,7 @@ export async function cancelEmptyOrder(orderId: string, actor: { userId: string;
     await transitionOrder(orderId, to, {
       voidReason: 'Pesanan kosong dibatalkan',
       voidedBy: actor.userId,
-      voidedAt: Date.now(),
+      voidedAt: getTrustedNow(),
     })
     if (order.tableId) {
       const table = await db.cafeTables.get(order.tableId)
@@ -225,7 +226,7 @@ export async function addOrderItem(params: {
   notes: string
   discountAmount?: number
 }): Promise<OrderItem> {
-  const now = Date.now()
+  const now = getTrustedNow()
   const lineTotal = computeLineTotal({
     unitPrice: params.unitPrice,
     qty: params.qty,
@@ -287,7 +288,7 @@ export async function updateOrderItemQty(itemId: string, qty: number): Promise<v
     discountAmount: item.discountAmount,
   })
   await db.transaction('rw', db.orderItems, db.orders, db.syncQueue, db.settings, async () => {
-    await db.orderItems.update(itemId, { qty, lineTotal, updatedAt: Date.now() })
+    await db.orderItems.update(itemId, { qty, lineTotal, updatedAt: getTrustedNow() })
     const updated = await db.orderItems.get(itemId)
     if (updated) await enqueueSync('orderItems', itemId, updated)
     await recalcOrderTotals(item.orderId)
@@ -304,7 +305,7 @@ export async function setOrderItemDiscount(itemId: string, discountAmount: numbe
     discountAmount,
   })
   await db.transaction('rw', db.orderItems, db.orders, db.syncQueue, db.settings, async () => {
-    await db.orderItems.update(itemId, { discountAmount, lineTotal, updatedAt: Date.now() })
+    await db.orderItems.update(itemId, { discountAmount, lineTotal, updatedAt: getTrustedNow() })
     const updated = await db.orderItems.get(itemId)
     if (updated) await enqueueSync('orderItems', itemId, updated)
     await recalcOrderTotals(item.orderId)
@@ -320,7 +321,7 @@ export async function removeOrderItem(itemId: string): Promise<void> {
   const item = await db.orderItems.get(itemId)
   if (!item || item.removed) return
   await db.transaction('rw', db.orderItems, db.orders, db.syncQueue, db.settings, async () => {
-    await db.orderItems.update(itemId, { removed: true, updatedAt: Date.now() })
+    await db.orderItems.update(itemId, { removed: true, updatedAt: getTrustedNow() })
     const updated = await db.orderItems.get(itemId)
     if (updated) await enqueueSync('orderItems', itemId, updated)
     await recalcOrderTotals(item.orderId)
@@ -347,7 +348,7 @@ export async function voidOrderItem(
     'rw',
     [db.orderItems, db.orders, db.syncQueue, db.settings, db.auditLogs],
     async () => {
-      await db.orderItems.update(itemId, { voided: true, voidReason: reason, updatedAt: Date.now() })
+      await db.orderItems.update(itemId, { voided: true, voidReason: reason, updatedAt: getTrustedNow() })
       const updated = await db.orderItems.get(itemId)
       if (updated) await enqueueSync('orderItems', itemId, updated)
       await recalcOrderTotals(item.orderId)
@@ -371,7 +372,7 @@ export async function setOrderDiscount(
   discountValue: number,
 ): Promise<void> {
   await db.transaction('rw', db.orders, db.orderItems, db.syncQueue, db.settings, async () => {
-    await db.orders.update(orderId, { discountType, discountValue, updatedAt: Date.now() })
+    await db.orders.update(orderId, { discountType, discountValue, updatedAt: getTrustedNow() })
     await recalcOrderTotals(orderId)
   })
 }
@@ -386,7 +387,7 @@ export async function setOrderItemKitchenStatus(itemId: string, kitchenStatus: K
   await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue], async () => {
     const item = await db.orderItems.get(itemId)
     if (!item) return
-    const now = Date.now()
+    const now = getTrustedNow()
     const patch: Partial<OrderItem> = { kitchenStatus, updatedAt: now }
     const tsField = KITCHEN_TIMESTAMP_FIELD[kitchenStatus]
     if (tsField && item[tsField] == null) (patch as Record<string, unknown>)[tsField] = now
@@ -406,7 +407,7 @@ export async function listActiveKitchenItems(): Promise<OrderItem[]> {
 }
 
 export async function setOrderNotes(orderId: string, notes: string): Promise<void> {
-  await db.orders.update(orderId, { notes, updatedAt: Date.now() })
+  await db.orders.update(orderId, { notes, updatedAt: getTrustedNow() })
 }
 
 export async function recalcOrderTotals(orderId: string): Promise<void> {
@@ -423,7 +424,7 @@ export async function recalcOrderTotals(orderId: string): Promise<void> {
     // setelan tak menggeser total order lama saat di-recalc.
     roundingIncrement: order.roundingIncrementSnapshot ?? (await getSettings()).roundingIncrement,
   })
-  await db.orders.update(orderId, { ...totals, updatedAt: Date.now() })
+  await db.orders.update(orderId, { ...totals, updatedAt: getTrustedNow() })
   const updated = await db.orders.get(orderId)
   if (updated) await enqueueSync('orders', orderId, updated)
 }
@@ -434,7 +435,7 @@ export async function splitOrder(orderId: string, itemIdsToMove: string[]): Prom
     const original = await db.orders.get(orderId)
     if (!original) throw new Error('Pesanan tidak ditemukan')
     const orderNumber = await nextTransactionNumber()
-    const now = Date.now()
+    const now = getTrustedNow()
     const newOrder: Order = {
       ...original,
       id: newId(),
@@ -471,7 +472,7 @@ export async function mergeOrders(targetOrderId: string, sourceOrderId: string):
   await db.transaction('rw', db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.settings, async () => {
     const items = await db.orderItems.where('orderId').equals(sourceOrderId).toArray()
     for (const item of items) {
-      await db.orderItems.update(item.id, { orderId: targetOrderId, updatedAt: Date.now() })
+      await db.orderItems.update(item.id, { orderId: targetOrderId, updatedAt: getTrustedNow() })
       const moved = await db.orderItems.get(item.id)
       if (moved) await enqueueSync('orderItems', item.id, moved)
     }
@@ -479,8 +480,8 @@ export async function mergeOrders(targetOrderId: string, sourceOrderId: string):
     await db.orders.update(sourceOrderId, {
       status: 'void',
       voidReason: `Digabung ke pesanan ${targetOrderId}`,
-      voidedAt: Date.now(),
-      updatedAt: Date.now(),
+      voidedAt: getTrustedNow(),
+      updatedAt: getTrustedNow(),
     })
     const updatedSource = await db.orders.get(sourceOrderId)
     if (updatedSource) await enqueueSync('orders', sourceOrderId, updatedSource)
@@ -493,7 +494,7 @@ export async function mergeOrders(targetOrderId: string, sourceOrderId: string):
           currentOrderId: null,
           occupiedSince: null,
           guestCount: null,
-          updatedAt: Date.now(),
+          updatedAt: getTrustedNow(),
         })
       }
     }

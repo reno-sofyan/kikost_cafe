@@ -2,6 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import type { Customer, Order } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export async function listCustomers(): Promise<Customer[]> {
   return db.customers.orderBy('name').toArray()
@@ -16,7 +17,7 @@ export async function searchCustomers(query: string): Promise<Customer[]> {
 }
 
 export async function createCustomer(input: { name: string; phone: string; note: string }): Promise<Customer> {
-  const now = Date.now()
+  const now = getTrustedNow()
   const customer: Customer = { ...input, id: newId(), createdAt: now, updatedAt: now }
   await db.transaction('rw', db.customers, db.syncQueue, async () => {
     await db.customers.add(customer)
@@ -27,7 +28,7 @@ export async function createCustomer(input: { name: string; phone: string; note:
 
 export async function updateCustomer(id: string, patch: Partial<Pick<Customer, 'name' | 'phone' | 'note'>>): Promise<void> {
   await db.transaction('rw', db.customers, db.syncQueue, async () => {
-    await db.customers.update(id, { ...patch, updatedAt: Date.now() })
+    await db.customers.update(id, { ...patch, updatedAt: getTrustedNow() })
     const updated = await db.customers.get(id)
     if (updated) await enqueueSync('customers', id, updated)
   })

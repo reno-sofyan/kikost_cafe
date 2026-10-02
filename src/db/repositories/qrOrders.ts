@@ -6,6 +6,7 @@ import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { getSettings } from '@/db/repositories/settings'
 import { computeLineTotal } from '@/lib/orderTotals'
 import type { Order, OrderItem } from '@/types/domain'
+import { getTrustedNow } from '@/lib/clockGuard'
 
 export interface ConfirmQrResult {
   queueNumber: number
@@ -33,7 +34,7 @@ async function repriceQrItems(orderId: string): Promise<string[]> {
 
   for (const item of items) {
     const product = await db.products.get(item.productId)
-    const now = Date.now()
+    const now = getTrustedNow()
 
     if (!product || product.isAvailable === false) {
       await db.orderItems.update(item.id, { removed: true, updatedAt: now })
@@ -119,7 +120,7 @@ export async function confirmQrOrder(
       taxPercent: settings.taxPercent,
       serviceChargePercent: settings.serviceChargePercent,
       roundingIncrementSnapshot: order.roundingIncrementSnapshot || settings.roundingIncrement,
-      updatedAt: Date.now(),
+      updatedAt: getTrustedNow(),
     })
     removedItems = await repriceQrItems(orderId)
     await recalcOrderTotals(orderId)
@@ -131,8 +132,8 @@ export async function confirmQrOrder(
         await db.cafeTables.update(order.tableId, {
           status: 'occupied',
           currentOrderId: orderId,
-          occupiedSince: table.occupiedSince ?? Date.now(),
-          updatedAt: Date.now(),
+          occupiedSince: table.occupiedSince ?? getTrustedNow(),
+          updatedAt: getTrustedNow(),
         })
         const updated = await db.cafeTables.get(order.tableId)
         if (updated) await enqueueSync('cafeTables', order.tableId, updated)
@@ -199,7 +200,7 @@ export async function rejectQrOrder(
           currentOrderId: null,
           occupiedSince: null,
           guestCount: null,
-          updatedAt: Date.now(),
+          updatedAt: getTrustedNow(),
         })
         const updated = await db.cafeTables.get(order.tableId)
         if (updated) await enqueueSync('cafeTables', order.tableId, updated)
@@ -258,7 +259,7 @@ export async function mergeQrOrderIntoTable(
     [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.syncQueue, db.auditLogs],
     async () => {
       const removed = await repriceQrItems(qrOrderId)
-      const now = Date.now()
+      const now = getTrustedNow()
       const items = await db.orderItems.where('orderId').equals(qrOrderId).filter((i) => !i.removed).toArray()
       for (const item of items) {
         await db.orderItems.update(item.id, { orderId: targetOrderId, kitchenPrintedAt: null, ticketId: null, updatedAt: now })
@@ -301,7 +302,7 @@ export async function mergeQrOrderIntoTable(
 /** Menandai satu permintaan pelanggan (panggil waiter / minta tagihan) selesai. */
 export async function resolveTableCall(callId: string): Promise<void> {
   await db.transaction('rw', db.tableCalls, db.syncQueue, async () => {
-    await db.tableCalls.update(callId, { status: 'done', updatedAt: Date.now() })
+    await db.tableCalls.update(callId, { status: 'done', updatedAt: getTrustedNow() })
     const updated = await db.tableCalls.get(callId)
     if (updated) await enqueueSync('tableCalls', callId, updated)
   })

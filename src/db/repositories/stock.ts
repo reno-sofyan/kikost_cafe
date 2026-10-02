@@ -2,6 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { convertQty } from '@/lib/units'
+import { getTrustedNow } from '@/lib/clockGuard'
 import type {
   Ingredient,
   Product,
@@ -24,7 +25,7 @@ export async function listIngredients(): Promise<Ingredient[]> {
 }
 
 export async function createIngredient(input: Omit<Ingredient, 'id' | 'createdAt' | 'updatedAt'>): Promise<Ingredient> {
-  const now = Date.now()
+  const now = getTrustedNow()
   const ingredient: Ingredient = { ...input, id: newId(), createdAt: now, updatedAt: now }
   await db.transaction('rw', db.ingredients, db.syncQueue, async () => {
     await db.ingredients.add(ingredient)
@@ -38,7 +39,7 @@ export async function updateIngredient(
   patch: Partial<Omit<Ingredient, 'id' | 'createdAt' | 'updatedAt'>>,
 ): Promise<void> {
   await db.transaction('rw', db.ingredients, db.syncQueue, async () => {
-    await db.ingredients.update(id, { ...patch, updatedAt: Date.now() })
+    await db.ingredients.update(id, { ...patch, updatedAt: getTrustedNow() })
     const updated = await db.ingredients.get(id)
     if (updated) await enqueueSync('ingredients', id, updated)
   })
@@ -62,7 +63,7 @@ export interface StockPostInput {
  * syncQueue. Menjaga histori: `stockMovements` tak pernah dihapus.
  */
 export async function postStockMovement(input: StockPostInput): Promise<void> {
-  const now = Date.now()
+  const now = getTrustedNow()
   if (input.itemType === 'ingredient') {
     const ingredient = await db.ingredients.get(input.itemId)
     if (!ingredient) throw new Error('Bahan baku tidak ditemukan')
@@ -161,7 +162,7 @@ export async function recomputeProductAvailabilityByRecipe(productId: string): P
   const hasAllIngredients = await hasEnoughIngredientsForOneUnit(recipe.items)
   const nextAvailability = hasAllIngredients
   if (product.isAvailable !== nextAvailability) {
-    await db.products.update(productId, { isAvailable: nextAvailability, updatedAt: Date.now() })
+    await db.products.update(productId, { isAvailable: nextAvailability, updatedAt: getTrustedNow() })
     const updated = await db.products.get(productId)
     if (updated) await enqueueSync('products', productId, updated)
   }
