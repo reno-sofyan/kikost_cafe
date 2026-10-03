@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { completeOnboarding, idbAll, openShift } from './helpers'
+import { completeOnboarding, idbAll, openShift, waitForOrderItems } from './helpers'
 
 interface OrderRow { id: string; status: string; lifecycleStatus: string; grandTotal: number }
 interface BillRow { orderId: string; paymentStatus: string; amountPaid: number; grandTotal: number }
@@ -25,6 +25,7 @@ test('pembayaran sebagian: DP dulu → pesanan tetap terbuka → pelunasan menye
   await nb.getByRole('button', { name: 'Mulai Pesanan' }).click()
   await page.getByRole('button', { name: 'Snack' }).click()
   await page.getByRole('button', { name: /Kentang Goreng/ }).click()
+  await waitForOrderItems(page, 1)
 
   const grand = (await idbAll<OrderRow>(page, 'orders'))[0].grandTotal
 

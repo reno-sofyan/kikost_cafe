@@ -71,3 +71,15 @@ export async function idbAll<T = unknown>(page: Page, store: string): Promise<T[
     { store },
   ) as Promise<T[]>
 }
+
+/**
+ * Tunggu sampai `count` item pesanan tersimpan di IndexedDB. Klik produk di Kasir
+ * menyimpan item secara async — membaca total pesanan langsung sesudah klik bisa
+ * mendapat nilai SEBELUM item terakhir masuk. Total pesanan dihitung ulang dalam
+ * transaksi yang sama dengan penyimpanan item, jadi setelah ini total sudah final.
+ */
+export async function waitForOrderItems(page: Page, count: number): Promise<void> {
+  await expect
+    .poll(async () => (await idbAll<{ removed?: boolean }>(page, 'orderItems')).filter((i) => !i.removed).length)
+    .toBe(count)
+}

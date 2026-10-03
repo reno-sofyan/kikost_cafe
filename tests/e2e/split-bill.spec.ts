@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { completeOnboarding, idbAll, openShift } from './helpers'
+import { completeOnboarding, idbAll, openShift, waitForOrderItems } from './helpers'
 
 interface OrderRow { id: string; status: string; lifecycleStatus: string; grandTotal: number }
 interface BillRow { id: string; orderId: string; itemIds: string[] | 'all'; paymentStatus: string; grandTotal: number }
@@ -18,6 +18,7 @@ test('pisah tagihan per item: bayar tiap tagihan → order COMPLETED sekali, sto
   await page.getByRole('button', { name: 'Snack' }).click()
   await page.getByRole('button', { name: /Kentang Goreng/ }).click()
   await page.getByRole('button', { name: /Pisang Goreng/ }).click()
+  await waitForOrderItems(page, 2)
 
   const grand = (await idbAll<OrderRow>(page, 'orders'))[0].grandTotal
   expect(grand).toBeGreaterThan(0)
