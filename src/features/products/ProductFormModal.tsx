@@ -27,6 +27,13 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? categories[0]?.id ?? '')
+  // Daftar kategori dimuat async (useLiveQuery) — saat form pertama dirender masih
+  // kosong, jadi default di atas tak pernah terisi sementara <select> TAMPAK sudah
+  // memilih kategori pertama. Isi default begitu kategorinya tersedia.
+  const firstCategoryId = categories[0]?.id
+  useEffect(() => {
+    if (!categoryId && firstCategoryId) setCategoryId(firstCategoryId)
+  }, [categoryId, firstCategoryId])
   const [sku, setSku] = useState(initial?.sku ?? '')
   const [barcode, setBarcode] = useState(initial?.barcode ?? '')
   const [price, setPrice] = useState(initial?.price ?? 0)
@@ -60,8 +67,13 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   }
 
   async function handleSave() {
-    if (!name.trim() || !categoryId || !sku.trim()) {
-      setError('Nama, kategori, dan SKU wajib diisi')
+    const missing = [!name.trim() && 'Nama', !categoryId && 'Kategori', !sku.trim() && 'SKU'].filter(Boolean)
+    if (missing.length > 0) {
+      setError(
+        !categoryId && categories.length === 0
+          ? 'Belum ada kategori — buat dulu di tab Kategori.'
+          : `${missing.join(', ')} wajib diisi.`,
+      )
       return
     }
     const normalizedSku = sku.trim().toLowerCase()
@@ -132,6 +144,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
           <label className="col-span-2 sm:col-span-1">
             <span className="mb-1 block text-sm text-ink-300">Kategori</span>
             <select className="input-field" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              {!categoryId && <option value="">— Pilih kategori —</option>}
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
