@@ -38,7 +38,7 @@ export async function sendOrderToKitchen(
   const items = await db.orderItems
     .where('orderId')
     .equals(orderId)
-    .filter((i) => !i.voided && !i.removed && i.kitchenPrintedAt == null)
+    .filter((i) => !i.voided && !i.removed && !i.skipKitchen && i.kitchenPrintedAt == null)
     .toArray()
   if (items.length === 0) return { stations: [], itemCount: 0 }
 
@@ -47,10 +47,13 @@ export async function sendOrderToKitchen(
   for (const item of items) {
     const product = await db.products.get(item.productId)
     const station = await stationForCategory(product?.categoryId ?? null)
+    // Kategori diubah ke `direct` setelah item ditambahkan → tetap tak dikirim.
+    if (station === 'direct') continue
     const list = byStation.get(station) ?? []
     list.push(item)
     byStation.set(station, list)
   }
+  if (byStation.size === 0) return { stations: [], itemCount: 0 }
 
   const now = Date.now()
   await db.transaction(
@@ -109,7 +112,7 @@ export async function sendOrderToKitchen(
   )
 
   await processPrintQueue()
-  return { stations: [...byStation.keys()], itemCount: items.length }
+  return { stations: [...byStation.keys()], itemCount: [...byStation.values()].reduce((n, list) => n + list.length, 0) }
 }
 
 /** Cetak ulang satu kitchen ticket (hanya item tiket itu) — ber-audit + label. */

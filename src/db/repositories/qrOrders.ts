@@ -1,4 +1,5 @@
 import { db } from '@/db/schema'
+import { stationForCategory } from '@/db/repositories/printers'
 import { enqueueSync } from '@/sync/outbox'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { transitionOrder, drawQueueNumber, recalcOrderTotals } from '@/db/repositories/orders'
@@ -110,6 +111,14 @@ export async function confirmQrOrder(
   const oldTotal = order.grandTotal
   let removedItems: string[] = []
 
+  // Item pesanan QR dibuat server (tanpa tahu routing kategori) — barang siap jual
+  // (kategori `direct`) ditandai di sini supaya tak masuk dapur, sama seperti di kasir.
+  const directItemIds: string[] = []
+  for (const item of await db.orderItems.where('orderId').equals(orderId).toArray()) {
+    const product = await db.products.get(item.productId)
+    if ((await stationForCategory(product?.categoryId ?? null)) === 'direct') directItemIds.push(item.id)
+  }
+
   await db.transaction(
     'rw',
     [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.syncQueue, db.auditLogs],
@@ -123,6 +132,14 @@ export async function confirmQrOrder(
       updatedAt: getTrustedNow(),
     })
     removedItems = await repriceQrItems(orderId)
+    const now = getTrustedNow()
+    for (const id of directItemIds) {
+      const item = await db.orderItems.get(id)
+      if (!item || item.removed || item.voided) continue
+      await db.orderItems.update(id, { skipKitchen: true, kitchenStatus: 'done', readyAt: now, servedAt: now, updatedAt: now })
+      const updated = await db.orderItems.get(id)
+      if (updated) await enqueueSync('orderItems', id, updated)
+    }
     await recalcOrderTotals(orderId)
     await transitionOrder(orderId, 'CONFIRMED')
 

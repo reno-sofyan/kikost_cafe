@@ -3,6 +3,7 @@ import { updateSettings } from '@/db/repositories/settings'
 import { createUser } from '@/db/repositories/users'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { seedInitialCatalog } from '@/db/seed'
+import { createKantinStarterCategories } from '@/db/repositories/categories'
 import { useSessionStore } from '@/state/sessionStore'
 import { isValidPinFormat } from '@/lib/pinHash'
 import { readFileAsResizedDataUrl } from '@/lib/image'
@@ -31,6 +32,7 @@ export function OnboardingWizard() {
 
   const [businessType, setBusinessType] = useState<BusinessType>('lainnya')
   const [withSampleCatalog, setWithSampleCatalog] = useState(true)
+  const [withKantinCategories, setWithKantinCategories] = useState(true)
   const [businessName, setBusinessName] = useState('')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
@@ -129,6 +131,7 @@ export function OnboardingWizard() {
             details: 'Onboarding aplikasi selesai, akun administrator dibuat',
           })
           if (withSampleCatalog) await seedInitialCatalog(businessType)
+          else if (businessType === 'kantin' && withKantinCategories) await createKantinStarterCategories()
           login(admin)
         })(),
         20_000,
@@ -228,6 +231,17 @@ export function OnboardingWizard() {
                   </span>
                 </span>
               </label>
+              {businessType === 'kantin' && !withSampleCatalog && (
+                <label className="flex items-start gap-2 text-sm text-ink-200">
+                  <input type="checkbox" className="mt-0.5" checked={withKantinCategories} onChange={(e) => setWithKantinCategories(e.target.checked)} />
+                  <span>
+                    Buat kategori standar kantin (tanpa produk)
+                    <span className="block text-xs text-ink-500">
+                      Masakan &amp; Minuman Seduh → dapur; Minuman Dingin, Es Krim, Snack &amp; Kerupuk → langsung dari kasir.
+                    </span>
+                  </span>
+                </label>
+              )}
               <Field label="Nama Usaha">
                 <input
                   className="input-field"

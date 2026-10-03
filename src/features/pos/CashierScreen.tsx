@@ -138,8 +138,7 @@ export function CashierScreen() {
             i.modifiers.length === 0 &&
             !i.notes &&
             i.discountAmount === 0 &&
-            i.kitchenStatus === 'new' &&
-            i.kitchenPrintedAt == null,
+            (i.skipKitchen || (i.kitchenStatus === 'new' && i.kitchenPrintedAt == null)),
         )
       : undefined
     const canFulfill = await canFulfillProductQty(product, (stackTarget?.qty ?? 0) + 1)
@@ -410,7 +409,7 @@ export function CashierScreen() {
                   Kosongkan
                 </button>
               </div>
-              {features.kitchen && activeItems.some((i) => i.kitchenPrintedAt == null) && (
+              {features.kitchen && activeItems.some((i) => !i.skipKitchen && i.kitchenPrintedAt == null) && (
                 <button
                   className="btn-secondary w-full"
                   onClick={async () => {

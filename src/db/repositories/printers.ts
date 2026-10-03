@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { recordAuditLog } from '@/db/repositories/auditLog'
-import type { Printer, PrinterStation, PrintRoute } from '@/types/domain'
+import type { Printer, PrinterStation, PrintRoute, RouteStation } from '@/types/domain'
 
 export async function listPrinters(): Promise<Printer[]> {
   return db.printers.orderBy('station').toArray()
@@ -68,7 +68,7 @@ export async function listPrintRoutes(): Promise<PrintRoute[]> {
 }
 
 /** Station untuk sebuah kategori: aturan spesifik → aturan default → 'kitchen'. */
-export async function stationForCategory(categoryId: string | null): Promise<PrinterStation> {
+export async function stationForCategory(categoryId: string | null): Promise<RouteStation> {
   const routes = await db.printRoutes.toArray()
   if (categoryId) {
     const specific = routes.find((r) => r.categoryId === categoryId)
@@ -78,7 +78,7 @@ export async function stationForCategory(categoryId: string | null): Promise<Pri
   return def?.station ?? 'kitchen'
 }
 
-export async function setPrintRoute(categoryId: string | null, station: PrinterStation): Promise<void> {
+export async function setPrintRoute(categoryId: string | null, station: RouteStation): Promise<void> {
   const routes = await db.printRoutes.toArray()
   const existing = routes.find((r) => r.categoryId === categoryId)
   const route: PrintRoute = {

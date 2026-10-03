@@ -6,6 +6,7 @@ import { getSettings, nextTransactionNumber } from '@/db/repositories/settings'
 import { markAvailable, occupyTable } from '@/db/repositories/tables'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { assertTransition, deriveKitchenPhase, legacyStatusFor } from '@/lib/orderState'
+import { stationForCategory } from '@/db/repositories/printers'
 import { getDeviceId } from '@/sync/device'
 import { jakartaDateKey } from '@/lib/datetime'
 import { getTrustedNow } from '@/lib/clockGuard'
@@ -142,7 +143,8 @@ async function syncKitchenPhase(orderId: string): Promise<void> {
   const items = await db.orderItems
     .where('orderId')
     .equals(orderId)
-    .filter((i) => !i.removed && !i.voided)
+    // Barang siap jual (skipKitchen) tak pernah lewat dapur — tak ikut menentukan fase.
+    .filter((i) => !i.removed && !i.voided && !i.skipKitchen)
     .toArray()
   const derived = deriveKitchenPhase(
     order.lifecycleStatus ?? 'DRAFT',
@@ -233,6 +235,8 @@ export async function addOrderItem(params: {
     modifiers: params.modifiers,
     discountAmount: params.discountAmount ?? 0,
   })
+  const product = await db.products.get(params.productId)
+  const skipKitchen = (await stationForCategory(product?.categoryId ?? null)) === 'direct'
   const item: OrderItem = {
     id: newId(),
     orderId: params.orderId,
@@ -244,14 +248,15 @@ export async function addOrderItem(params: {
     notes: params.notes,
     discountAmount: params.discountAmount ?? 0,
     lineTotal,
-    kitchenStatus: 'new',
+    kitchenStatus: skipKitchen ? 'done' : 'new',
+    skipKitchen,
     removed: false,
     kitchenPrintedAt: null,
     ticketId: null,
     queuedAt: now,
     startedAt: null,
-    readyAt: null,
-    servedAt: null,
+    readyAt: skipKitchen ? now : null,
+    servedAt: skipKitchen ? now : null,
     voided: false,
     voidReason: null,
     createdAt: now,

@@ -125,6 +125,19 @@ describe('QR order inbox', () => {
     expect(await db.auditLogs.where('action').equals('qr.order.confirm').count()).toBe(1)
   })
 
+  it('confirm: item kategori "Langsung (tanpa dapur)" tidak dikirim ke dapur', async () => {
+    await seedProduct()
+    const { setPrintRoute } = await import('./printers')
+    await setPrintRoute('cat', 'direct')
+    await seedQrOrder()
+
+    await confirmQrOrder('qr-1', actor)
+
+    expect(await db.orderItems.get('qi-1')).toMatchObject({ skipKitchen: true, kitchenStatus: 'done' })
+    expect(await db.kitchenTickets.where('orderId').equals('qr-1').count()).toBe(0)
+    expect((await db.orders.get('qr-1'))?.lifecycleStatus).toBe('CONFIRMED')
+  })
+
   it('confirm menghitung ulang harga dengan harga menu terkini', async () => {
     await seedProduct(30000) // naik dari 20000 saat submit
     await seedQrOrder()

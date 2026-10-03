@@ -190,6 +190,15 @@ export type PrinterStation = 'cashier' | 'kitchen' | 'bar'
 
 export const PRINTER_STATIONS: PrinterStation[] = ['cashier', 'kitchen', 'bar']
 
+/**
+ * Tujuan item sebuah kategori: station printer, ATAU `direct` = barang siap jual
+ * (minuman botol, es krim, kerupuk) yang langsung diserahkan kasir — tidak masuk
+ * Layar Dapur, tidak dicetak sebagai tiket, dan tidak menahan status pesanan.
+ */
+export type RouteStation = PrinterStation | 'direct'
+
+export const ROUTE_STATIONS: RouteStation[] = ['kitchen', 'bar', 'cashier', 'direct']
+
 export interface Printer {
   id: string
   name: string
@@ -211,7 +220,7 @@ export interface Printer {
 export interface PrintRoute {
   id: string
   categoryId: string | null
-  station: PrinterStation
+  station: RouteStation
   updatedAt: number
 }
 
@@ -573,6 +582,12 @@ export interface OrderItem {
   discountAmount: number
   lineTotal: number
   kitchenStatus: KitchenItemStatus
+  /**
+   * Item kategori ber-station `direct` (barang siap jual): dibuat langsung `done`,
+   * tak pernah dikirim ke dapur, dan diabaikan saat menghitung status dapur pesanan.
+   * Opsional — item lama/dari server tanpa field ini = `false`.
+   */
+  skipKitchen?: boolean
   /** Soft-delete: item dihapus sebelum dikirim ke dapur (menggantikan hard delete). */
   removed: boolean
   /** Waktu item ini dicetak ke tiket dapur/bar. Item tambahan (belum tercetak) tak

@@ -19,7 +19,8 @@ import { EscPosPrinter, type BluetoothPrinterDevice } from '@/native/escPosPrint
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
 import { Icon } from '@/components/ui/Icon'
-import type { Printer, PrinterStation, ReceiptPaperSize } from '@/types/domain'
+import type { Printer, PrinterStation, ReceiptPaperSize, RouteStation } from '@/types/domain'
+import { RouteStationSelect } from '@/features/printing/RouteStationSelect'
 import { PRINTER_STATIONS } from '@/types/domain'
 
 const isNative = Capacitor.isNativePlatform()
@@ -124,7 +125,10 @@ export function PrinterSettings() {
           {categories.map((c) => (
             <RouteRowLive key={c.id} categoryId={c.id} label={c.name} onChange={(s) => void setPrintRoute(c.id, s)} />
           ))}
-          <p className="text-xs text-ink-500">Contoh: "Makanan" → Kitchen, "Kopi" &amp; "Non-Kopi" → Bar, sisanya default.</p>
+          <p className="text-xs text-ink-500">
+            Contoh: "Makanan" → Dapur, "Kopi" → Bar. "Langsung (tanpa dapur)" untuk barang siap jual (minuman botol, es krim,
+            kerupuk) — tidak masuk Layar Dapur & tidak dicetak sebagai tiket.
+          </p>
         </div>
       )}
 
@@ -151,22 +155,16 @@ export function PrinterSettings() {
   )
 }
 
-function RouteRowLive({ categoryId, label, onChange }: { categoryId: string; label: string; onChange: (s: PrinterStation) => void }) {
+function RouteRowLive({ categoryId, label, onChange }: { categoryId: string; label: string; onChange: (s: RouteStation) => void }) {
   const station = useLiveQuery(() => stationForCategory(categoryId), [categoryId]) ?? 'kitchen'
   return <RouteRow label={label} station={station} onChange={onChange} />
 }
 
-function RouteRow({ label, station, onChange }: { label: string; station: PrinterStation; onChange: (s: PrinterStation) => void }) {
+function RouteRow({ label, station, onChange }: { label: string; station: RouteStation; onChange: (s: RouteStation) => void }) {
   return (
     <div className="flex items-center justify-between rounded-xl bg-ink-800 px-4 py-2 text-sm">
       <span className="text-ink-200">{label}</span>
-      <select className="input-field !w-28 !py-1" value={station} onChange={(e) => onChange(e.target.value as PrinterStation)}>
-        {PRINTER_STATIONS.map((s) => (
-          <option key={s} value={s}>
-            {STATION_LABELS[s]}
-          </option>
-        ))}
-      </select>
+      <RouteStationSelect value={station} onChange={onChange} />
     </div>
   )
 }
