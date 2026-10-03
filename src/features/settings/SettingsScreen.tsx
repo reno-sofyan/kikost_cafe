@@ -7,6 +7,7 @@ import { roleHasPermission } from '@/lib/permissions'
 import { UserManager } from '@/features/settings/UserManager'
 import { BackupManager } from '@/features/settings/BackupManager'
 import { PrinterSettings } from '@/features/settings/PrinterSettings'
+import { QueueSettings } from '@/features/settings/QueueSettings'
 import { PagerSettings } from '@/features/settings/PagerSettings'
 import { TableQrSettings } from '@/features/settings/TableQrSettings'
 import { OutletSettings } from '@/features/settings/OutletSettings'
@@ -21,6 +22,7 @@ type Tab =
   | 'profil'
   | 'outlet'
   | 'pajak'
+  | 'antrean'
   | 'qris'
   | 'printer'
   | 'pager'
@@ -35,6 +37,7 @@ const TAB_KEYS: Tab[] = [
   'profil',
   'outlet',
   'pajak',
+  'antrean',
   'qris',
   'printer',
   'pager',
@@ -61,6 +64,7 @@ export function SettingsScreen() {
     { key: 'profil', label: 'Profil Usaha', visible: true },
     { key: 'outlet', label: 'Outlet', visible: roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'pajak', label: 'Pajak & Struk', visible: true },
+    { key: 'antrean', label: 'Antrean', visible: features.queueNumbers && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
     { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
@@ -91,6 +95,7 @@ export function SettingsScreen() {
         {tab === 'profil' && <ProfileForm />}
         {tab === 'outlet' && <OutletSettings />}
         {tab === 'pajak' && <FiscalForm />}
+        {tab === 'antrean' && <QueueSettings />}
         {tab === 'qris' && <QrisForm />}
         {tab === 'printer' && <PrinterSettings />}
         {tab === 'pager' && <PagerSettings />}

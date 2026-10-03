@@ -95,7 +95,7 @@ export async function enqueueSync(entity: SyncEntity, entityId: string, payload:
  * Entitas yang boleh dihapus lewat sync. HARUS identik dengan `DELETABLE_ENTITIES`
  * di backend (backend/src/lib/entities.ts) — server menolak penghapusan entitas lain.
  */
-export const DELETABLE_SYNC_ENTITIES = ['ingredients', 'stockMovements', 'orders', 'orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments', 'paymentProofs'] as const
+export const DELETABLE_SYNC_ENTITIES = ['ingredients'] as const
 export type DeletableSyncEntity = (typeof DELETABLE_SYNC_ENTITIES)[number]
 
 /**

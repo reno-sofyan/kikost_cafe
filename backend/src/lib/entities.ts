@@ -46,13 +46,12 @@ export function isSyncEntity(value: unknown): value is SyncEntity {
 }
 
 /**
- * Entitas yang boleh DIHAPUS lewat sync (tombstone `deleted = TRUE`): bahan baku,
- * riwayat stok, dan satu transaksi beserta turunannya (hapus riwayat transaksi oleh
- * admin — tiap penghapusan tercatat di audit log). Audit log sendiri, pengaturan,
- * shift, dll. TIDAK bisa dihapus. HARUS identik dengan `DELETABLE_SYNC_ENTITIES`
- * di frontend (src/sync/outbox.ts).
+ * Entitas yang boleh DIHAPUS lewat sync (tombstone `deleted = TRUE`). Sengaja
+ * hanya bahan baku: riwayat transaksi, pembayaran, riwayat stok, & audit log
+ * TIDAK bisa dihapus dari perangkat mana pun. HARUS identik dengan
+ * `DELETABLE_SYNC_ENTITIES` di frontend (src/sync/outbox.ts).
  */
-export const DELETABLE_ENTITIES: ReadonlySet<SyncEntity> = new Set<SyncEntity>(['ingredients', 'stockMovements', 'orders', 'orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments', 'paymentProofs'])
+export const DELETABLE_ENTITIES: ReadonlySet<SyncEntity> = new Set<SyncEntity>(['ingredients'])
 
 /** Status pesanan yang dianggap final; tidak boleh dikembalikan ke `open` oleh sinkronisasi. */
 const FINAL_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])

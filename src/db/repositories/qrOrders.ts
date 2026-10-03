@@ -125,6 +125,7 @@ export async function confirmQrOrder(
     async () => {
     await db.orders.update(orderId, {
       queueNumber,
+      ...(order.queueNumber == null ? { queueAssignedAt: getTrustedNow() } : {}),
       // Snapshot fiskal mengikuti setelan kafe saat DITERIMA (bukan saat submit).
       taxPercent: settings.taxPercent,
       serviceChargePercent: settings.serviceChargePercent,

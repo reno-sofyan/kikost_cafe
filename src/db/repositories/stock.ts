@@ -84,7 +84,7 @@ interface DeleteActor {
   userName: string
 }
 
-/** Hapus bahan baku (khusus admin). Riwayat pergerakannya tetap ada kecuali dihapus terpisah. */
+/** Hapus bahan baku (khusus admin). Riwayat pergerakannya tetap ada. */
 export async function deleteIngredient(id: string, actor: DeleteActor): Promise<void> {
   const blockReason = await ingredientDeleteBlockReason(id)
   if (blockReason) throw new Error(blockReason)
@@ -103,44 +103,6 @@ export async function deleteIngredient(id: string, actor: DeleteActor): Promise<
   })
 }
 
-/**
- * Hapus satu entri riwayat pergerakan stok (khusus admin). HANYA menghapus catatan
- * riwayatnya — stok bahan/produk saat ini TIDAK ikut berubah.
- */
-export async function deleteStockMovement(id: string, actor: DeleteActor): Promise<void> {
-  await db.transaction('rw', db.stockMovements, db.syncQueue, db.auditLogs, async () => {
-    const movement = await db.stockMovements.get(id)
-    if (!movement) return
-    await db.stockMovements.delete(id)
-    await enqueueSyncDelete('stockMovements', id)
-    await recordAuditLog({
-      ...actor,
-      action: 'stock_movement.deleted',
-      entityType: 'stockMovement',
-      entityId: id,
-      details: `Riwayat stok dihapus: ${movement.itemName} ${movement.qtyDelta >= 0 ? '+' : ''}${movement.qtyDelta}`,
-    })
-  })
-}
-
-/** Hapus SELURUH riwayat pergerakan stok (khusus admin). Stok saat ini tidak berubah. */
-export async function clearStockMovements(actor: DeleteActor): Promise<number> {
-  return db.transaction('rw', db.stockMovements, db.syncQueue, db.auditLogs, async () => {
-    const ids = (await db.stockMovements.toCollection().primaryKeys()) as string[]
-    if (ids.length === 0) return 0
-    await db.stockMovements.bulkDelete(ids)
-    for (const id of ids) await enqueueSyncDelete('stockMovements', id)
-    await recordAuditLog({
-      ...actor,
-      action: 'stock_movement.cleared',
-      entityType: 'stockMovement',
-      entityId: 'all',
-      details: `Seluruh riwayat pergerakan stok dihapus (${ids.length} entri)`,
-    })
-    return ids.length
-  })
-}
-
 export interface StockPostInput {
   itemType: StockMovementItemType
   itemId: string
@@ -156,8 +118,7 @@ export interface StockPostInput {
  * Memposting satu pergerakan stok — sumber tunggal kebenaran untuk semua perubahan
  * stok manual/dokumen (pembelian, opname, waste, transfer, adjustment). HARUS
  * dipanggil di dalam transaksi yang mencakup ingredients, products, stockMovements,
- * syncQueue. Menjaga histori: `stockMovements` hanya bisa dihapus admin secara
- * eksplisit (`deleteStockMovement`/`clearStockMovements`), tak pernah otomatis.
+ * syncQueue. Menjaga histori: `stockMovements` tak pernah dihapus.
  */
 export async function postStockMovement(input: StockPostInput): Promise<void> {
   const now = getTrustedNow()

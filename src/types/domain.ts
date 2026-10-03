@@ -11,7 +11,6 @@ export type Permission =
   | 'refund.restock'
   | 'stock.adjust'
   | 'stock.delete'
-  | 'order.delete'
   | 'reports.view'
   | 'settings.manage'
   | 'users.manage'
@@ -94,6 +93,9 @@ export interface AppSettings {
   onboardingCompleted: boolean
   businessName: string
   businessType: BusinessType
+  /** Reset antrean manual (Pengaturan → Antrean): nomor berikutnya mulai dari 1
+   *  lagi, hanya memperhitungkan nomor yang diberikan setelah waktu ini. */
+  queueResetAt?: number | null
   logoDataUrl: string | null
   address: string
   phone: string
@@ -615,6 +617,9 @@ export interface Order {
   /** Nomor HP pelanggan — diisi server untuk pesanan pesan-mandiri via QR (lihat publicOrders.ts). */
   customerPhone?: string
   queueNumber: number | null
+  /** Kapan `queueNumber` diberikan (pesanan QR baru dapat nomor saat diterima kasir,
+   *  bukan saat dibuat). Dipakai reset antrean manual. Kosong = data lama → `createdAt`. */
+  queueAssignedAt?: number | null
   guestCount: number | null
   status: OrderStatus
   /** Siklus hidup gaya POS matang. Backfill dari `status` pada migrasi v3. */

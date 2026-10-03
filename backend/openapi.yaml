@@ -40,7 +40,7 @@ components:
           additionalProperties: true
         deleted:
           type: boolean
-          description: "`true` = hapus entitas (tombstone). Hanya untuk `ingredients`, `stockMovements`, dan transaksi (`orders`, `orderItems`, `kitchenTickets`, `bills`, `payments`, `returns`, `refunds`, `onlinePayments`); entitas lain ditolak."
+          description: "`true` = hapus entitas (tombstone). Hanya untuk `ingredients`; entitas lain ditolak."
     PushResultItem:
       type: object
       properties:

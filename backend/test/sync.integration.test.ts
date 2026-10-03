@@ -247,39 +247,18 @@ suite('sync API (integrasi)', () => {
       expect(pull.json().deletions.ingredients).toBeUndefined()
     })
 
-    it('menolak penghapusan entitas di luar daftar putih (mis. shifts, auditLogs)', async () => {
-      const id = '99999999-9999-9999-9999-999999999999'
-      await push([{ entity: 'shifts', entityId: id, idempotencyKey: randomUUID(), payload: { id, updatedAt: 1000 } }])
-      const res = await push([deletion('shifts', id, 5000), deletion('auditLogs', id, 5000)])
-      expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['rejected', 'rejected'])
-      const pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
-      expect(pull.json().entities.shifts).toHaveLength(1)
-    })
-
-    it('hapus transaksi: order & pembayaran hilang dari pull, pembayaran tak bisa dihidupkan lagi', async () => {
+    it('riwayat tidak bisa dihapus: transaksi, pembayaran, bukti bayar, riwayat stok, shift, audit log ditolak', async () => {
       const orderId = '12121212-1212-1212-1212-121212121212'
-      const payId = '34343434-3434-3434-3434-343434343434'
-      const payment = () => ({
-        entity: 'payments',
-        entityId: payId,
-        idempotencyKey: randomUUID(),
-        payload: { id: payId, orderId, amount: 25000, createdAt: 1000 },
-      })
-      await push([order(orderId, { status: 'paid', updatedAt: 1000 }), payment()])
-
-      const res = await push([deletion('orders', orderId, 2000), deletion('payments', payId, 2000)])
-      expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(['accepted', 'accepted'])
-
-      // Perangkat lain yang belum tahu mengirim ulang pembayaran lama → tetap terhapus.
-      await push([payment()])
+      await push([order(orderId, { status: 'paid', updatedAt: 1000 })])
+      const entities = ['orders', 'orderItems', 'payments', 'paymentProofs', 'stockMovements', 'shifts', 'auditLogs']
+      const res = await push(entities.map((e) => deletion(e, orderId, 5000)))
+      expect(res.json().results.map((r: { status: string }) => r.status)).toEqual(entities.map(() => 'rejected'))
       const pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
-      expect(pull.json().entities.orders).toBeUndefined()
-      expect(pull.json().entities.payments).toBeUndefined()
-      expect(pull.json().deletions.orders).toEqual([orderId])
-      expect(pull.json().deletions.payments).toEqual([payId])
+      expect(pull.json().entities.orders).toHaveLength(1)
+      expect(pull.json().deletions).toEqual({})
     })
 
-    it('bukti pembayaran: diterima, tak bisa diganti, tapi ikut terhapus bersama transaksi', async () => {
+    it('bukti pembayaran: diterima dan tak bisa diganti lewat sync', async () => {
       const id = '56565656-5656-5656-5656-565656565656'
       const proof = (photo: string, updatedAt: number) => ({
         entity: 'paymentProofs',
@@ -289,13 +268,8 @@ suite('sync API (integrasi)', () => {
       })
       expect((await push([proof('data:image/jpeg;base64,AAAA', 1000)])).json().results[0].status).toBe('accepted')
       expect((await push([proof('data:image/jpeg;base64,BBBB', 9000)])).json().results[0].status).toBe('duplicate')
-      let pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      const pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
       expect(pull.json().entities.paymentProofs[0].photoDataUrl).toBe('data:image/jpeg;base64,AAAA')
-
-      expect((await push([deletion('paymentProofs', id, 9999)])).json().results[0].status).toBe('accepted')
-      pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
-      expect(pull.json().entities.paymentProofs).toBeUndefined()
-      expect(pull.json().deletions.paymentProofs).toEqual([id])
     })
 
     it('penghapusan ter-scope per tenant', async () => {

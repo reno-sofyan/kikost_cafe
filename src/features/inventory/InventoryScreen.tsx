@@ -3,10 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import {
   adjustIngredientStock,
-  clearStockMovements,
   createIngredient,
   deleteIngredient,
-  deleteStockMovement,
   ingredientDeleteBlockReason,
   listIngredients,
   listLowStockIngredients,
@@ -83,30 +81,6 @@ export function InventoryScreen() {
     }
   }
 
-  const handleDeleteMovement = async (id: string, label: string) => {
-    const ok = await confirm({
-      title: 'Hapus entri riwayat ini?',
-      description: `${label}. Hanya catatan riwayatnya yang dihapus — stok saat ini tidak berubah.`,
-      confirmLabel: 'Ya, Hapus',
-      tone: 'danger',
-    })
-    if (!ok) return
-    await deleteStockMovement(id, actor)
-  }
-
-  const handleClearMovements = async () => {
-    const total = await db.stockMovements.count()
-    const ok = await confirm({
-      title: `Hapus SELURUH riwayat pergerakan stok (${total.toLocaleString('id-ID')} entri)?`,
-      description: 'Riwayat dihapus dari semua perangkat dan tidak bisa dikembalikan. Stok saat ini tidak berubah.',
-      confirmLabel: 'Ya, Hapus Semua',
-      tone: 'danger',
-    })
-    if (!ok) return
-    const count = await clearStockMovements(actor)
-    toast.success(`${count.toLocaleString('id-ID')} entri riwayat dihapus`)
-  }
-
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-none items-center gap-2 border-b border-ink-800 px-6 py-4">
@@ -164,13 +138,8 @@ export function InventoryScreen() {
 
         {tab === 'riwayat' && (
           <div className="space-y-2">
-            {canDelete && movements.length > 0 && (
-              <button className="btn-danger mb-2" onClick={() => void handleClearMovements()}>
-                <Icon name="trash" size={16} /> Hapus Semua Riwayat
-              </button>
-            )}
             {movements.map((m) => (
-              <div key={m.id} className="card flex items-center justify-between gap-3 p-3 text-sm">
+              <div key={m.id} className="card flex items-center justify-between p-3 text-sm">
                 <div>
                   <p className="font-medium text-ink-100">
                     {m.itemName} • {REASON_LABELS[m.reason]}
@@ -180,21 +149,10 @@ export function InventoryScreen() {
                     {m.note ? ` • ${m.note}` : ''}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-success-500' : 'text-red-400'}`}>
-                    {m.qtyDelta >= 0 ? '+' : ''}
-                    {m.qtyDelta}
-                  </span>
-                  {canDelete && (
-                    <button
-                      className="btn-ghost !min-h-0 !p-2 !text-red-400"
-                      aria-label="Hapus entri riwayat"
-                      onClick={() => void handleDeleteMovement(m.id, `${m.itemName} • ${REASON_LABELS[m.reason]} ${m.qtyDelta >= 0 ? '+' : ''}${m.qtyDelta}`)}
-                    >
-                      <Icon name="trash" size={15} />
-                    </button>
-                  )}
-                </div>
+                <span className={`font-bold ${m.qtyDelta >= 0 ? 'text-success-500' : 'text-red-400'}`}>
+                  {m.qtyDelta >= 0 ? '+' : ''}
+                  {m.qtyDelta}
+                </span>
               </div>
             ))}
             {movements.length === 0 && <p className="text-ink-500">Belum ada pergerakan stok</p>}

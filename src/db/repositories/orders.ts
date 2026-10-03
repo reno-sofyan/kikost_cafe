@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId, newIdempotencyKey } from '@/lib/id'
 import { computeLineTotal, computeOrderTotals } from '@/lib/orderTotals'
-import { getSettings, nextTransactionNumber } from '@/db/repositories/settings'
+import { getSettings, nextTransactionNumber, updateSettings } from '@/db/repositories/settings'
 import { markAvailable, occupyTable } from '@/db/repositories/tables'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { assertTransition, deriveKitchenPhase, legacyStatusFor } from '@/lib/orderState'
@@ -21,14 +21,39 @@ import type {
   OrderType,
 } from '@/types/domain'
 
-/** Nomor antrean harian (reset tiap hari) untuk semua pesanan, dihitung dari data yang ada. */
+/**
+ * Nomor antrean harian (reset otomatis tiap hari, atau manual lewat Pengaturan →
+ * Antrean) untuk semua pesanan, dihitung dari data yang ada.
+ */
 export async function drawQueueNumber(): Promise<number> {
   const todayKey = jakartaDateKey(getTrustedNow())
+  const resetAt = (await db.settings.get('singleton'))?.queueResetAt ?? 0
   const todaysOrders = await db.orders
-    .filter((o) => o.queueNumber !== null && jakartaDateKey(o.createdAt) === todayKey)
+    .filter(
+      (o) =>
+        o.queueNumber !== null &&
+        jakartaDateKey(o.createdAt) === todayKey &&
+        (o.queueAssignedAt ?? o.createdAt) >= resetAt,
+    )
     .toArray()
   const maxQueue = todaysOrders.reduce((max, o) => Math.max(max, o.queueNumber ?? 0), 0)
   return maxQueue >= 999 ? 1 : maxQueue + 1
+}
+
+/**
+ * Reset antrean manual: pesanan berikutnya kembali mendapat #1. Nomor pesanan yang
+ * sudah ada tidak berubah. Ikut sync, jadi berlaku di semua tablet usaha ini.
+ */
+export async function resetQueueNumbers(actor: { userId: string; userName: string }): Promise<void> {
+  const before = (await drawQueueNumber()) - 1
+  await updateSettings({ queueResetAt: getTrustedNow() })
+  await recordAuditLog({
+    ...actor,
+    action: 'queue.reset',
+    entityType: 'settings',
+    entityId: 'singleton',
+    details: `Nomor antrean direset ke #1 (sebelumnya sampai #${before}).`,
+  })
 }
 
 export class NoActiveShiftError extends Error {
@@ -64,6 +89,7 @@ export async function startOrder(params: {
     tableId: params.tableId ?? null,
     customerId: params.customerId ?? null,
     queueNumber: await drawQueueNumber(),
+    queueAssignedAt: now,
     guestCount: params.guestCount ?? null,
     status: 'open',
     lifecycleStatus: 'DRAFT',
@@ -457,6 +483,7 @@ export async function splitOrder(orderId: string, itemIdsToMove: string[]): Prom
       pagerCalledAt: null,
       pagerNumber: null,
       queueNumber: await drawQueueNumber(),
+      queueAssignedAt: now,
     }
     await db.orders.add(newOrder)
     await enqueueSync('orders', newOrder.id, newOrder)

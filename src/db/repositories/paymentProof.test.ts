@@ -8,7 +8,6 @@ import { finalizePayment, payOrderBill, PaymentProofRequiredError } from './chec
 import { ensureOrderBill, implicitBillId } from './billing'
 import { addOrderItem, startOrder } from './orders'
 import { openShift } from './shifts'
-import { deleteOrder } from './orderDeletion'
 import type { BusinessType, Order, PaymentProof } from '@/types/domain'
 
 const PHOTO = 'data:image/jpeg;base64,AAAA'
@@ -84,18 +83,6 @@ describe('kantin: foto bukti wajib', () => {
     })
     expect(res.order.lifecycleStatus).toBe('COMPLETED')
     expect(await db.paymentProofs.count()).toBe(0)
-  })
-
-  it('foto ikut terhapus saat admin menghapus transaksi', async () => {
-    const order = await openOrder()
-    await pay(order.id, true)
-    const [p] = await db.paymentProofs.toArray()
-
-    await deleteOrder(order.id, { userId: 'u1', userName: 'Admin' }, 'uji coba')
-
-    expect(await db.paymentProofs.count()).toBe(0)
-    const deletes = (await db.syncQueue.toArray()).filter((e) => e.operation === 'delete' && e.entity === 'paymentProofs')
-    expect(deletes.map((e) => e.entityId)).toEqual([p.id])
   })
 })
 
