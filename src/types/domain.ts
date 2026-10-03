@@ -701,6 +701,24 @@ export interface Bill {
  * append-only — tablet-lah yang menjalankan `payBill` lokal (potong stok,
  * selesaikan order) saat menariknya, jadi kebenaran bisnis tetap di klien.
  */
+/**
+ * Foto bukti pembayaran (layar QRIS sukses di HP pembeli, uang tunai, dsb.) yang
+ * diambil kasir SAAT membayar — wajib untuk usaha dengan fitur `paymentProof`
+ * (kantin). Disimpan bersama pembayarannya dalam satu transaksi; tak bisa
+ * ditambahkan belakangan. Ikut terhapus bila transaksinya dihapus admin.
+ */
+export interface PaymentProof {
+  id: string
+  orderId: string
+  billId: string
+  /** JPEG data URL yang sudah dikecilkan (lihat `readFileAsResizedDataUrl`). */
+  photoDataUrl: string
+  takenByUserId: string
+  takenByName: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface OnlinePayment {
   id: string
   orderId: string
@@ -840,6 +858,7 @@ export type SyncEntity =
   | 'productions'
   | 'refunds'
   | 'onlinePayments'
+  | 'paymentProofs'
   | 'bills'
   | 'printers'
   | 'printRoutes'

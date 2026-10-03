@@ -22,6 +22,8 @@ import { QrisPaymentModal } from '@/features/payments/QrisPaymentModal'
 import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal'
 import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
 import { SplitBillModal } from '@/features/payments/SplitBillModal'
+import { PaymentProofCapture } from '@/features/payments/PaymentProofCapture'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
 import type { Bill, Order, OrderItem, PaymentMethod, User } from '@/types/domain'
@@ -46,6 +48,8 @@ export function OrderPaymentScreen() {
   const order = useLiveQuery(() => (orderId ? getOrder(orderId) : undefined), [orderId])
   const items = useLiveQuery(() => (orderId ? listOrderItems(orderId) : []), [orderId]) ?? []
   const allowPartial = useLiveQuery(async () => (await getSettings()).allowPartialPayment, []) ?? false
+  const requireProof =
+    useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).paymentProof, []) ?? false
   const bills = useLiveQuery(() => (orderId ? listOrderBills(orderId) : []), [orderId]) ?? []
 
   const [completed, setCompleted] = useState(false)
@@ -105,7 +109,8 @@ export function OrderPaymentScreen() {
                 bill={bill}
                 items={(bill.itemIds === 'all' ? activeItems : bill.itemIds.map((id) => itemById.get(id)).filter(Boolean) as OrderItem[])}
                 allowPartial={allowPartial}
-                userId={currentUser.id}
+                requireProof={requireProof}
+                user={currentUser}
                 onCompleted={() => setCompleted(true)}
               />
             ))}
@@ -115,7 +120,8 @@ export function OrderPaymentScreen() {
             order={order}
             items={activeItems}
             allowPartial={allowPartial}
-            userId={currentUser.id}
+            requireProof={requireProof}
+            user={currentUser}
             onPartial={() => navigate('/kasir')}
             onCompleted={() => setCompleted(true)}
           />
@@ -135,17 +141,21 @@ function SingleBillPayment({
   order,
   items,
   allowPartial,
-  userId,
+  requireProof,
+  user,
   onPartial,
   onCompleted,
 }: {
   order: Order
   items: OrderItem[]
   allowPartial: boolean
-  userId: string
+  requireProof: boolean
+  user: User
   onPartial: () => void
   onCompleted: () => void
 }) {
+  const userId = user.id
+  const [proofPhotos, setProofPhotos] = useState<string[]>([])
   const priorPaid =
     useLiveQuery(
       async () =>
@@ -169,6 +179,7 @@ function SingleBillPayment({
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
+        proof: proofPhotos.length ? { photoDataUrls: proofPhotos, takenByUserId: user.id, takenByName: user.name } : undefined,
       })
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()
       else onPartial()
@@ -183,7 +194,7 @@ function SingleBillPayment({
 
   const linesTotal = lines.reduce((sum, l) => sum + l.amount, 0)
   const remaining = Math.max(0, order.grandTotal - priorPaid - linesTotal)
-  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial)
+  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || proofPhotos.length > 0)
 
   return (
     <>
@@ -228,6 +239,10 @@ function SingleBillPayment({
         <span className={`text-lg font-bold ${remaining > 0 ? 'text-brand-400' : 'text-success-500'}`}>{formatRupiah(remaining)}</span>
       </div>
 
+      {(requireProof || proofPhotos.length > 0) && lines.length > 0 && (
+        <PaymentProofCapture photos={proofPhotos} onChange={setProofPhotos} required={requireProof} />
+      )}
+
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
       <button className="btn-primary w-full" disabled={!canSettle || isSubmitting} onClick={() => submitPayment()}>
@@ -255,15 +270,19 @@ function BillPayCard({
   bill,
   items,
   allowPartial,
-  userId,
+  requireProof,
+  user,
   onCompleted,
 }: {
   bill: Bill
   items: OrderItem[]
   allowPartial: boolean
-  userId: string
+  requireProof: boolean
+  user: User
   onCompleted: () => void
 }) {
+  const userId = user.id
+  const [proofPhotos, setProofPhotos] = useState<string[]>([])
   const [lines, setLines] = useState<PaymentLine[]>([])
   const [activeModal, setActiveModal] = useState<PaymentMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -271,7 +290,7 @@ function BillPayCard({
 
   const paid = bill.paymentStatus === 'PAID'
   const remaining = Math.max(0, bill.grandTotal - bill.amountPaid - lines.reduce((s, l) => s + l.amount, 0))
-  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial)
+  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || proofPhotos.length > 0)
 
   async function run(allowNegativeStock?: { approverUserId: string; approverName: string }) {
     setError(null)
@@ -282,8 +301,10 @@ function BillPayCard({
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
+        proof: proofPhotos.length ? { photoDataUrls: proofPhotos, takenByUserId: user.id, takenByName: user.name } : undefined,
       })
       setLines([])
+      setProofPhotos([])
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()
     } catch (e) {
       if (e instanceof OrderAlreadyFinalizedError) return
@@ -324,6 +345,9 @@ function BillPayCard({
             addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
           />
+          {(requireProof || proofPhotos.length > 0) && lines.length > 0 && (
+            <PaymentProofCapture photos={proofPhotos} onChange={setProofPhotos} required={requireProof} />
+          )}
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
           <button className="btn-primary w-full !min-h-[2.75rem] !py-2.5 text-sm" disabled={!canSettle || isSubmitting} onClick={() => submit()}>
             {isSubmitting ? 'Memproses…' : `Bayar ${bill.label}`}

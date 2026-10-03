@@ -13,6 +13,7 @@ import type {
   ModifierGroup,
   ModifierOption,
   OnlinePayment,
+  PaymentProof,
   Order,
   Outlet,
   Refund,
@@ -74,6 +75,7 @@ export class KioneDatabase extends Dexie {
   refunds!: Table<Refund, string>
   outlets!: Table<Outlet, string>
   onlinePayments!: Table<OnlinePayment, string>
+  paymentProofs!: Table<PaymentProof, string>
   syncQueue!: Table<SyncQueueEntry, string>
 
   constructor() {
@@ -481,6 +483,11 @@ export class KioneDatabase extends Dexie {
             },
           )
       })
+
+    // v16: foto bukti pembayaran (kantin) — tabel baru, tanpa migrasi data.
+    this.version(16).stores({
+      paymentProofs: 'id, orderId, billId, createdAt',
+    })
   }
 }
 

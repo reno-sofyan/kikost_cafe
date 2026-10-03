@@ -4,7 +4,22 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { addExpectedCash } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
 import { deductSaleStock, findOrderStockShortages } from '@/db/repositories/stock'
-import type { Bill, BillPaymentStatus, Order, OrderItem, Payment, PaymentInput } from '@/types/domain'
+import type { Bill, BillPaymentStatus, Order, OrderItem, Payment, PaymentInput, PaymentProof } from '@/types/domain'
+import { newId } from '@/lib/id'
+
+/** Foto bukti pembayaran yang dilampirkan kasir saat membayar (lihat `PaymentProof`). */
+export interface PaymentProofInput {
+  photoDataUrls: string[]
+  takenByUserId: string
+  takenByName: string
+}
+
+export class PaymentProofRequiredError extends Error {
+  constructor() {
+    super('Foto bukti pembayaran wajib diambil sebelum pembayaran diselesaikan.')
+    this.name = 'PaymentProofRequiredError'
+  }
+}
 import { getTrustedNow } from '@/lib/clockGuard'
 
 export class InsufficientPaymentError extends Error {
@@ -107,10 +122,12 @@ export async function payBill(params: {
   confirmedByUserId: string
   allowPartial?: boolean
   allowNegativeStock?: { approverUserId: string; approverName: string }
+  /** Foto bukti pembayaran — disimpan dalam transaksi yang SAMA dengan pembayarannya. */
+  proof?: PaymentProofInput
 }): Promise<{ order: Order; bill: Bill; payments: Payment[] }> {
   return db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.bills, db.payments, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.syncQueue, db.shifts, db.cashMovements, db.auditLogs],
+    [db.orders, db.orderItems, db.bills, db.payments, db.paymentProofs, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.syncQueue, db.shifts, db.cashMovements, db.auditLogs],
     async () => {
       let bill = await db.bills.get(params.billId)
       if (!bill) throw new Error('Tagihan tidak ditemukan')
@@ -166,6 +183,24 @@ export async function payBill(params: {
         created.push(payment)
         addedThisCall += p.amount
         if (p.method === 'cash' && order.shiftId) await addExpectedCash(order.shiftId, p.amount)
+      }
+
+      // Hanya saat ada pembayaran BARU — percobaan ulang yang idempoten tak menggandakan foto.
+      if (params.proof && addedThisCall > 0) {
+        for (const photoDataUrl of params.proof.photoDataUrls) {
+          const proof: PaymentProof = {
+            id: newId(),
+            orderId: order.id,
+            billId: bill.id,
+            photoDataUrl,
+            takenByUserId: params.proof.takenByUserId,
+            takenByName: params.proof.takenByName,
+            createdAt: now,
+            updatedAt: now,
+          }
+          await db.paymentProofs.add(proof)
+          await enqueueSync('paymentProofs', proof.id, proof)
+        }
       }
 
       const newPaid = bill.amountPaid + addedThisCall

@@ -43,6 +43,10 @@ export interface BusinessFeatures {
   stackSameItems: boolean
   /** Isian Service Charge di onboarding & Pengaturan → Pajak & Struk. */
   serviceCharge: boolean
+  /** Wajib foto bukti pembayaran (QRIS/tunai) setiap kali kasir membayar. */
+  paymentProof: boolean
+  /** Notifikasi saat shift dibuka + popup tiap 21.00 WIB "lanjutkan atau tutup shift?". */
+  shiftReminder: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -57,6 +61,8 @@ const ALL_FEATURES: BusinessFeatures = {
   queueNumbers: true,
   stackSameItems: false,
   serviceCharge: true,
+  paymentProof: false,
+  shiftReminder: false,
 }
 
 /**
@@ -82,6 +88,8 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         queueNumbers: false,
         stackSameItems: true,
         serviceCharge: false,
+        paymentProof: false,
+        shiftReminder: false,
       }
     case 'kantin':
       return {
@@ -90,6 +98,8 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         orderTypes: ['dine_in', 'takeaway'],
         stackSameItems: true,
         serviceCharge: false,
+        paymentProof: true,
+        shiftReminder: true,
       }
     case 'cafe_resto':
       return ALL_FEATURES

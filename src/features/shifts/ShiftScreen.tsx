@@ -12,7 +12,10 @@ import {
 import { getSettings } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
-import { formatDateTime } from '@/lib/datetime'
+import { formatDateTime, formatTime } from '@/lib/datetime'
+import { featuresForBusinessType } from '@/lib/businessType'
+import { SHIFT_REMINDER_HOUR } from '@/lib/shiftReminder'
+import { toast } from '@/state/toastStore'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
@@ -102,8 +105,14 @@ export function ShiftScreen() {
         <OpenShiftModal
           onClose={() => setShowOpenForm(false)}
           onConfirm={async (openingCash) => {
-            await openShift({ cashierId: currentUser.id, cashierName: currentUser.name, openingCash })
+            const shift = await openShift({ cashierId: currentUser.id, cashierName: currentUser.name, openingCash })
             setShowOpenForm(false)
+            if (featuresForBusinessType((await getSettings()).businessType).shiftReminder) {
+              toast.success(
+                `Shift dibuka ${currentUser.name} pukul ${formatTime(shift.openedAt)} • kas awal ${formatRupiah(openingCash)}. Pengingat tutup shift muncul pukul ${SHIFT_REMINDER_HOUR}.00.`,
+                8000,
+              )
+            }
           }}
         />
       )}

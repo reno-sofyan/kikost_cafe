@@ -16,6 +16,8 @@ describe('featuresForBusinessType', () => {
       queueNumbers: false,
       stackSameItems: true,
       serviceCharge: false,
+      paymentProof: false,
+      shiftReminder: false,
     })
   })
 
@@ -32,6 +34,8 @@ describe('featuresForBusinessType', () => {
     expect(f.queueNumbers).toBe(true)
     expect(f.stackSameItems).toBe(true)
     expect(f.serviceCharge).toBe(false)
+    expect(f.paymentProof).toBe(true)
+    expect(f.shiftReminder).toBe(true)
   })
 
   it('cafe_resto: semua fitur aktif', () => {
@@ -47,6 +51,9 @@ describe('featuresForBusinessType', () => {
       queueNumbers: true,
       stackSameItems: false,
       serviceCharge: true,
+      // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
+      paymentProof: false,
+      shiftReminder: false,
     })
   })
 
@@ -63,6 +70,9 @@ describe('featuresForBusinessType', () => {
       queueNumbers: true,
       stackSameItems: false,
       serviceCharge: true,
+      // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
+      paymentProof: false,
+      shiftReminder: false,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
       tables: true,
@@ -76,6 +86,9 @@ describe('featuresForBusinessType', () => {
       queueNumbers: true,
       stackSameItems: false,
       serviceCharge: true,
+      // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
+      paymentProof: false,
+      shiftReminder: false,
     })
   })
 

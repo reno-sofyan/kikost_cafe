@@ -279,6 +279,25 @@ suite('sync API (integrasi)', () => {
       expect(pull.json().deletions.payments).toEqual([payId])
     })
 
+    it('bukti pembayaran: diterima, tak bisa diganti, tapi ikut terhapus bersama transaksi', async () => {
+      const id = '56565656-5656-5656-5656-565656565656'
+      const proof = (photo: string, updatedAt: number) => ({
+        entity: 'paymentProofs',
+        entityId: id,
+        idempotencyKey: randomUUID(),
+        payload: { id, orderId: 'o1', billId: 'b1', photoDataUrl: photo, createdAt: 1000, updatedAt },
+      })
+      expect((await push([proof('data:image/jpeg;base64,AAAA', 1000)])).json().results[0].status).toBe('accepted')
+      expect((await push([proof('data:image/jpeg;base64,BBBB', 9000)])).json().results[0].status).toBe('duplicate')
+      let pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      expect(pull.json().entities.paymentProofs[0].photoDataUrl).toBe('data:image/jpeg;base64,AAAA')
+
+      expect((await push([deletion('paymentProofs', id, 9999)])).json().results[0].status).toBe('accepted')
+      pull = await app.inject({ method: 'GET', url: '/api/sync/pull?since=0', headers: auth })
+      expect(pull.json().entities.paymentProofs).toBeUndefined()
+      expect(pull.json().deletions.paymentProofs).toEqual([id])
+    })
+
     it('penghapusan ter-scope per tenant', async () => {
       await push([ingredient(1000)])
       await push([ingredient(1000)], minimarketAuth)

@@ -28,6 +28,9 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
       case 'auditLogs':
         await applyAppendOnly('auditLogs', rows as { id: string }[])
         break
+      case 'paymentProofs':
+        await applyAppendOnly('paymentProofs', rows as { id: string }[])
+        break
       case 'onlinePayments':
         await applyAppendOnly('onlinePayments', rows as { id: string }[])
         await applyOnlinePayments(rows as OnlinePayment[])
@@ -78,6 +81,8 @@ async function applyOnlinePayments(rows: OnlinePayment[]): Promise<void> {
         payments: [{ method: op.method, amount: op.amount, reference: op.reference }],
         confirmedByUserId: 'online',
         allowPartial: true,
+        // Dibayar pelanggan lewat gateway — tak ada kasir yang bisa memotret bukti.
+        skipProofCheck: true,
       })
       await db.transaction('rw', db.bills, db.syncQueue, async () => {
         const fresh = await db.bills.get(op.billId)

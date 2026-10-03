@@ -21,7 +21,7 @@ interface DeleteActor {
 }
 
 /** Tabel turunan pesanan yang ikut dihapus — semuanya ber-index `orderId`. */
-const CHILD_TABLES = ['orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments'] as const satisfies readonly DeletableSyncEntity[]
+const CHILD_TABLES = ['orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments', 'paymentProofs'] as const satisfies readonly DeletableSyncEntity[]
 
 const STATUS_LABELS: Record<Order['status'], string> = { open: 'terbuka', paid: 'lunas', void: 'dibatalkan', completed: 'selesai' }
 

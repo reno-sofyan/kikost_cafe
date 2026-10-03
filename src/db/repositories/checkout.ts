@@ -12,6 +12,8 @@ import {
   InsufficientStockError,
   OrderAlreadyFinalizedError,
   payBill,
+  PaymentProofRequiredError,
+  type PaymentProofInput,
 } from '@/db/repositories/billing'
 import { getTrustedNow } from '@/lib/clockGuard'
 import { activePrinterForStation } from '@/db/repositories/printers'
@@ -21,8 +23,21 @@ import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
 import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, Refund, RefundReason, ReturnRecord } from '@/types/domain'
 
-export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError }
-export type { PaymentInput }
+export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError, PaymentProofRequiredError }
+export type { PaymentInput, PaymentProofInput }
+
+/**
+ * Usaha dengan fitur `paymentProof` (kantin) WAJIB melampirkan foto bukti setiap
+ * kali kasir membayar. Pembayaran online dari webhook gateway (tanpa kasir)
+ * melewati cek ini lewat `skipProofCheck`.
+ */
+async function assertPaymentProof(params: { proof?: PaymentProofInput; skipProofCheck?: boolean }): Promise<void> {
+  if (params.skipProofCheck) return
+  const settings = await getSettings()
+  if (featuresForBusinessType(settings.businessType).paymentProof && !params.proof?.photoDataUrls.length) {
+    throw new PaymentProofRequiredError()
+  }
+}
 
 /**
  * Menyelesaikan pembayaran satu order. Membuat bill "seluruh order" bila belum
@@ -36,7 +51,9 @@ export async function finalizePayment(params: {
   confirmedByUserId: string
   allowPartial?: boolean
   allowNegativeStock?: { approverUserId: string; approverName: string }
+  proof?: PaymentProofInput
 }): Promise<{ order: Order; payments: Payment[] }> {
+  await assertPaymentProof(params)
   await db.transaction('rw', [db.orders, db.bills, db.syncQueue], async () => {
     const order = await db.orders.get(params.orderId)
     if (!order) throw new Error('Pesanan tidak ditemukan')
@@ -48,6 +65,7 @@ export async function finalizePayment(params: {
     confirmedByUserId: params.confirmedByUserId,
     allowPartial: params.allowPartial,
     allowNegativeStock: params.allowNegativeStock,
+    proof: params.proof,
   })
 
   // Antre cetak nota bila order selesai & ada printer kasir aktif — kegagalan
@@ -81,7 +99,11 @@ export async function payOrderBill(params: {
   confirmedByUserId: string
   allowPartial?: boolean
   allowNegativeStock?: { approverUserId: string; approverName: string }
+  proof?: PaymentProofInput
+  /** Hanya untuk pembayaran online dari webhook (tanpa kasir yang bisa memotret). */
+  skipProofCheck?: boolean
 }): Promise<{ order: Order; payments: Payment[] }> {
+  await assertPaymentProof(params)
   const result = await payBill(params)
 
   if (result.order.lifecycleStatus === 'COMPLETED') {

@@ -33,8 +33,8 @@ describe('query repository tidak melempar SchemaError', () => {
     await expect(listLowStockIngredients()).resolves.toEqual([])
   })
 
-  it('schema versi terkini = 15', () => {
-    expect(db.verno).toBe(15)
+  it('schema versi terkini = 16', () => {
+    expect(db.verno).toBe(16)
   })
 
   it('listActiveKitchenItems (orderItems.where(kitchenStatus))', async () => {

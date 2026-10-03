@@ -20,6 +20,7 @@ export const SYNC_ENTITIES = [
   'productions',
   'refunds',
   'onlinePayments',
+  'paymentProofs',
   'printers',
   'printRoutes',
   'tableCalls',
@@ -51,7 +52,7 @@ export function isSyncEntity(value: unknown): value is SyncEntity {
  * shift, dll. TIDAK bisa dihapus. HARUS identik dengan `DELETABLE_SYNC_ENTITIES`
  * di frontend (src/sync/outbox.ts).
  */
-export const DELETABLE_ENTITIES: ReadonlySet<SyncEntity> = new Set<SyncEntity>(['ingredients', 'stockMovements', 'orders', 'orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments'])
+export const DELETABLE_ENTITIES: ReadonlySet<SyncEntity> = new Set<SyncEntity>(['ingredients', 'stockMovements', 'orders', 'orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments', 'paymentProofs'])
 
 /** Status pesanan yang dianggap final; tidak boleh dikembalikan ke `open` oleh sinkronisasi. */
 const FINAL_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
@@ -125,6 +126,11 @@ export function shouldApply(params: {
   }
 
   // Notifikasi pembayaran online: append-only.
+  // Bukti pembayaran: append-only — foto tak boleh diganti lewat sync.
+  if (entity === 'paymentProofs') {
+    return { apply: false, reason: 'Bukti pembayaran bersifat immutable setelah tercatat' }
+  }
+
   if (entity === 'onlinePayments') {
     return { apply: false, reason: 'Notifikasi pembayaran online bersifat immutable' }
   }

@@ -7,14 +7,14 @@ import type { SyncEntity, SyncQueueEntry } from '@/types/domain'
 async function collectAllLocalEntities(): Promise<{ entity: SyncEntity; id: string; payload: unknown }[]> {
   const [
     orders, orderItems, kitchenTickets, payments, shifts, cashMovements, expenses, returns,
-    stockMovements, purchases, stockOpnames, productions, refunds, onlinePayments, bills,
+    stockMovements, purchases, stockOpnames, productions, refunds, onlinePayments, paymentProofs, bills,
     printers, printRoutes, tableCalls, products, ingredients, recipes, categories, customers,
     cafeTables, outlets, modifierGroups, modifierOptions, settings, auditLogs,
   ] = await Promise.all([
     db.orders.toArray(), db.orderItems.toArray(), db.kitchenTickets.toArray(), db.payments.toArray(),
     db.shifts.toArray(), db.cashMovements.toArray(), db.expenses.toArray(), db.returns.toArray(),
     db.stockMovements.toArray(), db.purchases.toArray(), db.stockOpnames.toArray(), db.productions.toArray(),
-    db.refunds.toArray(), db.onlinePayments.toArray(), db.bills.toArray(), db.printers.toArray(),
+    db.refunds.toArray(), db.onlinePayments.toArray(), db.paymentProofs.toArray(), db.bills.toArray(), db.printers.toArray(),
     db.printRoutes.toArray(), db.tableCalls.toArray(), db.products.toArray(), db.ingredients.toArray(),
     db.recipes.toArray(), db.categories.toArray(), db.customers.toArray(), db.cafeTables.toArray(),
     db.outlets.toArray(), db.modifierGroups.toArray(), db.modifierOptions.toArray(), db.settings.toArray(),
@@ -26,7 +26,7 @@ async function collectAllLocalEntities(): Promise<{ entity: SyncEntity; id: stri
     ['payments', payments], ['shifts', shifts], ['cashMovements', cashMovements],
     ['expenses', expenses], ['returns', returns], ['stockMovements', stockMovements],
     ['purchases', purchases], ['stockOpnames', stockOpnames], ['productions', productions],
-    ['refunds', refunds], ['onlinePayments', onlinePayments], ['bills', bills],
+    ['refunds', refunds], ['onlinePayments', onlinePayments], ['paymentProofs', paymentProofs], ['bills', bills],
     ['printers', printers], ['printRoutes', printRoutes], ['tableCalls', tableCalls],
     ['products', products], ['ingredients', ingredients], ['recipes', recipes],
     ['categories', categories], ['customers', customers], ['cafeTables', cafeTables],
@@ -95,7 +95,7 @@ export async function enqueueSync(entity: SyncEntity, entityId: string, payload:
  * Entitas yang boleh dihapus lewat sync. HARUS identik dengan `DELETABLE_ENTITIES`
  * di backend (backend/src/lib/entities.ts) — server menolak penghapusan entitas lain.
  */
-export const DELETABLE_SYNC_ENTITIES = ['ingredients', 'stockMovements', 'orders', 'orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments'] as const
+export const DELETABLE_SYNC_ENTITIES = ['ingredients', 'stockMovements', 'orders', 'orderItems', 'kitchenTickets', 'bills', 'payments', 'returns', 'refunds', 'onlinePayments', 'paymentProofs'] as const
 export type DeletableSyncEntity = (typeof DELETABLE_SYNC_ENTITIES)[number]
 
 /**

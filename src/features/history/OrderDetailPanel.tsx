@@ -32,6 +32,8 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const payments = useLiveQuery(() => db.payments.where('orderId').equals(order.id).toArray(), [order.id]) ?? []
   const returns = useLiveQuery(() => db.returns.where('orderId').equals(order.id).toArray(), [order.id]) ?? []
   const bills = useLiveQuery(() => db.bills.where('orderId').equals(order.id).toArray(), [order.id]) ?? []
+  const proofs = useLiveQuery(() => db.paymentProofs.where('orderId').equals(order.id).sortBy('createdAt'), [order.id]) ?? []
+  const [viewProof, setViewProof] = useState<string | null>(null)
 
   const [showPrint, setShowPrint] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
@@ -187,6 +189,22 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             </div>
           )}
 
+          {proofs.length > 0 && (
+            <div className="card mb-4 p-4">
+              <p className="mb-2 text-sm font-semibold text-ink-300">Bukti Pembayaran</p>
+              <div className="flex flex-wrap gap-2">
+                {proofs.map((proof) => (
+                  <button key={proof.id} type="button" className="text-left" onClick={() => setViewProof(proof.photoDataUrl)}>
+                    <img src={proof.photoDataUrl} alt="Bukti pembayaran" className="h-24 w-24 rounded-lg object-cover" />
+                    <span className="mt-1 block text-[0.7rem] text-ink-500">
+                      {proof.takenByName} • {formatDateTime(proof.createdAt)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
           {flow === 'return-select' && (
@@ -254,6 +272,14 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
     </Modal>
 
       {showPrint && receipt && <PrintPreviewModal data={receipt} onClose={() => setShowPrint(false)} />}
+      {viewProof && (
+        <Modal onClose={() => setViewProof(null)} className="max-h-[90vh] max-w-[90vw] rounded-2xl bg-ink-900 p-3">
+          <img src={viewProof} alt="Bukti pembayaran" className="max-h-[80vh] max-w-full rounded-lg object-contain" />
+          <button className="btn-secondary mt-3 w-full" onClick={() => setViewProof(null)}>
+            Tutup
+          </button>
+        </Modal>
+      )}
 
       {flow === 'void-reason' && (
         <ReasonPromptModal

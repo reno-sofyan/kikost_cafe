@@ -19,6 +19,8 @@ import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { featuresForBusinessType, type BusinessFeatures } from '@/lib/businessType'
+import { ShiftReminder } from '@/features/shifts/ShiftReminder'
+import { formatTime } from '@/lib/datetime'
 import type { Role } from '@/types/domain'
 
 interface NavItem {
@@ -30,6 +32,9 @@ interface NavItem {
   /** Item hanya tampil bila fitur ini aktif untuk jenis usaha perangkat. `undefined` = selalu tampil. */
   feature?: keyof BusinessFeatures
 }
+
+/** Peran yang membuka/menutup shift — juga yang menerima pengingat shift 21.00. */
+const SHIFT_ROLES: Role[] = ['pemilik', 'administrator', 'supervisor', 'kasir']
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
@@ -43,7 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/laporan', label: 'Laporan', icon: 'chart', permission: 'reports.view' },
   { to: '/produk', label: 'Produk', icon: 'coffee', permission: 'settings.manage' },
   { to: '/stok', label: 'Stok', icon: 'box', permission: 'stock.adjust' },
-  { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
+  { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: SHIFT_ROLES },
   { to: '/pengaturan', label: 'Pengaturan', icon: 'settings', permission: 'settings.manage' },
 ]
 
@@ -165,7 +170,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {openShift ? (
               <span className="badge border border-success-500/30 bg-success-600/15 text-success-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
-                Shift aktif • Kas {formatRupiah(openShift.expectedCash)}
+                Shift aktif sejak {formatTime(openShift.openedAt)} • Kas {formatRupiah(openShift.expectedCash)}
               </span>
             ) : (
               <span className="badge border border-red-300/40 bg-red-900 text-red-500">Belum ada shift</span>
@@ -232,6 +237,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
       {confirmDialog}
+      {businessFeatures.shiftReminder && openShift && SHIFT_ROLES.includes(currentUser.role) && <ShiftReminder shift={openShift} />}
     </div>
   )
 }
