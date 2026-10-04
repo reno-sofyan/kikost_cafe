@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/db/schema'
 import { resetLocalDb } from '@/test/db'
 import { setEscPosSender, resetEscPosSender } from '@/features/printing/printerDrivers'
 import { savePrinter, setPrintRoute } from './printers'
-import { listPrintJobs, retryPrintJob } from './printQueue'
+import { listPrintJobs, printQueueIdle, processPrintQueue, retryPrintJob } from './printQueue'
 import { sendOrderToKitchen } from './kitchenDispatch'
 import { finalizePayment } from './checkout'
 import { addOrderItem, startOrder } from './orders'
@@ -64,6 +64,8 @@ describe('Print queue', () => {
 
     await sendOrderToKitchen(order.id, actor)
 
+    await printQueueIdle()
+
     const jobs = await listPrintJobs()
     const kt = jobs.filter((j) => j.kind === 'kitchen_ticket')
     expect(kt.map((j) => j.station).sort()).toEqual(['bar', 'kitchen'])
@@ -78,6 +80,7 @@ describe('Print queue', () => {
     await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'Nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     failNext = true
     await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
 
     const job = (await listPrintJobs()).find((j) => j.kind === 'kitchen_ticket')!
     expect(job.status).toBe('RETRYING')
@@ -93,10 +96,12 @@ describe('Print queue', () => {
     await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'Nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     failNext = true
     await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
     expect(sent).toHaveLength(0)
 
     // sendOrderToKitchen lagi → tak ada item baru → tak ada job baru
     await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
     const jobs = (await listPrintJobs()).filter((j) => j.kind === 'kitchen_ticket')
     expect(jobs).toHaveLength(1)
 
@@ -115,10 +120,12 @@ describe('Print queue', () => {
     const order = await newOrder()
     await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'Nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
     sent.length = 0
 
     await addOrderItem({ orderId: order.id, productId: 'ayam', productName: 'Ayam', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
 
     const tickets = await db.kitchenTickets.where('orderId').equals(order.id).sortBy('sequenceNo')
     expect(tickets).toHaveLength(2)
@@ -135,6 +142,7 @@ describe('Print queue', () => {
     await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'Nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     failNext = true
     const res = await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: 20000 }], confirmedByUserId: 'u1' })
+    await printQueueIdle()
     expect(res.order.lifecycleStatus).toBe('COMPLETED')
     const receiptJob = (await listPrintJobs()).find((j) => j.kind === 'receipt')!
     expect(['RETRYING', 'PERMANENTLY_FAILED']).toContain(receiptJob.status)
@@ -148,8 +156,70 @@ describe('Print queue', () => {
     const order = await newOrder()
     await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'Nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
     const job = (await listPrintJobs()).find((j) => j.kind === 'kitchen_ticket')!
     expect(['QUEUED', 'RETRYING', 'PERMANENTLY_FAILED']).toContain(job.status)
     expect(job.lastError).toMatch(/printer/i)
+  })
+})
+
+describe('Antrean cetak tidak menahan kasir', () => {
+  it('kirim ke dapur selesai tanpa menunggu printer, cetak tetap jalan di belakang', async () => {
+    await seedPrinters()
+    await seedProduct('nasi', 'cat-food')
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    setEscPosSender(async (target, bytes) => {
+      await gate // printer lambat menyambung
+      sent.push({ host: target.networkHost, bytes: bytes.length })
+    })
+    const order = await newOrder()
+    await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+
+    await sendOrderToKitchen(order.id, actor) // tidak menggantung walau printer belum selesai
+    expect(sent).toHaveLength(0)
+
+    release()
+    await printQueueIdle()
+    expect(sent).toHaveLength(1)
+  })
+
+  it('job yang masuk saat antrean sedang berjalan ikut dicetak di putaran yang sama', async () => {
+    await seedPrinters()
+    await seedProduct('nasi', 'cat-food')
+    await seedProduct('kopi', 'cat-drink')
+    const order = await newOrder()
+    await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+    await sendOrderToKitchen(order.id, actor)
+    // Putaran pertama masih berjalan → kiriman kedua tidak boleh diabaikan.
+    await addOrderItem({ orderId: order.id, productId: 'kopi', productName: 'kopi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+    await sendOrderToKitchen(order.id, actor)
+    await printQueueIdle()
+
+    expect(sent.map((s) => s.host).sort()).toEqual(['10.0.0.1', '10.0.0.2'])
+    const jobs = await listPrintJobs()
+    expect(jobs.every((j) => j.status === 'PRINTED')).toBe(true)
+  })
+
+  it('job gagal dicoba ulang otomatis sekitar 4 detik kemudian (tanpa menunggu tik 15 detik)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      await seedPrinters()
+      await seedProduct('nasi', 'cat-food')
+      failNext = true
+      const order = await newOrder()
+      await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+      await sendOrderToKitchen(order.id, actor)
+      await printQueueIdle()
+      expect((await listPrintJobs())[0].status).toBe('RETRYING')
+
+      failNext = false
+      await vi.advanceTimersByTimeAsync(4100)
+      await printQueueIdle()
+      expect((await listPrintJobs())[0].status).toBe('PRINTED')
+    } finally {
+      vi.useRealTimers()
+      await processPrintQueue()
+    }
   })
 })

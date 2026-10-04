@@ -3,18 +3,23 @@ import { db } from '@/db/schema'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { activePrinterForStation } from '@/db/repositories/printers'
 import { buildEscPosKitchenTicket, buildEscPosReceipt } from '@/features/printing/escpos'
-import { sendEscPosBytes } from '@/features/printing/printerDrivers'
+import { sendEscPosBytes, warmUpPrinter } from '@/features/printing/printerDrivers'
 import type { ReceiptData } from '@/features/printing/receiptData'
 import type { KitchenTicketPayload, Printer, PrintJob, PrintJobKind, PrinterStation } from '@/types/domain'
 
 const MAX_ATTEMPTS = 5
-const RETRY_BASE_MS = 4000
+/** Retry ke-1 setelah 4 dtk, lalu 8, 16, 32 — dijadwalkan tepat waktu (lihat
+ *  `scheduleNextRetry`), bukan menunggu tik berkala print engine (15 dtk). */
+const RETRY_BASE_MS = 2000
+
+function retryWaitMs(job: PrintJob): number {
+  return Math.min(RETRY_BASE_MS * 2 ** Math.min(job.attempts, 5), 5 * 60_000)
+}
 
 function backoffReady(job: PrintJob): boolean {
   if (job.status === 'QUEUED') return true
   if (job.status !== 'RETRYING') return false
-  const wait = Math.min(RETRY_BASE_MS * 2 ** Math.min(job.attempts, 5), 5 * 60_000)
-  return Date.now() - job.updatedAt >= wait
+  return Date.now() - job.updatedAt >= retryWaitMs(job)
 }
 
 /**
@@ -125,20 +130,55 @@ async function runJob(job: PrintJob): Promise<void> {
   }
 }
 
-let running = false
+let currentRun: Promise<void> | null = null
+let rerunRequested = false
+let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Memproses semua job yang siap. Aman dipanggil berulang (guard `running`). */
-export async function processPrintQueue(): Promise<void> {
-  if (running) return
-  running = true
-  try {
-    const candidates = await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt')
-    for (const job of candidates) {
-      if (backoffReady(job)) await runJob(job)
-    }
-  } finally {
-    running = false
+async function runReadyJobs(): Promise<void> {
+  const candidates = await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt')
+  for (const job of candidates) {
+    if (backoffReady(job)) await runJob(job)
   }
+}
+
+/** Jadwalkan putaran berikutnya tepat saat job RETRYING terdekat siap dicoba lagi. */
+async function scheduleNextRetry(): Promise<void> {
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = null
+  const retrying = await db.printJobs.where('status').equals('RETRYING').toArray()
+  if (retrying.length === 0) return
+  const due = Math.min(...retrying.map((j) => j.updatedAt + retryWaitMs(j)))
+  retryTimer = setTimeout(() => void processPrintQueue(), Math.max(250, due - Date.now()))
+}
+
+/**
+ * Memproses semua job yang siap, berurutan (satu printer fisik tak bisa dua
+ * koneksi). Panggilan saat putaran masih berjalan TIDAK diabaikan: putaran yang
+ * sama diulang sekali lagi sehingga job yang baru masuk langsung tercetak, dan
+ * promise yang dikembalikan baru selesai setelah job itu ikut diproses.
+ */
+export function processPrintQueue(): Promise<void> {
+  if (currentRun) {
+    rerunRequested = true
+    return currentRun
+  }
+  currentRun = (async () => {
+    try {
+      do {
+        rerunRequested = false
+        await runReadyJobs()
+      } while (rerunRequested)
+    } finally {
+      currentRun = null
+      await scheduleNextRetry().catch(() => {})
+    }
+  })()
+  return currentRun
+}
+
+/** Menunggu antrean cetak yang sedang berjalan selesai (untuk test & tombol "Proses"). */
+export function printQueueIdle(): Promise<void> {
+  return currentRun ?? Promise.resolve()
 }
 
 export async function retryPrintJob(jobId: string, actor: { userId: string; userName: string }): Promise<void> {
@@ -162,4 +202,15 @@ export async function listPrintJobs(limit = 100): Promise<PrintJob[]> {
 
 export async function countActivePrintFailures(): Promise<number> {
   return db.printJobs.where('status').anyOf(['FAILED', 'PERMANENTLY_FAILED']).count()
+}
+
+/**
+ * Sambungkan lebih awal printer aktif untuk station-station ini (koneksi dipakai
+ * ulang oleh plugin), supaya cetak berikutnya tak menunggu Bluetooth menyambung.
+ */
+export async function warmUpStationPrinters(stations: PrinterStation[]): Promise<void> {
+  for (const station of stations) {
+    const printer = await activePrinterForStation(station)
+    if (printer) warmUpPrinter(targetFrom(printer))
+  }
 }

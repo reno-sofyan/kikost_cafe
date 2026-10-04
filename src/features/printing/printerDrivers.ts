@@ -30,10 +30,12 @@ export class PrinterTimeoutError extends Error {
   }
 }
 
-/** Batas waktu operasi printer fisik (connect/print) — plugin native Android bisa
+/** Batas waktu satu operasi cetak (sambung + kirim) — plugin native Android bisa
  *  menggantung tanpa batas saat printer mati/di luar jangkauan (mis. Bluetooth SPP
- *  menunggu ACK yang tak pernah datang); tanpa ini kasir terjebak di layar "Mencetak…". */
-const PRINTER_OP_TIMEOUT_MS = 3000
+ *  menunggu ACK yang tak pernah datang); tanpa ini kasir terjebak di layar "Mencetak…".
+ *  Dulu 3 detik: terlalu pendek untuk menyambung Bluetooth (sering 2-5 detik, plus
+ *  satu cara cadangan), sehingga cetak dianggap gagal lalu diulang dari awal. */
+const PRINTER_OP_TIMEOUT_MS = 20_000
 
 function withPrinterTimeout<T>(op: Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -91,18 +93,10 @@ export class NativeEscPosDriver implements PrinterDriver {
   async print(data: ReceiptData): Promise<void> {
     if (!Capacitor.isNativePlatform()) throw new PrinterUnavailableOnPlatformError()
 
-    if (this.config.connectionType === 'bluetooth') {
-      if (!this.config.bluetoothAddress) throw new PrinterNotConfiguredError()
-      await withPrinterTimeout(EscPosPrinter.connectBluetooth({ address: this.config.bluetoothAddress }))
-    } else if (this.config.connectionType === 'network') {
-      if (!this.config.networkHost || !this.config.networkPort) throw new PrinterNotConfiguredError()
-      await withPrinterTimeout(EscPosPrinter.connectNetwork({ host: this.config.networkHost, port: this.config.networkPort }))
-    } else {
+    if (this.config.connectionType !== 'bluetooth' && this.config.connectionType !== 'network') {
       throw new PrinterNotConfiguredError()
     }
-
-    const bytes = buildEscPosReceipt(data)
-    await withPrinterTimeout(EscPosPrinter.printBytes({ base64: toBase64(bytes) }))
+    await nativePrint(this.config.connectionType, this.config, toBase64(buildEscPosReceipt(data)))
   }
 }
 
@@ -156,14 +150,35 @@ async function defaultSender(target: EscPosTransportTarget, bytes: Uint8Array): 
     throw new PrinterNotConfiguredError()
   }
   if (!Capacitor.isNativePlatform()) throw new PrinterUnavailableOnPlatformError()
-  if (target.connectionType === 'bluetooth') {
+  await nativePrint(target.connectionType, target, toBase64(bytes))
+}
+
+/**
+ * Satu panggilan native: plugin memakai ulang koneksi yang masih terbuka ke printer
+ * ini (atau menyambung), lalu mengirim byte — tanpa sambung-ulang tiap struk.
+ */
+async function nativePrint(
+  connectionType: 'bluetooth' | 'network',
+  target: Pick<EscPosTransportTarget, 'bluetoothAddress' | 'networkHost' | 'networkPort'>,
+  base64: string,
+): Promise<void> {
+  if (connectionType === 'bluetooth') {
     if (!target.bluetoothAddress) throw new PrinterNotConfiguredError()
-    await withPrinterTimeout(EscPosPrinter.connectBluetooth({ address: target.bluetoothAddress }))
+    await withPrinterTimeout(EscPosPrinter.print({ type: 'bluetooth', address: target.bluetoothAddress, base64 }))
   } else {
     if (!target.networkHost || !target.networkPort) throw new PrinterNotConfiguredError()
-    await withPrinterTimeout(EscPosPrinter.connectNetwork({ host: target.networkHost, port: target.networkPort }))
+    await withPrinterTimeout(EscPosPrinter.print({ type: 'network', host: target.networkHost, port: target.networkPort, base64 }))
   }
-  await withPrinterTimeout(EscPosPrinter.printBytes({ base64: toBase64(bytes) }))
+}
+
+/**
+ * Sambungkan printer lebih awal (mis. saat layar Pembayaran dibuka) supaya struk
+ * langsung tercetak tanpa menunggu Bluetooth menyambung. Gagal = diam saja;
+ * cetak sungguhan nanti tetap mencoba lagi.
+ */
+export function warmUpPrinter(target: EscPosTransportTarget): void {
+  if (target.connectionType === 'browser' || !Capacitor.isNativePlatform()) return
+  void nativePrint(target.connectionType, target, '').catch(() => {})
 }
 
 export function sendEscPosBytes(target: EscPosTransportTarget, bytes: Uint8Array): Promise<void> {

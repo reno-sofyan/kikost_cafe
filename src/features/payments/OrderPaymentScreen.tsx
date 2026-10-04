@@ -23,6 +23,7 @@ import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal
 import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
 import { SplitBillModal } from '@/features/payments/SplitBillModal'
 import { PaymentProofCapture } from '@/features/payments/PaymentProofCapture'
+import { warmUpStationPrinters } from '@/db/repositories/printQueue'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
@@ -61,6 +62,10 @@ export function OrderPaymentScreen() {
   useEffect(() => {
     if (tableId && !orderDone) void markAwaitingPayment(tableId)
   }, [tableId, orderDone])
+  // Sambungkan printer kasir sekarang, supaya struk langsung keluar begitu lunas.
+  useEffect(() => {
+    void warmUpStationPrinters(['cashier']).catch(() => {})
+  }, [])
 
   if (!order || !orderId) {
     return <div className="flex h-full items-center justify-center text-ink-400">Memuat pesanan...</div>

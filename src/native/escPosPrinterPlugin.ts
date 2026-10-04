@@ -5,7 +5,18 @@ export interface BluetoothPrinterDevice {
   name: string
 }
 
+export interface EscPosPrintOptions {
+  type: 'bluetooth' | 'network'
+  address?: string
+  host?: string
+  port?: number
+  /** Byte ESC/POS (base64). String kosong = hanya pastikan terhubung (pemanasan). */
+  base64: string
+}
+
 export interface EscPosPrinterPlugin {
+  /** Satu langkah: pakai koneksi terbuka ke printer ini (atau sambung), lalu kirim. */
+  print(options: EscPosPrintOptions): Promise<{ success: boolean }>
   listPairedDevices(): Promise<{ devices: BluetoothPrinterDevice[] }>
   connectBluetooth(options: { address: string }): Promise<{ connected: boolean }>
   connectNetwork(options: { host: string; port: number }): Promise<{ connected: boolean }>

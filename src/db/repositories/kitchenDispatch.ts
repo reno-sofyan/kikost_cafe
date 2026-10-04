@@ -111,7 +111,7 @@ export async function sendOrderToKitchen(
     },
   )
 
-  await processPrintQueue()
+  void processPrintQueue() // tak ditunggu — kasir tak tertahan printer lambat
   return { stations: [...byStation.keys()], itemCount: [...byStation.values()].reduce((n, list) => n + list.length, 0) }
 }
 
@@ -157,5 +157,5 @@ export async function reprintKitchenTicket(
       requestedByName: actor.userName,
     })
   })
-  await processPrintQueue()
+  void processPrintQueue() // tak ditunggu — kasir tak tertahan printer lambat
 }

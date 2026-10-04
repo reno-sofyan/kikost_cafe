@@ -39,7 +39,9 @@ export async function enqueueReceiptForOrder(
     })
   })
 
-  await processPrintQueue()
+  // Tidak ditunggu: pembayaran/kasir tak boleh tertahan oleh printer yang lambat
+  // menyambung. Hasil cetak (atau kegagalannya) terlihat di antrean cetak.
+  void processPrintQueue()
   const printer = await activePrinterForStation('cashier')
   return { enqueued: true, noPrinter: !printer }
 }

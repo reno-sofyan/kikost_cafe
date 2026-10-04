@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { warmUpStationPrinters } from '@/db/repositories/printQueue'
 import { db } from '@/db/schema'
 import { listCategories } from '@/db/repositories/categories'
 import { searchProducts } from '@/db/repositories/products'
@@ -66,6 +67,12 @@ export function CashierScreen() {
   const settings = useLiveQuery(() => getSettings(), [])
   // Sebelum `settings` termuat, anggap semua fitur relevan (perilaku kafe lama).
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+  // Sambungkan printer dapur/bar sejak layar Kasir dibuka, supaya tiket tak menunggu
+  // Bluetooth menyambung saat "Kirim ke Dapur".
+  const hasKitchen = !!settings && features.kitchen
+  useEffect(() => {
+    if (hasKitchen) void warmUpStationPrinters(['kitchen', 'bar']).catch(() => {})
+  }, [hasKitchen])
   // Cegah tap/pindai beruntun membuka dua transaksi sekaligus di mode kasir cepat.
   const quickStartRef = useRef<Promise<string> | null>(null)
 
