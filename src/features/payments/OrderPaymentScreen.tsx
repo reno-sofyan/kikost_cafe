@@ -23,6 +23,7 @@ import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal
 import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
 import { SplitBillModal } from '@/features/payments/SplitBillModal'
 import { PaymentProofCapture } from '@/features/payments/PaymentProofCapture'
+import { EMPTY_PROOF, isProofComplete, type PaymentProofDraft } from '@/features/payments/paymentProofDraft'
 import { warmUpStationPrinters } from '@/db/repositories/printQueue'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
@@ -160,7 +161,7 @@ function SingleBillPayment({
   onCompleted: () => void
 }) {
   const userId = user.id
-  const [proofPhotos, setProofPhotos] = useState<string[]>([])
+  const [proof, setProof] = useState<PaymentProofDraft>(EMPTY_PROOF)
   const priorPaid =
     useLiveQuery(
       async () =>
@@ -184,7 +185,9 @@ function SingleBillPayment({
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
-        proof: proofPhotos.length ? { photoDataUrls: proofPhotos, takenByUserId: user.id, takenByName: user.name } : undefined,
+        proof: isProofComplete(proof)
+          ? { photoDataUrls: proof.photos, noPhotoReason: proof.noPhotoReason ?? undefined, takenByUserId: user.id, takenByName: user.name }
+          : undefined,
       })
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()
       else onPartial()
@@ -199,7 +202,7 @@ function SingleBillPayment({
 
   const linesTotal = lines.reduce((sum, l) => sum + l.amount, 0)
   const remaining = Math.max(0, order.grandTotal - priorPaid - linesTotal)
-  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || proofPhotos.length > 0)
+  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || isProofComplete(proof))
 
   return (
     <>
@@ -244,8 +247,8 @@ function SingleBillPayment({
         <span className={`text-lg font-bold ${remaining > 0 ? 'text-brand-400' : 'text-success-500'}`}>{formatRupiah(remaining)}</span>
       </div>
 
-      {(requireProof || proofPhotos.length > 0) && lines.length > 0 && (
-        <PaymentProofCapture photos={proofPhotos} onChange={setProofPhotos} required={requireProof} />
+      {(requireProof || isProofComplete(proof)) && lines.length > 0 && (
+        <PaymentProofCapture draft={proof} onChange={setProof} required={requireProof} />
       )}
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
@@ -287,7 +290,7 @@ function BillPayCard({
   onCompleted: () => void
 }) {
   const userId = user.id
-  const [proofPhotos, setProofPhotos] = useState<string[]>([])
+  const [proof, setProof] = useState<PaymentProofDraft>(EMPTY_PROOF)
   const [lines, setLines] = useState<PaymentLine[]>([])
   const [activeModal, setActiveModal] = useState<PaymentMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -295,7 +298,7 @@ function BillPayCard({
 
   const paid = bill.paymentStatus === 'PAID'
   const remaining = Math.max(0, bill.grandTotal - bill.amountPaid - lines.reduce((s, l) => s + l.amount, 0))
-  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || proofPhotos.length > 0)
+  const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || isProofComplete(proof))
 
   async function run(allowNegativeStock?: { approverUserId: string; approverName: string }) {
     setError(null)
@@ -306,10 +309,12 @@ function BillPayCard({
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
-        proof: proofPhotos.length ? { photoDataUrls: proofPhotos, takenByUserId: user.id, takenByName: user.name } : undefined,
+        proof: isProofComplete(proof)
+          ? { photoDataUrls: proof.photos, noPhotoReason: proof.noPhotoReason ?? undefined, takenByUserId: user.id, takenByName: user.name }
+          : undefined,
       })
       setLines([])
-      setProofPhotos([])
+      setProof(EMPTY_PROOF)
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()
     } catch (e) {
       if (e instanceof OrderAlreadyFinalizedError) return
@@ -350,8 +355,8 @@ function BillPayCard({
             addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
           />
-          {(requireProof || proofPhotos.length > 0) && lines.length > 0 && (
-            <PaymentProofCapture photos={proofPhotos} onChange={setProofPhotos} required={requireProof} />
+          {(requireProof || isProofComplete(proof)) && lines.length > 0 && (
+            <PaymentProofCapture draft={proof} onChange={setProof} required={requireProof} />
           )}
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
           <button className="btn-primary w-full !min-h-[2.75rem] !py-2.5 text-sm" disabled={!canSettle || isSubmitting} onClick={() => submit()}>

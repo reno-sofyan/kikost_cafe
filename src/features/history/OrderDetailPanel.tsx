@@ -169,14 +169,24 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             <div className="card mb-4 p-4">
               <p className="mb-2 text-sm font-semibold text-ink-300">Bukti Pembayaran</p>
               <div className="flex flex-wrap gap-2">
-                {proofs.map((proof) => (
-                  <button key={proof.id} type="button" className="text-left" onClick={() => setViewProof(proof.photoDataUrl)}>
-                    <img src={proof.photoDataUrl} alt="Bukti pembayaran" className="h-24 w-24 rounded-lg object-cover" />
-                    <span className="mt-1 block text-[0.7rem] text-ink-500">
-                      {proof.takenByName} • {formatDateTime(proof.createdAt)}
-                    </span>
-                  </button>
-                ))}
+                {proofs.map((proof) =>
+                  proof.photoDataUrl ? (
+                    <button key={proof.id} type="button" className="text-left" onClick={() => setViewProof(proof.photoDataUrl)}>
+                      <img src={proof.photoDataUrl} alt="Bukti pembayaran" className="h-24 w-24 rounded-lg object-cover" />
+                      <span className="mt-1 block text-[0.7rem] text-ink-500">
+                        {proof.takenByName} • {formatDateTime(proof.createdAt)}
+                      </span>
+                    </button>
+                  ) : (
+                    <div key={proof.id} className="w-full rounded-lg border border-yellow-700/40 bg-yellow-900/20 p-3 text-sm">
+                      <p className="font-medium text-yellow-300">Tanpa foto bukti</p>
+                      <p className="text-ink-200">Alasan: {proof.noPhotoReason || '-'}</p>
+                      <p className="mt-1 text-[0.7rem] text-ink-500">
+                        {proof.takenByName} • {formatDateTime(proof.createdAt)}
+                      </p>
+                    </div>
+                  ),
+                )}
               </div>
             </div>
           )}

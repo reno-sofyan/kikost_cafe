@@ -716,8 +716,11 @@ export interface PaymentProof {
   id: string
   orderId: string
   billId: string
-  /** JPEG data URL yang sudah dikecilkan (lihat `readFileAsResizedDataUrl`). */
-  photoDataUrl: string
+  /** JPEG data URL yang sudah dikecilkan (lihat `readFileAsResizedDataUrl`).
+   *  `null` = kasir memilih "Tidak bisa ambil foto" — lihat `noPhotoReason`. */
+  photoDataUrl: string | null
+  /** Alasan wajib bila tidak ada foto (mis. kamera rusak, pembeli sudah pergi). */
+  noPhotoReason?: string | null
   takenByUserId: string
   takenByName: string
   createdAt: number

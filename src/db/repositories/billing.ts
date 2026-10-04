@@ -10,13 +10,20 @@ import { newId } from '@/lib/id'
 /** Foto bukti pembayaran yang dilampirkan kasir saat membayar (lihat `PaymentProof`). */
 export interface PaymentProofInput {
   photoDataUrls: string[]
+  /** Diisi bila kasir memilih "Tidak bisa ambil foto" — wajib ada bila tanpa foto. */
+  noPhotoReason?: string
   takenByUserId: string
   takenByName: string
 }
 
+/** Bukti dianggap lengkap: ada foto, atau ada alasan tertulis kenapa tidak ada foto. */
+export function hasPaymentProof(proof: PaymentProofInput | undefined): boolean {
+  return !!proof && (proof.photoDataUrls.length > 0 || !!proof.noPhotoReason?.trim())
+}
+
 export class PaymentProofRequiredError extends Error {
   constructor() {
-    super('Foto bukti pembayaran wajib diambil sebelum pembayaran diselesaikan.')
+    super('Foto bukti pembayaran wajib diambil (atau isi alasan bila tidak bisa) sebelum pembayaran diselesaikan.')
     this.name = 'PaymentProofRequiredError'
   }
 }
@@ -187,12 +194,16 @@ export async function payBill(params: {
 
       // Hanya saat ada pembayaran BARU — percobaan ulang yang idempoten tak menggandakan foto.
       if (params.proof && addedThisCall > 0) {
-        for (const photoDataUrl of params.proof.photoDataUrls) {
+        const noPhotoReason = params.proof.noPhotoReason?.trim() || null
+        // Tanpa foto → satu catatan berisi alasannya, supaya tetap terlihat di riwayat.
+        const photos: (string | null)[] = params.proof.photoDataUrls.length ? params.proof.photoDataUrls : noPhotoReason ? [null] : []
+        for (const photoDataUrl of photos) {
           const proof: PaymentProof = {
             id: newId(),
             orderId: order.id,
             billId: bill.id,
             photoDataUrl,
+            noPhotoReason: photoDataUrl ? null : noPhotoReason,
             takenByUserId: params.proof.takenByUserId,
             takenByName: params.proof.takenByName,
             createdAt: now,
@@ -200,6 +211,16 @@ export async function payBill(params: {
           }
           await db.paymentProofs.add(proof)
           await enqueueSync('paymentProofs', proof.id, proof)
+        }
+        if (!params.proof.photoDataUrls.length && noPhotoReason) {
+          await recordAuditLog({
+            userId: params.proof.takenByUserId,
+            userName: params.proof.takenByName,
+            action: 'payment.proof_skipped',
+            entityType: 'order',
+            entityId: order.id,
+            details: `Pembayaran ${order.orderNumber} tanpa foto bukti. Alasan: ${noPhotoReason}`,
+          })
         }
       }
 

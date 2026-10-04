@@ -72,6 +72,35 @@ describe('kantin: foto bukti wajib', () => {
     expect(queued).toBe(1)
   })
 
+  it('"Tidak bisa ambil foto" + alasan: pembayaran diterima, alasan tersimpan & tercatat di log', async () => {
+    const order = await openOrder()
+    const res = await finalizePayment({
+      orderId: order.id,
+      payments: [{ method: 'cash', amount: 5000 }],
+      confirmedByUserId: 'u1',
+      proof: { photoDataUrls: [], noPhotoReason: '  kamera rusak  ', takenByUserId: 'u1', takenByName: 'Kasir' },
+    })
+    expect(res.order.lifecycleStatus).toBe('COMPLETED')
+
+    const [proofRow] = await db.paymentProofs.where('orderId').equals(order.id).toArray()
+    expect(proofRow).toMatchObject({ photoDataUrl: null, noPhotoReason: 'kamera rusak' })
+    const log = (await db.auditLogs.toArray()).find((l) => l.action === 'payment.proof_skipped')
+    expect(log?.details).toContain('kamera rusak')
+  })
+
+  it('alasan kosong/spasi saja tetap ditolak', async () => {
+    const order = await openOrder()
+    await expect(
+      finalizePayment({
+        orderId: order.id,
+        payments: [{ method: 'cash', amount: 5000 }],
+        confirmedByUserId: 'u1',
+        proof: { photoDataUrls: [], noPhotoReason: '   ', takenByUserId: 'u1', takenByName: 'Kasir' },
+      }),
+    ).rejects.toThrow(PaymentProofRequiredError)
+    expect(await db.payments.count()).toBe(0)
+  })
+
   it('pembayaran online dari gateway (tanpa kasir) boleh tanpa foto', async () => {
     const order = await openOrder()
     await db.transaction('rw', db.orders, db.bills, db.syncQueue, () => ensureOrderBill(order))

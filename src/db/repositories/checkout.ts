@@ -11,6 +11,7 @@ import {
   InsufficientPaymentError,
   InsufficientStockError,
   OrderAlreadyFinalizedError,
+  hasPaymentProof,
   payBill,
   PaymentProofRequiredError,
   type PaymentProofInput,
@@ -34,7 +35,7 @@ export type { PaymentInput, PaymentProofInput }
 async function assertPaymentProof(params: { proof?: PaymentProofInput; skipProofCheck?: boolean }): Promise<void> {
   if (params.skipProofCheck) return
   const settings = await getSettings()
-  if (featuresForBusinessType(settings.businessType).paymentProof && !params.proof?.photoDataUrls.length) {
+  if (featuresForBusinessType(settings.businessType).paymentProof && !hasPaymentProof(params.proof)) {
     throw new PaymentProofRequiredError()
   }
 }
