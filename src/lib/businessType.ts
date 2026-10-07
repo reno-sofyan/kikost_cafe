@@ -133,15 +133,9 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         shiftReminder: true,
       }
     case 'cafe_resto':
-      // Pengaman kas yang terbukti di kantin juga dipakai kafe: QRIS wajib foto,
-      // pembatalan & koreksi item dengan alasan + kode Pemilik, dan tagihan
-      // tertunda (pelanggan langganan/kantor yang bayar belakangan).
-      return {
-        ...ALL_FEATURES,
-        paymentProofMethods: ['qris'],
-        ownerPinCancel: true,
-        payLater: true,
-      }
+      // Pengaman kas kantin (QRIS wajib foto, kode Pemilik, tagihan tertunda) DITUNDA
+      // untuk kafe atas permintaan pemilik (2026-10-07) — cukup ubah di sini bila jadi.
+      return ALL_FEATURES
     case 'lainnya':
     default:
       return ALL_FEATURES

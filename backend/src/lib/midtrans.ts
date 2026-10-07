@@ -93,6 +93,61 @@ export async function createQrisCharge(params: {
   }
 }
 
+export interface MidtransStatus {
+  transactionStatus: string
+  fraudStatus: string | undefined
+  transactionId: string | null
+  grossAmount: number
+}
+
+async function midtransRequest(serverKey: string, isProduction: boolean, path: string, method: 'GET' | 'POST') {
+  const auth = Buffer.from(`${serverKey}:`).toString('base64')
+  const res = await fetch(`${midtransBaseUrl(isProduction)}${path}`, {
+    method,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+    signal: AbortSignal.timeout(10_000),
+  })
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  return { res, data }
+}
+
+/**
+ * GET /v2/{order_id}/status — sumber kebenaran langsung dari Midtrans. Dipakai
+ * kasir (polling) supaya pembayaran terkonfirmasi walau notifikasi webhook
+ * terlambat atau URL notifikasi belum diatur (umum di sandbox).
+ */
+export async function getTransactionStatus(params: {
+  serverKey: string
+  isProduction: boolean
+  midtransOrderId: string
+}): Promise<MidtransStatus | null> {
+  const { res, data } = await midtransRequest(
+    params.serverKey,
+    params.isProduction,
+    `/v2/${encodeURIComponent(params.midtransOrderId)}/status`,
+    'GET',
+  )
+  // 404 / status_code "404" = transaksi belum tercatat (QR belum di-scan) — belum ada status.
+  if (res.status === 404 || data.status_code === '404') return null
+  if (!res.ok) {
+    const msg = typeof data.status_message === 'string' ? data.status_message : `Cek status Midtrans gagal (${res.status})`
+    throw new MidtransError(msg, res.status)
+  }
+  return {
+    transactionStatus: String(data.transaction_status ?? ''),
+    fraudStatus: typeof data.fraud_status === 'string' ? data.fraud_status : undefined,
+    transactionId: typeof data.transaction_id === 'string' ? data.transaction_id : null,
+    grossAmount: Math.round(Number(data.gross_amount ?? 0)),
+  }
+}
+
+/** POST /v2/{order_id}/cancel — batalkan QR yang belum dibayar (kasir ganti metode). Gagal = diamkan. */
+export async function cancelTransaction(params: { serverKey: string; isProduction: boolean; midtransOrderId: string }): Promise<void> {
+  await midtransRequest(params.serverKey, params.isProduction, `/v2/${encodeURIComponent(params.midtransOrderId)}/cancel`, 'POST').catch(
+    () => {},
+  )
+}
+
 /** Verifikasi tanda tangan notifikasi Midtrans: SHA512(order_id+status_code+gross_amount+ServerKey). */
 export function verifyMidtransSignature(params: {
   orderId: string

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
 import { markAwaitingPayment } from '@/db/repositories/tables'
 import { getSettings } from '@/db/repositories/settings'
-import { listOrderBills, unsplitBills } from '@/db/repositories/billing'
+import { implicitBillId, listOrderBills, unsplitBills } from '@/db/repositories/billing'
 import {
   finalizePayment,
   InsufficientStockError,
@@ -19,6 +19,7 @@ import { formatRupiah } from '@/lib/currency'
 import { randomUUID } from '@/lib/id'
 import { CashPaymentModal } from '@/features/payments/CashPaymentModal'
 import { QrisPaymentModal } from '@/features/payments/QrisPaymentModal'
+import { MidtransQrisModal } from '@/features/payments/MidtransQrisModal'
 import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal'
 import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
 import { SplitBillModal } from '@/features/payments/SplitBillModal'
@@ -56,6 +57,7 @@ export function OrderPaymentScreen() {
   const features = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType), [])
   const paymentMethods = features?.paymentMethods ?? DEFAULT_METHODS
   const proofMethods = features?.paymentProofMethods ?? NO_METHODS
+  const midtransEnabled = useLiveQuery(async () => (await getSettings()).qrisProvider === 'midtrans', []) ?? false
   const bills = useLiveQuery(() => (orderId ? listOrderBills(orderId) : []), [orderId]) ?? []
 
   const [completed, setCompleted] = useState(false)
@@ -121,6 +123,7 @@ export function OrderPaymentScreen() {
                 allowPartial={allowPartial}
                 paymentMethods={paymentMethods}
                 proofMethods={proofMethods}
+                midtransEnabled={midtransEnabled}
                 user={currentUser}
                 onCompleted={() => setCompleted(true)}
               />
@@ -133,6 +136,7 @@ export function OrderPaymentScreen() {
             allowPartial={allowPartial}
             paymentMethods={paymentMethods}
             proofMethods={proofMethods}
+            midtransEnabled={midtransEnabled}
             user={currentUser}
             onPartial={() => navigate('/kasir')}
             onCompleted={() => setCompleted(true)}
@@ -155,6 +159,7 @@ function SingleBillPayment({
   allowPartial,
   paymentMethods,
   proofMethods,
+  midtransEnabled,
   user,
   onPartial,
   onCompleted,
@@ -164,6 +169,7 @@ function SingleBillPayment({
   allowPartial: boolean
   paymentMethods: PaymentMethod[]
   proofMethods: PaymentMethod[]
+  midtransEnabled: boolean
   user: User
   onPartial: () => void
   onCompleted: () => void
@@ -189,7 +195,7 @@ function SingleBillPayment({
     try {
       const res = await finalizePayment({
         orderId: order.id,
-        payments: lines.map(({ method, amount, receivedAmount, reference }) => ({ method, amount, receivedAmount, reference })),
+        payments: lines.map(({ method, amount, receivedAmount, reference, gateway }) => ({ method, amount, receivedAmount, reference, gateway })),
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
@@ -208,8 +214,9 @@ function SingleBillPayment({
 
   const linesTotal = lines.reduce((sum, l) => sum + l.amount, 0)
   const remaining = Math.max(0, order.grandTotal - priorPaid - linesTotal)
-  const requireProof = requiresPaymentProof({ paymentProofMethods: proofMethods }, lines.map((l) => l.method))
+  const requireProof = requiresPaymentProof({ paymentProofMethods: proofMethods }, lines.filter((l) => !l.gateway).map((l) => l.method))
   const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || isProofComplete(proof))
+  useAutoSettleAfterGateway(lines, remaining <= 0 && canSettle && !isSubmitting, submitPayment)
 
   return (
     <>
@@ -240,6 +247,7 @@ function SingleBillPayment({
         activeModal={activeModal}
         setActiveModal={setActiveModal}
         methods={paymentMethods}
+        midtrans={midtransEnabled ? { orderId: order.id, billId: implicitBillId(order.id) } : null}
         addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
         removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
       />
@@ -288,6 +296,7 @@ function BillPayCard({
   allowPartial,
   paymentMethods,
   proofMethods,
+  midtransEnabled,
   user,
   onCompleted,
 }: {
@@ -296,6 +305,7 @@ function BillPayCard({
   allowPartial: boolean
   paymentMethods: PaymentMethod[]
   proofMethods: PaymentMethod[]
+  midtransEnabled: boolean
   user: User
   onCompleted: () => void
 }) {
@@ -308,7 +318,7 @@ function BillPayCard({
 
   const paid = bill.paymentStatus === 'PAID'
   const remaining = Math.max(0, bill.grandTotal - bill.amountPaid - lines.reduce((s, l) => s + l.amount, 0))
-  const requireProof = requiresPaymentProof({ paymentProofMethods: proofMethods }, lines.map((l) => l.method))
+  const requireProof = requiresPaymentProof({ paymentProofMethods: proofMethods }, lines.filter((l) => !l.gateway).map((l) => l.method))
   const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || isProofComplete(proof))
 
   async function run(allowNegativeStock?: { approverUserId: string; approverName: string }) {
@@ -316,7 +326,7 @@ function BillPayCard({
     try {
       const res = await payOrderBill({
         billId: bill.id,
-        payments: lines.map(({ method, amount, receivedAmount, reference }) => ({ method, amount, receivedAmount, reference })),
+        payments: lines.map(({ method, amount, receivedAmount, reference, gateway }) => ({ method, amount, receivedAmount, reference, gateway })),
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
@@ -332,6 +342,7 @@ function BillPayCard({
     }
   }
   const [isSubmitting, submit] = useSubmitGuard(() => run())
+  useAutoSettleAfterGateway(lines, !paid && remaining <= 0 && canSettle && !isSubmitting, submit)
 
   return (
     <div className={`card p-4 ${paid ? 'opacity-60' : ''}`}>
@@ -362,6 +373,7 @@ function BillPayCard({
             activeModal={activeModal}
             setActiveModal={setActiveModal}
             methods={paymentMethods}
+            midtrans={midtransEnabled ? { orderId: bill.orderId, billId: bill.id } : null}
             addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
           />
@@ -392,6 +404,21 @@ function BillPayCard({
 
 // ---- Kontrol metode pembayaran (dipakai kedua mode) ----
 
+/**
+ * Pembayaran yang dikonfirmasi gateway (Midtrans) sudah benar-benar diterima —
+ * selesaikan transaksi otomatis begitu nominalnya menutup tagihan, supaya kasir
+ * tak perlu menekan apa pun (dan pesanan tak tertinggal setengah jalan).
+ */
+function useAutoSettleAfterGateway(lines: PaymentLine[], ready: boolean, settle: () => void) {
+  const settledFor = useRef<string | null>(null)
+  const lastGateway = [...lines].reverse().find((l) => l.gateway)
+  useEffect(() => {
+    if (!lastGateway || !ready || settledFor.current === lastGateway.key) return
+    settledFor.current = lastGateway.key
+    settle()
+  }, [lastGateway, ready, settle])
+}
+
 function PayControls({
   methods,
   remaining,
@@ -400,6 +427,7 @@ function PayControls({
   setActiveModal,
   addLine,
   removeLine,
+  midtrans,
 }: {
   methods: PaymentMethod[]
   remaining: number
@@ -408,7 +436,11 @@ function PayControls({
   setActiveModal: (m: PaymentMethod | null) => void
   addLine: (l: Omit<PaymentLine, 'key' | 'methodLabel'>) => void
   removeLine: (key: string) => void
+  /** QRIS dinamis Midtrans aktif → tombol QRIS membuka QR Midtrans untuk bill ini. */
+  midtrans: { orderId: string; billId: string } | null
 }) {
+  // QRIS statis sebagai cadangan saat Midtrans/internet bermasalah.
+  const [forceStaticQris, setForceStaticQris] = useState(false)
   return (
     <>
       <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
@@ -423,9 +455,13 @@ function PayControls({
         <div className="mb-3 space-y-2">
           {lines.map((line) => (
             <div key={line.key} className="flex items-center justify-between rounded-xl bg-ink-800 px-4 py-2.5">
-              <span className="text-ink-200">{line.methodLabel}</span>
+              <span className="text-ink-200">
+                {line.methodLabel}
+                {line.gateway && <span className="ml-2 text-xs font-semibold text-success-500">Lunas via Midtrans</span>}
+              </span>
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-ink-50">{formatRupiah(line.amount)}</span>
+                {!line.gateway && (
                 <button
                   className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-red-400 hover:bg-ink-700"
                   aria-label={`Hapus pembayaran ${line.methodLabel}`}
@@ -433,6 +469,7 @@ function PayControls({
                 >
                   <Icon name="close" size={16} />
                 </button>
+                )}
               </div>
             </div>
           ))}
@@ -449,12 +486,29 @@ function PayControls({
           }}
         />
       )}
-      {activeModal === 'qris' && (
-        <QrisPaymentModal
+      {activeModal === 'qris' && midtrans && !forceStaticQris && (
+        <MidtransQrisModal
+          orderId={midtrans.orderId}
+          billId={midtrans.billId}
           amount={remaining}
           onCancel={() => setActiveModal(null)}
+          onPaid={({ amount, reference }) => {
+            addLine({ method: 'qris', amount, reference, gateway: 'midtrans' })
+            setActiveModal(null)
+          }}
+          onUseStatic={() => setForceStaticQris(true)}
+        />
+      )}
+      {activeModal === 'qris' && (!midtrans || forceStaticQris) && (
+        <QrisPaymentModal
+          amount={remaining}
+          onCancel={() => {
+            setForceStaticQris(false)
+            setActiveModal(null)
+          }}
           onConfirm={() => {
             addLine({ method: 'qris', amount: remaining })
+            setForceStaticQris(false)
             setActiveModal(null)
           }}
         />

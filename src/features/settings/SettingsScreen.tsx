@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings, updateSettings } from '@/db/repositories/settings'
+import { getMidtransConfig } from '@/sync/client'
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
 import { UserManager } from '@/features/settings/UserManager'
@@ -357,6 +358,8 @@ function QrisForm() {
   const settings = useLiveQuery(() => getSettings(), [])
   const [qrisImageDataUrl, setQrisImageDataUrl] = useState<string | null>(null)
   const [qrisMerchantName, setQrisMerchantName] = useState('')
+  const [qrisProvider, setQrisProvider] = useState<'static' | 'midtrans'>('static')
+  const [midtransCheck, setMidtransCheck] = useState<{ ok: boolean; text: string } | null>(null)
   const [saved, setSaved] = useState(false)
   const qrisInputRef = useRef<HTMLInputElement>(null)
 
@@ -364,14 +367,56 @@ function QrisForm() {
     if (!settings) return
     setQrisImageDataUrl(settings.qrisImageDataUrl)
     setQrisMerchantName(settings.qrisMerchantName ?? '')
+    setQrisProvider(settings.qrisProvider ?? 'static')
   }, [settings])
 
   if (!settings) return null
 
+  async function testMidtrans() {
+    setMidtransCheck({ ok: true, text: 'Memeriksa…' })
+    try {
+      const c = await getMidtransConfig()
+      setMidtransCheck(
+        c.enabled
+          ? { ok: true, text: c.isProduction ? 'Terhubung — mode PRODUKSI (uang sungguhan).' : 'Terhubung — mode SANDBOX (uji coba, tanpa uang sungguhan).' }
+          : { ok: false, text: 'Server belum diisi kunci Midtrans (MIDTRANS_SERVER_KEY).' },
+      )
+    } catch (e) {
+      setMidtransCheck({ ok: false, text: e instanceof Error ? e.message : 'Tidak bisa menghubungi server.' })
+    }
+  }
+
   return (
     <div className="max-w-md space-y-4">
+      <div className="card space-y-2 p-4">
+        <span className="block text-sm font-semibold text-ink-200">Cara bayar QRIS di kasir</span>
+        <label className="flex items-start gap-3 text-sm text-ink-300">
+          <input type="radio" name="qrisProvider" className="mt-1" checked={qrisProvider === 'static'} onChange={() => setQrisProvider('static')} />
+          <span>
+            <b className="text-ink-100">QRIS statis</b> — gambar QRIS di bawah. Kasir mengecek notifikasi lalu konfirmasi manual
+            (dan memotret bukti bila diwajibkan).
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-ink-300">
+          <input type="radio" name="qrisProvider" className="mt-1" checked={qrisProvider === 'midtrans'} onChange={() => setQrisProvider('midtrans')} />
+          <span>
+            <b className="text-ink-100">QRIS dinamis Midtrans</b> — QR khusus tiap transaksi (nominal terkunci), lunas otomatis saat
+            pembeli membayar, tanpa foto bukti. Butuh internet & Sinkronisasi aktif. QRIS statis tetap jadi cadangan.
+          </span>
+        </label>
+        {qrisProvider === 'midtrans' && (
+          <div className="pt-1">
+            <button type="button" className="btn-secondary btn-compact" onClick={() => void testMidtrans()}>
+              Tes koneksi Midtrans
+            </button>
+            {midtransCheck && <p className={`mt-2 text-sm ${midtransCheck.ok ? 'text-success-500' : 'text-red-400'}`}>{midtransCheck.text}</p>}
+          </div>
+        )}
+      </div>
       <div>
-        <span className="mb-1 block text-sm text-ink-300">Gambar QRIS Statis Kafe</span>
+        <span className="mb-1 block text-sm text-ink-300">
+          Gambar QRIS Statis {qrisProvider === 'midtrans' ? '(cadangan saat internet bermasalah)' : ''}
+        </span>
         <input
           ref={qrisInputRef}
           type="file"
@@ -397,7 +442,7 @@ function QrisForm() {
       <button
         className="btn-primary"
         onClick={async () => {
-          await updateSettings({ qrisImageDataUrl, qrisMerchantName: qrisMerchantName || null })
+          await updateSettings({ qrisImageDataUrl, qrisMerchantName: qrisMerchantName || null, qrisProvider })
           setSaved(true)
           setTimeout(() => setSaved(false), 2000)
         }}

@@ -41,7 +41,9 @@ async function assertPaymentProof(params: {
   if (params.skipProofCheck) return
   const settings = await getSettings()
   const features = featuresForBusinessType(settings.businessType)
-  if (requiresPaymentProof(features, params.payments.map((p) => p.method)) && !hasPaymentProof(params.proof)) {
+  // Pembayaran yang sudah dikonfirmasi gateway (Midtrans) tak butuh foto bukti.
+  const manual = params.payments.filter((p) => !p.gateway)
+  if (requiresPaymentProof(features, manual.map((p) => p.method)) && !hasPaymentProof(params.proof)) {
     throw new PaymentProofRequiredError()
   }
 }

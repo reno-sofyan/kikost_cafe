@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   allowPartialPayment: false,
   qrisImageDataUrl: null,
   qrisMerchantName: null,
+  qrisProvider: 'static',
   qrOrderBaseUrl: '',
   receiptPaperSize: '58mm',
   receiptFooterNote: 'Terima kasih atas kunjungan Anda',

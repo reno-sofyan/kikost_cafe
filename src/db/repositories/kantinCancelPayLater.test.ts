@@ -52,11 +52,9 @@ async function approvalFrom(owner: User): Promise<OwnerApproval> {
 }
 
 describe('flag kantin', () => {
-  it('ownerPinCancel & payLater untuk kantin dan kafe', () => {
-    for (const t of ['kantin', 'cafe_resto'] as const) {
-      expect(featuresForBusinessType(t)).toMatchObject({ ownerPinCancel: true, payLater: true })
-    }
-    for (const t of ['minimarket', 'lainnya'] as const) {
+  it('ownerPinCancel & payLater hanya untuk kantin (kafe ditunda)', () => {
+    expect(featuresForBusinessType('kantin')).toMatchObject({ ownerPinCancel: true, payLater: true })
+    for (const t of ['cafe_resto', 'minimarket', 'lainnya'] as const) {
       expect(featuresForBusinessType(t)).toMatchObject({ ownerPinCancel: false, payLater: false })
     }
   })
@@ -247,9 +245,8 @@ describe('koreksi item & pembatalan pesanan kosong (kantin)', () => {
   })
 })
 
-describe('kafe: tagihan tertunda & meja', () => {
+describe('tagihan tertunda & meja (dine-in)', () => {
   it('meja dilepas saat dicatat; pelunasan belakangan tak mengganggu tamu baru di meja itu', async () => {
-    await updateSettings({ businessType: 'cafe_resto' })
     const table = await createTable({ name: 'Meja 3', area: 'Indoor', capacity: 4 })
     const shift = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 0 })
     const first = await startOrder({ type: 'dine_in', tableId: table.id, guestCount: 2, cashierId: 'u1', cashierName: 'Kasir', shiftId: shift.id })
@@ -267,11 +264,5 @@ describe('kafe: tagihan tertunda & meja', () => {
     await finalizePayment({ orderId: first.id, payments: [{ method: 'cash', amount: 15000 }], confirmedByUserId: 'u1' })
     expect((await db.orders.get(first.id))?.lifecycleStatus).toBe('COMPLETED')
     expect(await db.cafeTables.get(table.id)).toMatchObject({ status: 'occupied', currentOrderId: second.id })
-  })
-
-  it('kafe: pembatalan juga wajib kode Pemilik', async () => {
-    await updateSettings({ businessType: 'cafe_resto' })
-    const order = await orderWithItem()
-    await expect(cancelUnsentOrder(order.id, 'Salah input', actor)).rejects.toThrow(OwnerApprovalRequiredError)
   })
 })

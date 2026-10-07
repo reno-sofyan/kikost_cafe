@@ -46,8 +46,7 @@ const pay = (orderId: string, withProof: boolean) =>
 describe('fitur bukti pembayaran per jenis usaha', () => {
   it('hanya kantin yang mewajibkan (khusus QRIS)', () => {
     expect(featuresForBusinessType('kantin').paymentProofMethods).toEqual(['qris'])
-    expect(featuresForBusinessType('cafe_resto').paymentProofMethods).toEqual(['qris'])
-    for (const t of ['minimarket', 'lainnya'] as const) expect(featuresForBusinessType(t).paymentProofMethods).toEqual([])
+    for (const t of ['cafe_resto', 'minimarket', 'lainnya'] as const) expect(featuresForBusinessType(t).paymentProofMethods).toEqual([])
   })
 })
 
@@ -119,15 +118,6 @@ describe('kantin: foto bukti wajib untuk QRIS', () => {
   })
 })
 
-describe('kafe: QRIS juga wajib foto', () => {
-  it('cafe menolak QRIS tanpa foto, menerima dengan foto', async () => {
-    await setBusinessType('cafe_resto')
-    const order = await openOrder()
-    await expect(pay(order.id, false)).rejects.toThrow(PaymentProofRequiredError)
-    expect((await pay(order.id, true)).order.lifecycleStatus).toBe('COMPLETED')
-  })
-})
-
 describe('usaha lain: foto opsional', () => {
   it('minimarket boleh bayar QRIS tanpa foto', async () => {
     await setBusinessType('minimarket')
@@ -144,5 +134,56 @@ describe('sync bukti pembayaran', () => {
     await db.paymentProofs.put(local)
     await applyRemoteEntities({ paymentProofs: [{ ...local, photoDataUrl: 'data:image/jpeg;base64,BBBB', updatedAt: 99 }] })
     expect((await db.paymentProofs.get('pp1'))?.photoDataUrl).toBe(PHOTO)
+  })
+})
+
+describe('QRIS dinamis Midtrans di kasir', () => {
+  beforeEach(() => setBusinessType('kantin'))
+
+  it('pembayaran yang dikonfirmasi Midtrans tak butuh foto; QRIS manual tetap wajib', async () => {
+    const order = await openOrder()
+    const res = await finalizePayment({
+      orderId: order.id,
+      payments: [{ method: 'qris', amount: 5000, reference: 'mt-txn-1', gateway: 'midtrans' }],
+      confirmedByUserId: 'u1',
+    })
+    expect(res.order.lifecycleStatus).toBe('COMPLETED')
+    expect(await db.payments.where('orderId').equals(order.id).first()).toMatchObject({ method: 'qris', reference: 'mt-txn-1' })
+
+    const manual = await openOrder()
+    await expect(
+      finalizePayment({
+        orderId: manual.id,
+        payments: [{ method: 'cash', amount: 1000 }, { method: 'qris', amount: 4000 }],
+        confirmedByUserId: 'u1',
+      }),
+    ).rejects.toThrow(PaymentProofRequiredError)
+  })
+
+  it('lunas lokal lalu notifikasi Midtrans yang sama datang lewat sinkronisasi → tidak dobel', async () => {
+    const order = await openOrder()
+    await finalizePayment({
+      orderId: order.id,
+      payments: [{ method: 'qris', amount: 5000, reference: 'mt-txn-2', gateway: 'midtrans' }],
+      confirmedByUserId: 'u1',
+    })
+    await applyRemoteEntities({
+      onlinePayments: [
+        { id: 'mt-txn-2', orderId: order.id, billId: implicitBillId(order.id), amount: 5000, method: 'qris', reference: 'mt-txn-2', createdAt: 1 },
+      ],
+    })
+    const pays = await db.payments.where('orderId').equals(order.id).toArray()
+    expect(pays).toHaveLength(1)
+    expect(pays.reduce((s, p) => s + p.amount, 0)).toBe(5000)
+  })
+
+  it('tablet ditutup sebelum sempat melunasi → notifikasi lewat sinkronisasi tetap melunasi', async () => {
+    const order = await openOrder()
+    await applyRemoteEntities({
+      onlinePayments: [
+        { id: 'mt-txn-3', orderId: order.id, billId: implicitBillId(order.id), amount: 5000, method: 'qris', reference: 'mt-txn-3', createdAt: 1 },
+      ],
+    })
+    expect((await db.orders.get(order.id))?.lifecycleStatus).toBe('COMPLETED')
   })
 })

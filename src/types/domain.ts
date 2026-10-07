@@ -112,6 +112,12 @@ export interface AppSettings {
   allowPartialPayment: boolean
   qrisImageDataUrl: string | null
   qrisMerchantName: string | null
+  /**
+   * QRIS di kasir: `static` = gambar QRIS tetap (kasir konfirmasi manual + foto
+   * bukti bila diwajibkan); `midtrans` = QR dinamis per transaksi via backend,
+   * lunas otomatis saat Midtrans mengonfirmasi. Kosong = data lama → static.
+   */
+  qrisProvider?: 'static' | 'midtrans'
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
   qrOrderBaseUrl: string
   /** Outlet aktif di perangkat ini (Fase 3). */
@@ -790,6 +796,8 @@ export interface PaymentInput {
   amount: number
   receivedAmount?: number
   reference?: string
+  /** Dikonfirmasi gateway (QRIS dinamis Midtrans) — bukti = transaksi gateway, tak perlu foto. */
+  gateway?: 'midtrans'
 }
 
 export interface Payment {

@@ -12,6 +12,7 @@ import {
   verifyMidtransSignature,
 } from '../lib/midtrans.js'
 import { recordOnlinePayment } from '../lib/onlinePayments.js'
+import { findCharge, settleCharge } from './midtransCashier.js'
 import { logPublicRequest, PublicOrderError, resolveToken } from '../lib/publicOrders.js'
 
 const TOKEN_RE = /^[a-f0-9]{16,64}$/i
@@ -159,6 +160,13 @@ export async function registerMidtransRoutes(app: FastifyInstance): Promise<void
     if (!isMidtransPaidStatus(transaction_status, fraud_status)) {
       // pending/deny/expire/cancel: tak ada efek bisnis, cukup ack supaya Midtrans berhenti retry.
       return { ok: true, applied: false }
+    }
+
+    // Charge dari kasir: pemiliknya (tenant/order/bill) tercatat walau pesanan belum tersinkron.
+    const cashierCharge = await findCharge(getPool(), order_id)
+    if (cashierCharge) {
+      await settleCharge(getPool(), cashierCharge, transaction_id, Math.round(Number(gross_amount)))
+      return { ok: true, applied: true }
     }
 
     const orderId = decodeMidtransOrderId(order_id)

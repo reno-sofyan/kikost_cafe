@@ -143,3 +143,44 @@ export async function revokeSyncDevice(id: string): Promise<void> {
 export async function renameSyncDevice(id: string, label: string): Promise<void> {
   await deviceJson(`/api/devices/${id}/rename`, { method: 'POST', body: JSON.stringify({ label }) })
 }
+
+// ---- QRIS dinamis Midtrans dari kasir (lihat backend/src/routes/midtransCashier.ts) ----
+
+export type MidtransChargeStatus = 'pending' | 'paid' | 'expired' | 'failed' | 'cancelled'
+
+export interface MidtransCharge {
+  chargeId: string
+  qrString: string
+  grossAmount: number
+  expiryTime: string | null
+  isProduction: boolean
+}
+
+export interface MidtransChargeState {
+  status: MidtransChargeStatus
+  reference?: string
+  amount?: number
+}
+
+async function midtransCall<T>(path: string, init: RequestInit, failLabel: string): Promise<T> {
+  const response = await authorizedFetch(path, init)
+  const data = await parseJsonOrThrow<T & { error?: string }>(response, failLabel)
+  if (!response.ok) throw new Error(data.error || `${failLabel} (HTTP ${response.status})`)
+  return data
+}
+
+export function getMidtransConfig(): Promise<{ enabled: boolean; isProduction: boolean }> {
+  return midtransCall('/api/sync/midtrans/config', { method: 'GET' }, 'Cek Midtrans gagal')
+}
+
+export function createMidtransCharge(params: { orderId: string; billId: string; amount: number }): Promise<MidtransCharge> {
+  return midtransCall('/api/sync/midtrans/charges', { method: 'POST', body: JSON.stringify(params) }, 'Gagal membuat QRIS')
+}
+
+export function getMidtransCharge(chargeId: string): Promise<MidtransChargeState> {
+  return midtransCall(`/api/sync/midtrans/charges/${encodeURIComponent(chargeId)}`, { method: 'GET' }, 'Cek status QRIS gagal')
+}
+
+export function cancelMidtransCharge(chargeId: string): Promise<MidtransChargeState> {
+  return midtransCall(`/api/sync/midtrans/charges/${encodeURIComponent(chargeId)}/cancel`, { method: 'POST' }, 'Batal QRIS gagal')
+}
