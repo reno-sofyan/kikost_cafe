@@ -104,7 +104,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
                 payload->>'businessName' AS business_name,
                 payload->>'businessType' AS business_type
            FROM sync_entity_state
-          WHERE entity = 'settings' AND deleted = FALSE`,
+          WHERE entity = 'settings' AND entity_id = 'singleton' AND deleted = FALSE`,
       ),
       pool.query<{ tenant_id: string; total: string; online: string; last_seen: string | null }>(
         `SELECT tenant_id,

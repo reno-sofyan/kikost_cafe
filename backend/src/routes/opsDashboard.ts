@@ -9,7 +9,8 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
 <html lang="id" data-theme="dark">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0f14" />
 <meta name="robots" content="noindex, nofollow" />
 <title>Kione Ops</title>
 <style>
@@ -124,6 +125,36 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   .tag.stage-paid { color: #fca5a5; border-color: #b91c1c; background: rgba(185,28,28,.15); }
   .tag.stage-kitchen { color: #fcd34d; border-color: #b45309; }
   .tag.stage-unprocessed { color: var(--ink-200); }
+  /* ---- HP (≤640px) ---- */
+  @media (max-width: 640px) {
+    .wrap { padding: calc(14px + env(safe-area-inset-top)) 14px calc(40px + env(safe-area-inset-bottom)); }
+    header.top { margin-bottom: 14px; }
+    header.top > div:last-child { width: 100%; flex-wrap: wrap; gap: 8px !important; }
+    header.top > div:last-child #updated { flex-basis: 100%; }
+    header.top > div:last-child button { flex: 1; white-space: nowrap; }
+    .kpis { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+    .kpi { padding: 10px 12px; }
+    .kpi .val { font-size: 1.2rem; }
+    .grid { grid-template-columns: 1fr; gap: 10px; }
+    .drawer { width: 100vw; border-left: 0; }
+    .drawer .dh { padding: calc(12px + env(safe-area-inset-top)) 14px 12px; }
+    .drawer .body { padding: 14px 14px calc(40px + env(safe-area-inset-bottom)); }
+    #dKpis { grid-template-columns: repeat(3, 1fr) !important; }
+    #dKpis .kpi .val { font-size: 1rem; }
+    #dKpis .kpi .label { font-size: .64rem; }
+    .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .tabs { gap: 6px; }
+    .tabs button { flex: 1 1 auto; white-space: nowrap; padding: 8px 10px; font-size: .85rem; }
+    .toolbar .muted { flex-basis: 100%; }
+    .groups { grid-template-columns: 1fr; }
+    /* Tabel → kartu bertumpuk */
+    table.stack thead { display: none; }
+    table.stack, table.stack tbody { display: block; }
+    table.stack tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+    table.stack td { display: block; padding: 0; border: 0; }
+    table.stack td.full { flex-basis: 100%; color: var(--ink-200); }
+    table.stack td.num { margin-left: auto; font-weight: 600; }
+  }
   .tag.appr-owner { color: #93c5fd; border-color: #1d4ed8; }
   .tag.emptied { color: #fecaca; border-color: #dc2626; background: rgba(220,38,38,.25); font-weight: 600; }
   .corr { margin: 6px 0 2px; padding: 8px 10px; border-left: 2px solid var(--bad); background: rgba(239,68,68,.06); border-radius: 0 8px 8px 0; font-size: .78rem; }
@@ -470,18 +501,18 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   function renderActivity(logs) {
     if (!logs || !logs.length) { document.getElementById('paneActivity').innerHTML = '<div class="empty">Belum ada log aktivitas.</div>'; return; }
     document.getElementById('paneActivity').innerHTML =
-      '<table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Detail</th></tr></thead><tbody>' +
+      '<table class="stack"><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Detail</th></tr></thead><tbody>' +
       logs.map((l) =>
         '<tr><td class="muted">' + esc(fmtTime(l.createdAt)) + '</td>' +
         '<td>' + esc(l.userName || '—') + '</td>' +
         '<td><span class="tag">' + esc(l.action || '') + '</span></td>' +
-        '<td>' + esc(l.details || '') + '</td></tr>').join('') +
+        '<td class="full">' + esc(l.details || '') + '</td></tr>').join('') +
       '</tbody></table>';
   }
   function renderOrders(orders) {
     if (!orders || !orders.length) { document.getElementById('paneOrders').innerHTML = '<div class="empty">Belum ada transaksi.</div>'; return; }
     document.getElementById('paneOrders').innerHTML =
-      '<table><thead><tr><th>Waktu</th><th>No.</th><th>Status</th><th>Kasir</th><th class="num">Total</th></tr></thead><tbody>' +
+      '<table class="stack"><thead><tr><th>Waktu</th><th>No.</th><th>Status</th><th>Kasir</th><th class="num">Total</th></tr></thead><tbody>' +
       orders.map((o) => {
         const st = String(o.status || '');
         const cls = st === 'paid' || st === 'completed' ? 'paid' : st === 'void' ? 'void' : 'open';
@@ -489,7 +520,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
           '<td>' + esc(o.orderNumber || '—') + '</td>' +
           '<td><span class="tag ' + cls + '">' + esc(st || '—') + '</span></td>' +
           '<td>' + esc(o.cashierName || (o.source === 'qr_table' ? 'QR' : '—')) + '</td>' +
-          '<td class="num">' + rupiah(o.grandTotal) + '</td></tr>';
+          '<td class="num" style="white-space:nowrap">' + rupiah(o.grandTotal) + '</td></tr>';
       }).join('') +
       '</tbody></table>';
   }
