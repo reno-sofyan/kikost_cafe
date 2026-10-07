@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCancellationReport, describeCancellation } from '../src/lib/opsCancellations.js'
+import { buildCancellationReport, buildReturnRows, describeCancellation } from '../src/lib/opsCancellations.js'
 
 const base = { id: 'o1', orderNumber: 'TRX-1', status: 'void', grandTotal: 20000, cashierName: 'Kasir A', createdAt: 1, voidedAt: 2 }
 
@@ -70,6 +70,23 @@ describe('buildCancellationReport', () => {
     expect(report.rows.find((r) => r.orderId === 'd')).toMatchObject({ emptiedFirst: false, neverHadItems: true, value: 0 })
     expect(report.rows.find((r) => r.orderId === 'a')!.corrections).toEqual([
       expect.objectContaining({ kind: 'reduced', value: 4000 }),
+    ])
+  })
+})
+
+describe('buildReturnRows', () => {
+  it('memetakan refund retur ke nomor pesanan, item, & persetujuan Pemilik', () => {
+    const rows = buildReturnRows(
+      [
+        { id: 'r1', orderId: 'o9', reason: 'return', amount: 15000, method: 'cash', note: 'Makanan basi', approvedByName: 'Bu Sari', orderItemIds: ['i1'], createdAt: 50 },
+        { id: 'v1', orderId: 'o8', reason: 'void', amount: 9000, createdAt: 60 },
+      ],
+      [{ id: 'o9', orderNumber: 'TRX-9', notes: 'Andi' }],
+      [{ id: 'i1', productName: 'Nasi Goreng', qty: 1 }],
+      [{ action: 'order.return', entityId: 'o9', details: 'Retur Rp15000 pada TRX-9. Alasan: x • Disetujui Pemilik (kode sekali pakai)' }],
+    )
+    expect(rows).toEqual([
+      expect.objectContaining({ orderNumber: 'TRX-9', buyer: 'Andi', amount: 15000, reason: 'Makanan basi', approvedBy: 'Bu Sari', ownerApproved: true, items: ['Nasi Goreng x1'] }),
     ])
   })
 })

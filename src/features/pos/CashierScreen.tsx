@@ -17,6 +17,8 @@ import {
   markOrderPayLater,
   removeOrderItem,
   setOrderDiscount,
+  discountRequirements,
+  DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT,
   updateOrderItemQty,
   startOrder,
   voidOrderItem,
@@ -43,7 +45,7 @@ import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { toast } from '@/state/toastStore'
-import type { OrderItem, OrderType, Product, User } from '@/types/domain'
+import type { DiscountType, OrderItem, OrderType, Product, User } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   dine_in: 'Dine-in',
@@ -63,6 +65,7 @@ export function CashierScreen() {
   const [showOpenBills, setShowOpenBills] = useState(false)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showPayLater, setShowPayLater] = useState(false)
+  const [discountOwner, setDiscountOwner] = useState<{ type: DiscountType; value: number; reason: string; percent: number } | null>(null)
   /** Kantin: kurangi/hapus item butuh alasan. `nextQty` 0 = hapus. */
   const [itemCorrection, setItemCorrection] = useState<{ item: OrderItem; nextQty: number } | null>(null)
   const [clearFlow, setClearFlow] = useState<null | { step: 'reason' } | { step: 'owner'; reason: string }>(null)
@@ -321,6 +324,23 @@ export function CashierScreen() {
       toast.success(`Pesanan ${order.orderNumber} dibatalkan.`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+    }
+  }
+
+  /** Kantin: diskon wajib alasan; di atas batas lewat kode Pemilik. */
+  async function handleDiscountConfirm(type: DiscountType | null, value: number, reason: string) {
+    if (!order) return
+    setShowDiscount(false)
+    const actor = { userId: currentUser.id, userName: currentUser.name }
+    try {
+      if (!features.cashierControls) return void (await setOrderDiscount(order.id, type, value))
+      if (type && value > 0) {
+        const req = await discountRequirements(order.id, type, value)
+        if (req.needsOwnerCode) return setDiscountOwner({ type, value, reason, percent: req.percent })
+      }
+      await setOrderDiscount(order.id, type, value, { reason, actor })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menyimpan diskon')
     }
   }
 
@@ -653,10 +673,24 @@ export function CashierScreen() {
         <DiscountModal
           initialType={order.discountType}
           initialValue={order.discountValue}
+          controlled={features.cashierControls}
+          maxPercent={settings?.cashierDiscountMaxPercent ?? DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT}
+          subtotal={order.subtotal}
           onCancel={() => setShowDiscount(false)}
-          onConfirm={(type, value) => {
-            void setOrderDiscount(order.id, type, value)
-            setShowDiscount(false)
+          onConfirm={(type, value, reason) => void handleDiscountConfirm(type, value, reason)}
+        />
+      )}
+      {discountOwner && order && (
+        <OwnerCancelCodeModal
+          title={`Setujui Diskon ${order.orderNumber}`}
+          description={`Diskon ${discountOwner.percent.toFixed(1)}% melebihi batas. Alasan: ${discountOwner.reason}`}
+          onCancel={() => setDiscountOwner(null)}
+          onApproved={(approval) => {
+            const d = discountOwner
+            setDiscountOwner(null)
+            void setOrderDiscount(order.id, d.type, d.value, { reason: d.reason, actor: { userId: currentUser.id, userName: currentUser.name }, ownerApproval: approval })
+              .then(() => toast.success('Diskon disetujui Pemilik.'))
+              .catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Gagal menyimpan diskon'))
           }}
         />
       )}

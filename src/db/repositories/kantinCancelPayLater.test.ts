@@ -11,6 +11,8 @@ import {
   clearOrderItems,
   emptyOrderCancelRequirements,
   ItemCorrectionReasonRequiredError,
+  discountRequirements,
+  setOrderDiscount,
   markOrderPayLater,
   removeOrderItem,
   startOrder,
@@ -18,7 +20,7 @@ import {
 } from './orders'
 import { closeShift, openShift } from './shifts'
 import { createTable } from './tables'
-import { finalizePayment, voidOrder } from './checkout'
+import { finalizePayment, returnOrderItems, voidOrder } from './checkout'
 import { generateCancelCode, getActiveCancelCode, OwnerApprovalRequiredError, verifyCancelCode, type OwnerApproval } from './cancelCodes'
 import type { Order, Shift, User } from '@/types/domain'
 
@@ -264,5 +266,57 @@ describe('tagihan tertunda & meja (dine-in)', () => {
     await finalizePayment({ orderId: first.id, payments: [{ method: 'cash', amount: 15000 }], confirmedByUserId: 'u1' })
     expect((await db.orders.get(first.id))?.lifecycleStatus).toBe('COMPLETED')
     expect(await db.cafeTables.get(table.id)).toMatchObject({ status: 'occupied', currentOrderId: second.id })
+  })
+})
+
+describe('diskon terkendali (kantin)', () => {
+  it('diskon wajib alasan; dalam batas tercatat tanpa kode; di atas batas wajib kode Pemilik', async () => {
+    const owner = await createUser({ name: 'Bu Sari', role: 'pemilik', pin: '9999' })
+    const order = await orderWithItem() // subtotal 15.000
+    await expect(setOrderDiscount(order.id, 'percent', 10)).rejects.toThrow('Alasan diskon')
+    await expect(setOrderDiscount(order.id, 'percent', 10, { reason: '  ', actor })).rejects.toThrow('Alasan diskon')
+
+    await setOrderDiscount(order.id, 'amount', 1500, { reason: 'Karyawan', actor }) // 10% = batas default
+    expect(await db.orders.get(order.id)).toMatchObject({ discountAmount: 1500, discountReason: 'Karyawan', discountByName: 'Kasir', discountApproval: 'self' })
+
+    await expect(setOrderDiscount(order.id, 'percent', 20, { reason: 'Promo', actor })).rejects.toThrow(OwnerApprovalRequiredError)
+    await setOrderDiscount(order.id, 'percent', 20, { reason: 'Promo', actor, ownerApproval: await approvalFrom(owner) })
+    expect(await db.orders.get(order.id)).toMatchObject({ discountAmount: 3000, discountApproval: 'owner_code' })
+    expect(await getActiveCancelCode()).toBeNull()
+    const logs = (await db.auditLogs.toArray()).filter((l) => l.action === 'order.discount')
+    expect(logs.map((l) => l.details).join(' | ')).toContain('Disetujui Pemilik: Bu Sari')
+
+    // Menghapus diskon selalu bebas.
+    await setOrderDiscount(order.id, null, 0, { reason: '', actor })
+    expect(await db.orders.get(order.id)).toMatchObject({ discountAmount: 0, discountReason: null })
+  })
+
+  it('batas diskon bisa diatur Pemilik', async () => {
+    await updateSettings({ cashierDiscountMaxPercent: 0 })
+    const order = await orderWithItem()
+    expect(await discountRequirements(order.id, 'amount', 500)).toMatchObject({ controlled: true, needsOwnerCode: true })
+  })
+
+  it('usaha lain: diskon tetap bebas tanpa alasan', async () => {
+    await updateSettings({ businessType: 'minimarket' })
+    const order = await orderWithItem()
+    await setOrderDiscount(order.id, 'percent', 50)
+    expect((await db.orders.get(order.id))?.discountAmount).toBe(7500)
+  })
+})
+
+describe('retur (kantin)', () => {
+  it('retur wajib kode Pemilik; kode hangus setelah dipakai', async () => {
+    const owner = await createUser({ name: 'Bu Sari', role: 'pemilik', pin: '9999' })
+    const order = await orderWithItem()
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: 15000 }], confirmedByUserId: 'u1' })
+    const [item] = await db.orderItems.where('orderId').equals(order.id).toArray()
+    const base = { orderId: order.id, orderItemIds: [item.id], reason: 'Makanan basi', restock: false, approverUserId: 'u1', approverName: 'Kasir' }
+
+    await expect(returnOrderItems(base)).rejects.toThrow(OwnerApprovalRequiredError)
+    const approval = await approvalFrom(owner)
+    await returnOrderItems({ ...base, approverUserId: approval.approverUserId, approverName: approval.approverName, ownerApproval: approval })
+    expect(await db.returns.count()).toBe(1)
+    expect(await getActiveCancelCode()).toBeNull()
   })
 })

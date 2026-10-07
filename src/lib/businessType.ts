@@ -64,6 +64,12 @@ export interface BusinessFeatures {
    * yang sedang buka saat dibayar.
    */
   payLater: boolean
+  /**
+   * Diskon kasir terkendali: tiap diskon wajib alasan & tercatat (siapa, berapa);
+   * di atas `AppSettings.cashierDiscountMaxPercent` wajib kode Pemilik. Retur
+   * (pengembalian uang sebagian) juga wajib kode Pemilik.
+   */
+  cashierControls: boolean
   /** Notifikasi saat shift dibuka + popup tiap 21.00 WIB "lanjutkan atau tutup shift?". */
   shiftReminder: boolean
 }
@@ -85,6 +91,7 @@ const ALL_FEATURES: BusinessFeatures = {
   paymentProofMethods: [],
   ownerPinCancel: false,
   payLater: false,
+  cashierControls: false,
   shiftReminder: false,
 }
 
@@ -116,6 +123,7 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         paymentProofMethods: [],
         ownerPinCancel: false,
         payLater: false,
+        cashierControls: false,
         shiftReminder: false,
       }
     case 'kantin':
@@ -130,6 +138,7 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         paymentProofMethods: ['qris'],
         ownerPinCancel: true,
         payLater: true,
+        cashierControls: true,
         shiftReminder: true,
       }
     case 'cafe_resto':

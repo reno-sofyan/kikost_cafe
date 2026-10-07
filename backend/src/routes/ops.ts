@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { getPool } from '../db/pool.js'
 import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
 import type { Pool } from 'pg'
-import { buildCancellationReport, type CancellationReport } from '../lib/opsCancellations.js'
+import { buildCancellationReport, buildReturnRows, type CancellationReport } from '../lib/opsCancellations.js'
 import { buildCancellationsPdf, buildTransactionsPdf, type TransactionReport, type TransactionRow } from '../lib/opsPdf.js'
 
 /**
@@ -306,6 +306,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
           type: p.type ?? null,
           grandTotal: num(p.grandTotal),
           cashierName: p.cashierName ?? null,
+          discountAmount: num(p.discountAmount),
           source: p.source ?? null,
           createdAt: p.createdAt ?? null,
           paidAt: p.paidAt ?? null,
@@ -449,11 +450,46 @@ async function loadCancellationReport(
         ),
       ])
     : [{ rows: [] }, { rows: [] }]
+  // Retur (pengembalian uang sebagian) pada periode yang sama.
+  const refunds = await pool.query<{ payload: Record<string, unknown> }>(
+    `SELECT payload FROM sync_entity_state
+      WHERE tenant_id = $1 AND entity = 'refunds' AND deleted = FALSE AND payload->>'reason' = 'return'
+        AND ${numField('createdAt')} >= $2 AND ${numField('createdAt')} < $3
+      ORDER BY ${numField('createdAt')} DESC
+      LIMIT 1000`,
+    [tenantId, sinceMs, untilMs],
+  )
+  const refundOrderIds = [...new Set(refunds.rows.map((r) => String(r.payload.orderId ?? '')))]
+  const [refundOrders, refundItems, refundAudits] = refundOrderIds.length
+    ? await Promise.all([
+        pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE AND entity_id = ANY($2::text[])`,
+          [tenantId, refundOrderIds],
+        ),
+        pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'orderItems' AND deleted = FALSE AND payload->>'orderId' = ANY($2::text[])`,
+          [tenantId, refundOrderIds],
+        ),
+        pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
+              AND payload->>'action' = 'order.return' AND payload->>'entityId' = ANY($2::text[])`,
+          [tenantId, refundOrderIds],
+        ),
+      ])
+    : [{ rows: [] }, { rows: [] }, { rows: [] }]
+  const returns = buildReturnRows(
+    refunds.rows.map((r) => r.payload),
+    refundOrders.rows.map((r) => r.payload),
+    refundItems.rows.map((r) => r.payload),
+    refundAudits.rows.map((r) => r.payload),
+  )
+
   return buildCancellationReport(
     days,
     orders.rows.map((r) => r.payload),
     audits.rows.map((r) => r.payload),
     items.rows.map((r) => r.payload),
+    returns,
   )
 }
 
@@ -520,6 +556,10 @@ async function loadTransactionReport(pool: Pool, tenantId: string, sinceMs: numb
       status,
       payLater: !!payLater,
       grandTotal: num(o.grandTotal),
+      discountAmount: num(o.discountAmount),
+      discountReason: typeof o.discountReason === 'string' ? o.discountReason : null,
+      discountByName: typeof o.discountByName === 'string' ? o.discountByName : null,
+      discountApproval: o.discountApproval === 'owner_code' ? 'owner_code' : o.discountApproval === 'self' ? 'self' : null,
       at: at || null,
     }
   })
@@ -534,5 +574,7 @@ async function loadTransactionReport(pool: Pool, tenantId: string, sinceMs: numb
     voidCount: rows.filter((r) => r.status === 'void').length,
     openPayLaterCount: openPayLater.length,
     openPayLaterValue: openPayLater.reduce((s, r) => s + r.grandTotal, 0),
+    discountCount: paid.filter((r) => r.discountAmount > 0).length,
+    discountValue: paid.reduce((s, r) => s + r.discountAmount, 0),
   }
 }

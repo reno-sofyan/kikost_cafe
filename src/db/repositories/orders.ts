@@ -3,6 +3,7 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId, newIdempotencyKey } from '@/lib/id'
 import { computeLineTotal, computeOrderTotals } from '@/lib/orderTotals'
 import { getSettings, nextTransactionNumber, updateSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { markAvailable, occupyTable } from '@/db/repositories/tables'
 import { consumeCancelCodeInTx, isOwnerCancelRequired, OwnerApprovalRequiredError, type OwnerApproval } from '@/db/repositories/cancelCodes'
 import { recordAuditLog } from '@/db/repositories/auditLog'
@@ -693,14 +694,81 @@ export async function voidOrderItem(
   )
 }
 
+export const DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT = 10
+
+export class DiscountReasonRequiredError extends Error {
+  constructor() {
+    super('Alasan diskon wajib diisi.')
+    this.name = 'DiscountReasonRequiredError'
+  }
+}
+
+/** Persen efektif sebuah diskon terhadap subtotal pesanan. */
+export function effectiveDiscountPercent(subtotal: number, type: DiscountType | null, value: number): number {
+  if (!type || value <= 0 || subtotal <= 0) return 0
+  return type === 'percent' ? value : (value / subtotal) * 100
+}
+
+/** Kantin (`cashierControls`): apakah diskon ini butuh alasan / kode Pemilik. */
+export async function discountRequirements(
+  orderId: string,
+  type: DiscountType | null,
+  value: number,
+): Promise<{ controlled: boolean; percent: number; maxPercent: number; needsOwnerCode: boolean }> {
+  const settings = await getSettings()
+  const controlled = featuresForBusinessType(settings.businessType).cashierControls
+  const maxPercent = settings.cashierDiscountMaxPercent ?? DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT
+  const order = await db.orders.get(orderId)
+  const percent = effectiveDiscountPercent(order?.subtotal ?? 0, type, value)
+  return { controlled, percent, maxPercent, needsOwnerCode: controlled && percent > maxPercent + 1e-9 }
+}
+
+/**
+ * Memasang/menghapus diskon pesanan. Kantin: diskon wajib alasan (tercatat siapa,
+ * berapa, alasan), dan di atas batas wajib kode Pemilik yang dihanguskan dalam
+ * transaksi yang sama. Menghapus diskon selalu bebas (harga justru naik).
+ */
 export async function setOrderDiscount(
   orderId: string,
   discountType: DiscountType | null,
   discountValue: number,
+  control?: { reason: string; actor: { userId: string; userName: string }; ownerApproval?: OwnerApproval },
 ): Promise<void> {
-  await db.transaction('rw', db.orders, db.orderItems, db.syncQueue, db.settings, async () => {
-    await db.orders.update(orderId, { discountType, discountValue, updatedAt: getTrustedNow() })
+  const removing = !discountType || discountValue <= 0
+  const req = await discountRequirements(orderId, discountType, discountValue)
+  const reason = control?.reason.trim() ?? ''
+  if (!removing && req.controlled) {
+    if (!reason) throw new DiscountReasonRequiredError()
+    if (req.needsOwnerCode && !control?.ownerApproval) throw new OwnerApprovalRequiredError(
+      `Diskon ${req.percent.toFixed(1)}% melebihi batas ${req.maxPercent}% — butuh kode Pemilik.`,
+    )
+  }
+  await db.transaction('rw', [db.orders, db.orderItems, db.cancelCodes, db.syncQueue, db.settings, db.auditLogs], async () => {
+    const before = await db.orders.get(orderId)
+    if (!removing && control?.ownerApproval && req.needsOwnerCode) await consumeCancelCodeInTx(control.ownerApproval)
+    await db.orders.update(orderId, {
+      discountType: removing ? null : discountType,
+      discountValue: removing ? 0 : discountValue,
+      discountReason: removing ? null : reason || null,
+      discountByName: removing ? null : control?.actor.userName ?? null,
+      discountApproval: removing ? null : control ? (control.ownerApproval && req.needsOwnerCode ? 'owner_code' : 'self') : null,
+      updatedAt: getTrustedNow(),
+    })
     await recalcOrderTotals(orderId)
+    const after = await db.orders.get(orderId)
+    if (control && after && (!removing || (before?.discountAmount ?? 0) > 0)) {
+      await recordAuditLog({
+        userId: control.actor.userId,
+        userName: control.actor.userName,
+        action: removing ? 'order.discount_remove' : 'order.discount',
+        entityType: 'order',
+        entityId: orderId,
+        details: removing
+          ? `Diskon ${after.orderNumber} dihapus.`
+          : `Diskon ${after.orderNumber}: Rp${Math.round(after.discountAmount)} (${req.percent.toFixed(1)}%). Alasan: ${reason}` +
+            (control.ownerApproval && req.needsOwnerCode ? ` • Disetujui Pemilik: ${control.ownerApproval.approverName} (kode sekali pakai)` : ''),
+      })
+    }
   })
 }
 

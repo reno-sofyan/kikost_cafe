@@ -39,8 +39,9 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
 
   const [showPrint, setShowPrint] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
-  const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'void-owner' | 'return-select' | 'return-reason' | 'return-pin'>(null)
+  const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'void-owner' | 'return-select' | 'return-reason' | 'return-pin' | 'return-owner'>(null)
   const ownerPinCancel = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).ownerPinCancel, []) ?? false
+  const cashierControls = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).cashierControls, []) ?? false
   const [reason, setReason] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [restock, setRestock] = useState(false)
@@ -108,7 +109,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
     }
   }
 
-  async function handleReturnApproved(approver: User) {
+  async function handleReturnApproved(approver: { id: string; name: string }, ownerApproval?: OwnerApproval) {
     try {
       await returnOrderItems({
         orderId: order.id,
@@ -117,6 +118,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
         restock,
         approverUserId: approver.id,
         approverName: approver.name,
+        ownerApproval,
       })
       setFlow(null)
       setSelectedItemIds([])
@@ -348,12 +350,23 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
       {flow === 'return-reason' && (
         <ReasonPromptModal
           title="Alasan Retur"
-          confirmLabel={canReturn ? 'Proses Retur' : 'Lanjut ke PIN'}
+          description={cashierControls ? 'Retur mengembalikan uang pembeli — butuh kode sekali pakai dari Pemilik.' : undefined}
+          confirmLabel={cashierControls ? 'Lanjut ke Kode Pemilik' : canReturn ? 'Proses Retur' : 'Lanjut ke PIN'}
           onCancel={() => setFlow('return-select')}
           onConfirm={(r) => {
             setReason(r)
-            setFlow('return-pin')
+            setFlow(cashierControls ? 'return-owner' : 'return-pin')
           }}
+        />
+      )}
+      {flow === 'return-owner' && (
+        <OwnerCancelCodeModal
+          title="Setujui Retur"
+          description={`Alasan: ${reason}`}
+          onCancel={() => setFlow('return-select')}
+          onApproved={(approval) =>
+            void handleReturnApproved({ id: approval.approverUserId, name: approval.approverName }, approval)
+          }
         />
       )}
       {flow === 'return-pin' && (

@@ -33,10 +33,11 @@ describe('PDF ops', () => {
     const rows = Array.from({ length: 120 }, (_, i) => ({
       orderNumber: `TRX-${i}`, queueNumber: i, buyer: 'Pembeli dengan nama yang cukup panjang sekali', cashierName: 'Rina',
       methods: ['cash'], status: 'paid' as const, payLater: false, grandTotal: 10000, at: meta.generatedAt,
+      discountAmount: i % 10 === 0 ? 1000 : 0, discountReason: i % 10 === 0 ? 'Karyawan' : null, discountByName: 'Rina', discountApproval: (i % 10 === 0 ? 'self' : null) as 'self' | null,
     }))
     const pdf = buildTransactionsPdf(meta, {
       rows, byMethod: [{ method: 'cash', amount: 1_200_000, count: 120 }], paidCount: 120, paidValue: 1_200_000,
-      voidCount: 0, openPayLaterCount: 0, openPayLaterValue: 0,
+      voidCount: 0, openPayLaterCount: 0, openPayLaterValue: 0, discountCount: 12, discountValue: 12000,
     })
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
     expect(pdf.length).toBeGreaterThan(3000)

@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   qrisImageDataUrl: null,
   qrisMerchantName: null,
   qrisProvider: 'static',
+  cashierDiscountMaxPercent: 10,
   qrOrderBaseUrl: '',
   receiptPaperSize: '58mm',
   receiptFooterNote: 'Terima kasih atas kunjungan Anda',

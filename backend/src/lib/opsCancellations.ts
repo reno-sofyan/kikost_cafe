@@ -50,6 +50,21 @@ export interface CancellationRow {
   payLater: boolean
 }
 
+/** Retur = pengembalian uang sebagian atas transaksi lunas (entitas `refunds`, reason 'return'). */
+export interface ReturnRow {
+  refundId: string
+  orderId: string
+  orderNumber: string | null
+  buyer: string | null
+  amount: number
+  method: string | null
+  reason: string | null
+  approvedBy: string | null
+  ownerApproved: boolean
+  items: string[]
+  at: number | null
+}
+
 export interface CancellationGroup {
   name: string
   count: number
@@ -72,6 +87,8 @@ export interface CancellationReport {
   byApprover: CancellationGroup[]
   byReason: CancellationGroup[]
   rows: CancellationRow[]
+  returns: ReturnRow[]
+  returnTotals: { count: number; value: number }
 }
 
 type Payload = Record<string, unknown>
@@ -177,7 +194,40 @@ function groupBy(rows: CancellationRow[], key: (r: CancellationRow) => string | 
  * Semua pesanan batal ikut dihitung — termasuk yang dikosongkan dulu lalu dibatalkan
  * sebagai pesanan Rp0 (celah yang sengaja disorot), dengan item yang dihapusnya.
  */
-export function buildCancellationReport(days: number, orders: Payload[], audits: Payload[], items: Payload[] = []): CancellationReport {
+export function buildReturnRows(refunds: Payload[], orders: Payload[], items: Payload[], audits: Payload[]): ReturnRow[] {
+  const orderById = new Map(orders.map((o) => [String(o.id ?? ''), o]))
+  const itemName = new Map(items.map((i) => [String(i.id ?? ''), `${str(i.productName) ?? 'Item'} x${num(i.qty)}`]))
+  return refunds
+    .filter((r) => r.reason === 'return')
+    .map((r) => {
+      const orderId = String(r.orderId ?? '')
+      const order = orderById.get(orderId)
+      const at = numOrNull(r.createdAt)
+      const log = audits.find((a) => a.action === 'order.return' && String(a.entityId ?? '') === orderId)
+      return {
+        refundId: String(r.id ?? ''),
+        orderId,
+        orderNumber: str(order?.orderNumber),
+        buyer: str(order?.notes),
+        amount: num(r.amount),
+        method: str(r.method),
+        reason: str(r.note),
+        approvedBy: str(r.approvedByName),
+        ownerApproved: String(log?.details ?? '').includes('Disetujui Pemilik'),
+        items: (Array.isArray(r.orderItemIds) ? r.orderItemIds : []).map((id) => itemName.get(String(id)) ?? 'Item'),
+        at,
+      }
+    })
+    .sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
+}
+
+export function buildCancellationReport(
+  days: number,
+  orders: Payload[],
+  audits: Payload[],
+  items: Payload[] = [],
+  returns: ReturnRow[] = [],
+): CancellationReport {
   const byOrder = <T extends Payload>(list: T[], key: string) => {
     const map = new Map<string, T[]>()
     for (const x of list) {
@@ -215,5 +265,7 @@ export function buildCancellationReport(days: number, orders: Payload[], audits:
     byApprover: groupBy(rows, (r) => r.approvedBy),
     byReason: groupBy(rows, (r) => r.reason),
     rows,
+    returns,
+    returnTotals: { count: returns.length, value: returns.reduce((s, r) => s + r.amount, 0) },
   }
 }

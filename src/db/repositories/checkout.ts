@@ -319,13 +319,20 @@ export async function returnOrderItems(params: {
   restock: boolean
   approverUserId: string
   approverName: string
+  /** Kantin (`cashierControls`): retur = uang keluar → wajib kode sekali pakai Pemilik. */
+  ownerApproval?: OwnerApproval
 }): Promise<ReturnRecord> {
+  if (!params.reason.trim()) throw new Error('Alasan retur wajib diisi')
+  if (!params.ownerApproval && featuresForBusinessType((await getSettings()).businessType).cashierControls) {
+    throw new OwnerApprovalRequiredError('Retur (pengembalian uang) butuh kode pembatalan dari Pemilik.')
+  }
   return db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.returns, db.payments, db.refunds, db.shifts, db.cashMovements, db.syncQueue, db.auditLogs],
+    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.returns, db.payments, db.refunds, db.shifts, db.cashMovements, db.cancelCodes, db.syncQueue, db.auditLogs],
     async () => {
       const order = await db.orders.get(params.orderId)
       if (!order) throw new Error('Pesanan tidak ditemukan')
+      if (params.ownerApproval) await consumeCancelCodeInTx(params.ownerApproval)
       if (order.status !== 'paid' && order.status !== 'completed') {
         throw new Error('Hanya transaksi yang sudah dibayar yang dapat diretur')
       }
@@ -409,7 +416,9 @@ export async function returnOrderItems(params: {
         action: 'order.return',
         entityType: 'order',
         entityId: order.id,
-        details: `Retur Rp${refundAmount} pada ${order.orderNumber}${params.restock ? ' (stok dikembalikan)' : ''}. Alasan: ${params.reason}`,
+        details:
+          `Retur Rp${refundAmount} pada ${order.orderNumber}${params.restock ? ' (stok dikembalikan)' : ''}. Alasan: ${params.reason}` +
+          (params.ownerApproval ? ' • Disetujui Pemilik (kode sekali pakai)' : ''),
       })
 
       return record

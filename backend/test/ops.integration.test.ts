@@ -219,6 +219,8 @@ suite('konsol operator /ops (integrasi)', () => {
       ['payments', 'pay1', { id: 'pay1', orderId: 'p1', method: 'qris', amount: 25000, createdAt: now }],
       ['orders', 'v1', { id: 'v1', orderNumber: 'TRX-2', status: 'void', grandTotal: 12000, createdAt: now, voidedAt: now, voidReason: 'Salah input' }],
       ['orders', 'g1', { id: 'g1', orderNumber: 'TRX-3', status: 'open', grandTotal: 9000, createdAt: now, payLater: { name: 'Pak Budi', markedAt: now } }],
+      ['orders', 'd1', { id: 'd1', orderNumber: 'TRX-4', status: 'paid', grandTotal: 18000, discountAmount: 2000, discountReason: 'Karyawan', discountByName: 'Rina', discountApproval: 'self', createdAt: now, paidAt: now }],
+      ['refunds', 'rf1', { id: 'rf1', orderId: 'p1', reason: 'return', amount: 5000, method: 'qris', note: 'Salah menu', approvedByName: 'Bu Sari', orderItemIds: [], createdAt: now }],
     ] as [string, string, Record<string, unknown>][]) {
       await pool.query(
         `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at) VALUES ('kantin',$1,$2,$3,$4)`,
@@ -233,6 +235,9 @@ suite('konsol operator /ops (integrasi)', () => {
       expect(String(r.headers['content-disposition'])).toContain(`-kantin-${today}.pdf`)
       expect(r.rawPayload.subarray(0, 5).toString()).toBe('%PDF-')
     }
+    const c = await app.inject({ method: 'GET', url: '/ops/api/tenant/kantin/cancellations?days=7', headers: opsAuth })
+    expect(c.json().returnTotals).toEqual({ count: 1, value: 5000 })
+    expect(c.json().returns[0]).toMatchObject({ orderNumber: 'TRX-1', reason: 'Salah menu', approvedBy: 'Bu Sari' })
     const noAuth = await app.inject({ method: 'GET', url: '/ops/api/tenant/kantin/export/transactions.pdf' })
     expect(noAuth.statusCode).toBe(401)
     const bad = await app.inject({ method: 'GET', url: '/ops/api/tenant/kantin/export/transactions.pdf?from=2026-13-40', headers: opsAuth })

@@ -75,3 +75,12 @@ Tab **Transaksi** dan **Pembatalan** punya bar *Export PDF* (Hari ini, Kemarin, 
 Bulan lalu, atau rentang tanggal). PDF dibuat di server (`backend/src/lib/opsPdf.ts`, jsPDF font standar)
 dan diunduh lewat `fetch` ber-Bearer token → blob, jadi tak ada skrip pihak ketiga di halaman dan bisa
 dipakai dari HP. Tanggal kosong = hari ini (WIB).
+
+### Diskon & retur (kantin, sejak app v1.0.18)
+
+- **Diskon**: tiap diskon kasir wajib alasan; di atas batas (`cashierDiscountMaxPercent`, default 10%, diatur
+  Pemilik di Pengaturan → Kode Pembatalan) wajib kode Pemilik. Order menyimpan `discountReason`,
+  `discountByName`, `discountApproval` (`self` | `owner_code`). Tab Transaksi menandai "diskon Rp …";
+  PDF Transaksi punya ringkasan & tabel *Diskon diberikan*.
+- **Retur** (pengembalian uang sebagian): wajib kode Pemilik. Dibaca dari entitas `refunds` (reason `return`)
+  → KPI & daftar *Retur* di tab Pembatalan dan PDF Pembatalan.

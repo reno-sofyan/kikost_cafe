@@ -202,6 +202,10 @@ export interface TransactionRow {
   status: 'paid' | 'void' | 'open'
   payLater: boolean
   grandTotal: number
+  discountAmount: number
+  discountReason: string | null
+  discountByName: string | null
+  discountApproval: 'self' | 'owner_code' | null
   at: number | null
 }
 
@@ -213,6 +217,8 @@ export interface TransactionReport {
   voidCount: number
   openPayLaterCount: number
   openPayLaterValue: number
+  discountCount: number
+  discountValue: number
 }
 
 const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu' }
@@ -225,6 +231,7 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
     ['Omzet', rupiah(r.paidValue)],
     ['Dibatalkan', String(r.voidCount)],
     ['Tagihan tertunda belum lunas', `${r.openPayLaterCount} - ${rupiah(r.openPayLaterValue)}`],
+    ['Diskon diberikan', `${r.discountCount} - ${rupiah(r.discountValue)}`],
   ])
   if (r.byMethod.length) {
     doc.heading('Per metode pembayaran')
@@ -235,6 +242,28 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
         { title: 'Nilai', width: 50, align: 'right' },
       ],
       r.byMethod.map((m) => [METHOD_LABEL[m.method] ?? m.method, String(m.count), rupiah(m.amount)]),
+    )
+  }
+  const discounted = r.rows.filter((t) => t.status === 'paid' && t.discountAmount > 0)
+  if (discounted.length) {
+    doc.heading(`Diskon diberikan (${discounted.length})`)
+    doc.table(
+      [
+        { title: 'Waktu', width: 27 },
+        { title: 'No.', width: 25 },
+        { title: 'Diberikan oleh', width: 28 },
+        { title: 'Alasan', width: 50 },
+        { title: 'Persetujuan', width: 30 },
+        { title: 'Diskon', width: 26, align: 'right' },
+      ],
+      discounted.map((t) => [
+        fmtWib(t.at),
+        t.orderNumber ?? '-',
+        t.discountByName ?? t.cashierName ?? '-',
+        t.discountReason ?? '(tanpa alasan - versi lama)',
+        t.discountApproval === 'owner_code' ? 'Kode Pemilik' : t.discountApproval === 'self' ? 'Dalam batas' : '-',
+        rupiah(t.discountAmount),
+      ]),
     )
   }
   doc.heading(`Daftar transaksi (${r.rows.length})`)
@@ -291,6 +320,7 @@ export function buildCancellationsPdf(meta: ReportMeta, r: CancellationReport): 
     ['Setelah lunas', `${t.paidCount} - ${rupiah(t.paidValue)}`],
     ['Dikosongkan dulu', `${t.emptiedFirstCount} - ${rupiah(t.emptiedFirstValue)}`],
     ['Pakai kode Pemilik', String(t.ownerCodeCount)],
+    ['Retur (uang kembali)', `${r.returnTotals.count} - ${rupiah(r.returnTotals.value)}`],
   ])
   const groupTable = (title: string, groups: CancellationReport['byRequester']) => {
     doc.heading(title)
@@ -329,6 +359,27 @@ export function buildCancellationsPdf(meta: ReportMeta, r: CancellationReport): 
     ]),
     { rowNotes: r.rows.map(correctionNote) },
   )
+  if (r.returns.length) {
+    doc.heading(`Retur - pengembalian uang (${r.returns.length})`)
+    doc.table(
+      [
+        { title: 'Waktu', width: 25 },
+        { title: 'No. / Pembeli', width: 33 },
+        { title: 'Item', width: 40 },
+        { title: 'Alasan', width: 35 },
+        { title: 'Disetujui', width: 28 },
+        { title: 'Nilai', width: 25, align: 'right' },
+      ],
+      r.returns.map((x) => [
+        fmtWib(x.at),
+        [x.orderNumber ?? '-', x.buyer ?? ''].filter(Boolean).join(' '),
+        x.items.join(', ') || '-',
+        x.reason ?? '-',
+        (x.approvedBy ?? '-') + (x.ownerApproved ? ' (Kode Pemilik)' : ''),
+        rupiah(x.amount),
+      ]),
+    )
+  }
   doc.note(
     'Nilai = total pesanan saat dibatalkan; untuk pesanan yang dikosongkan dulu, nilai = total item yang dihapus. ' +
       'Data sebelum app v1.0.13/v1.0.14 tidak menyimpan peminta (untuk persetujuan supervisor) dan alasan per item.',

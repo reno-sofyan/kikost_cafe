@@ -548,9 +548,21 @@
       kpi('Setelah lunas · ' + compact(t.paidValue), t.paidCount, t.paidCount ? 'var(--bad)' : null),
       kpi('Dikosongkan dulu · ' + compact(t.emptiedFirstValue), t.emptiedFirstCount, t.emptiedFirstCount ? 'var(--bad)' : null),
       kpi('Pakai kode Pemilik', t.ownerCodeCount),
+      kpi('Retur · ' + compact(d.returnTotals.value), d.returnTotals.count, d.returnTotals.count ? 'var(--bad)' : null),
     ].join('') + '</div>';
+    const returnsHtml = (d.returns || []).length
+      ? '<h4 class="muted" style="margin:18px 0 8px;text-transform:uppercase;letter-spacing:.4px;font-size:.72rem">Retur — pengembalian uang (' + d.returns.length + ')</h4>' +
+        d.returns.map((x) =>
+          '<div class="crow"><div class="top"><span class="no">' + esc((x.orderNumber || '—') + (x.buyer ? ' · ' + x.buyer : '')) + '</span>' +
+          '<span class="amt">−' + rupiah(x.amount) + '</span></div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="tag stage-paid">Retur</span>' +
+          (x.ownerApproved ? '<span class="tag appr-owner">Kode Pemilik</span>' : '') + '</div>' +
+          '<div class="reason">' + esc(x.reason || '(tanpa alasan)') + '</div>' +
+          '<div class="who"><span>Item <b>' + esc(x.items.join(', ') || '—') + '</b></span>' +
+          '<span>Waktu <b>' + esc(fmtTime(x.at)) + '</b></span><span>Disetujui <b>' + esc(x.approvedBy || '—') + '</b></span></div></div>').join('')
+      : '';
     if (!d.rows.length) {
-      document.getElementById('paneCancels').innerHTML = head + kpis + '<div class="empty">Tidak ada pembatalan pada periode ini.</div>';
+      document.getElementById('paneCancels').innerHTML = head + kpis + '<div class="empty">Tidak ada pembatalan pada periode ini.</div>' + returnsHtml;
       return;
     }
     const groups = '<div class="groups">' +
@@ -580,7 +592,7 @@
           '<span>Dibuat ' + esc(fmtTime(r.createdAt)) + '</span>' +
         '</div></div>';
     }).join('');
-    document.getElementById('paneCancels').innerHTML = head + kpis + groups + list;
+    document.getElementById('paneCancels').innerHTML = head + kpis + groups + list + returnsHtml;
   }
 
   function renderActivity(logs) {
@@ -605,7 +617,8 @@
           '<td>' + esc(o.orderNumber || '—') + '</td>' +
           '<td><span class="tag ' + cls + '">' + esc(st || '—') + '</span></td>' +
           '<td>' + esc(o.cashierName || (o.source === 'qr_table' ? 'QR' : '—')) + '</td>' +
-          '<td class="num" style="white-space:nowrap">' + rupiah(o.grandTotal) + '</td></tr>';
+          '<td class="num" style="white-space:nowrap">' + rupiah(o.grandTotal) +
+          (o.discountAmount > 0 ? '<div class="warnflag" style="font-weight:400">diskon ' + rupiah(o.discountAmount) + '</div>' : '') + '</td></tr>';
       }).join('') +
       '</tbody></table>';
   }

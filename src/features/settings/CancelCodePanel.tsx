@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { generateCancelCode, getActiveCancelCode, revokeCancelCode } from '@/db/repositories/cancelCodes'
+import { getSettings, updateSettings } from '@/db/repositories/settings'
+import { DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT } from '@/db/repositories/orders'
+import { recordAuditLog } from '@/db/repositories/auditLog'
 import { useSessionStore } from '@/state/sessionStore'
 import { verifyPin } from '@/lib/pinHash'
 import { formatDateTime } from '@/lib/datetime'
@@ -23,6 +26,24 @@ export function CancelCodePanel() {
   const [pinError, setPinError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [shownCode, setShownCode] = useState<string | null>(null)
+  const savedMax = useLiveQuery(async () => (await getSettings()).cashierDiscountMaxPercent ?? DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT, [])
+  const [maxDraft, setMaxDraft] = useState<string | null>(null)
+
+  async function saveDiscountMax() {
+    const v = Number(maxDraft)
+    if (!Number.isFinite(v) || v < 0 || v > 100) return toast.error('Batas diskon harus 0–100%')
+    await updateSettings({ cashierDiscountMaxPercent: v })
+    await recordAuditLog({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      action: 'settings.discount_limit',
+      entityType: 'settings',
+      entityId: 'singleton',
+      details: `Batas diskon kasir tanpa kode Pemilik diubah menjadi ${v}%.`,
+    })
+    setMaxDraft(null)
+    toast.success('Batas diskon disimpan.')
+  }
 
   async function handlePinSubmit() {
     setBusy(true)
@@ -83,6 +104,29 @@ export function CancelCodePanel() {
               Hapus Kode Aktif
             </button>
           )}
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="mb-1 text-lg font-bold text-ink-50">Batas Diskon Kasir</h2>
+        <p className="mb-3 text-sm text-ink-400">
+          Setiap diskon wajib alasan dan tercatat. Diskon di atas batas ini (persen dari subtotal) butuh kode pembatalan Pemilik.
+          Isi 0 bila setiap diskon harus disetujui Pemilik.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            className="input-field !w-28"
+            value={maxDraft ?? String(savedMax ?? DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT)}
+            onChange={(e) => setMaxDraft(e.target.value)}
+            aria-label="Batas diskon kasir (persen)"
+          />
+          <span className="text-ink-300">%</span>
+          <button className="btn-primary" disabled={maxDraft === null} onClick={() => void saveDiscountMax()}>
+            Simpan
+          </button>
         </div>
       </div>
 

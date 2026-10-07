@@ -118,6 +118,8 @@ export interface AppSettings {
    * lunas otomatis saat Midtrans mengonfirmasi. Kosong = data lama → static.
    */
   qrisProvider?: 'static' | 'midtrans'
+  /** Kantin: diskon kasir di atas persen ini (dari subtotal) wajib kode Pemilik. Default 10. */
+  cashierDiscountMaxPercent?: number
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
   qrOrderBaseUrl: string
   /** Outlet aktif di perangkat ini (Fase 3). */
@@ -682,6 +684,10 @@ export interface Order {
   voidRequestedByName?: string | null
   /** Cara pembatalan disetujui. Kosong = data lama (sebelum v1.0.13). */
   voidApproval?: VoidApproval | null
+  /** Alasan, pemberi, & persetujuan diskon (kantin, sejak v1.0.18). */
+  discountReason?: string | null
+  discountByName?: string | null
+  discountApproval?: 'self' | 'owner_code' | null
   /** "Tagihan Tertunda" (kantin): pesanan internal yang dicatat sekarang, dibayar nanti.
    *  Tetap terisi setelah lunas sebagai jejak. Kosong/undefined = pesanan biasa. */
   payLater?: PayLaterInfo | null

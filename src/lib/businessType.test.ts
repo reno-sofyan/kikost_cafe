@@ -21,6 +21,7 @@ describe('featuresForBusinessType', () => {
       paymentProofMethods: [],
       ownerPinCancel: false,
       payLater: false,
+      cashierControls: false,
       shiftReminder: false,
     })
   })
@@ -63,6 +64,7 @@ describe('featuresForBusinessType', () => {
       paymentProofMethods: [],
       ownerPinCancel: false,
       payLater: false,
+      cashierControls: false,
       shiftReminder: false,
     })
   })
@@ -86,6 +88,7 @@ describe('featuresForBusinessType', () => {
       paymentProofMethods: [],
       ownerPinCancel: false,
       payLater: false,
+      cashierControls: false,
       shiftReminder: false,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
@@ -106,6 +109,7 @@ describe('featuresForBusinessType', () => {
       paymentProofMethods: [],
       ownerPinCancel: false,
       payLater: false,
+      cashierControls: false,
       shiftReminder: false,
     })
   })
