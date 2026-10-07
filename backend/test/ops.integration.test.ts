@@ -146,6 +146,25 @@ suite('konsol operator /ops (integrasi)', () => {
     expect(noAuth.statusCode).toBe(401)
   })
 
+  it('summary: omzet di beberapa hari (sparkline 7 hari) tidak 500 & tanggal berupa YYYY-MM-DD', async () => {
+    const now = Date.now()
+    const pool = getPool()
+    for (const [i, ago] of [0, 1, 2].entries()) {
+      const at = now - ago * 86_400_000
+      await pool.query(
+        `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at) VALUES ('kantin','orders',$1,$2,$3)`,
+        [`d${i}`, JSON.stringify({ id: `d${i}`, status: 'paid', grandTotal: 1000 * (i + 1), createdAt: at, paidAt: at }), now],
+      )
+    }
+    const r = await app.inject({ method: 'GET', url: '/ops/api/summary', headers: opsAuth })
+    expect(r.statusCode).toBe(200)
+    const kantin = r.json().tenants.find((t: { tenantId: string }) => t.tenantId === 'kantin')
+    expect(kantin.last7Days).toHaveLength(3)
+    for (const d of kantin.last7Days) expect(d.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const dates = kantin.last7Days.map((d: { date: string }) => d.date)
+    expect([...dates].sort()).toEqual(dates)
+  })
+
   it('data payload rusak tidak membuat dashboard 500 (baris rusak dilewati)', async () => {
     const now = Date.now()
     const pool = getPool()

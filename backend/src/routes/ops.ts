@@ -119,7 +119,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       pool.query<{ tenant_id: string; d: string; revenue: string }>(
         `SELECT tenant_id,
                 (${tsOf(PAID_OR_CREATED_MS)}
-                   AT TIME ZONE 'Asia/Jakarta')::date AS d,
+                   AT TIME ZONE 'Asia/Jakarta')::date::text AS d,
                 sum(${GRAND_TOTAL}) AS revenue
            FROM sync_entity_state
           WHERE entity = 'orders' AND deleted = FALSE
@@ -204,7 +204,9 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       weekByTenant.set(r.tenant_id, list)
     }
     for (const [id, list] of weekByTenant) {
-      ensure(id).last7Days = list.sort((a, b) => a.date.localeCompare(b.date))
+      // `d` di-cast ke text di SQL: tanpa itu `pg` mengembalikan objek Date dan
+      // localeCompare melempar TypeError (500) begitu ada omzet di ≥2 hari.
+      ensure(id).last7Days = list.sort((a, b) => String(a.date).localeCompare(String(b.date)))
     }
     for (const r of pushHealth.rows) {
       const t = ensure(r.tenant_id)

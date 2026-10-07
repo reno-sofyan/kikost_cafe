@@ -235,7 +235,8 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   }
 
   async function login() {
-    const v = document.getElementById('token').value.trim();
+    // Buang spasi & tanda kutip pembungkus yang sering ikut ter-salin.
+    const v = document.getElementById('token').value.trim().replace(/^(['"])(.*)\\1$/, '$2').trim();
     if (!v) return;
     setToken(v);
     const btn = document.querySelector('#gate button.primary');
