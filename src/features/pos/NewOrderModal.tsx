@@ -10,6 +10,8 @@ interface Props {
   orderTypes: OrderType[]
   /** Tampilkan jumlah tamu & pilihan meja untuk dine-in (hanya usaha dengan meja). */
   showTables: boolean
+  /** Kantin: "Nama Pembeli" wajib diisi & tampil paling atas (dipakai memanggil antrean). */
+  requireBuyerName?: boolean
   onCancel: () => void
   onConfirm: (params: {
     type: OrderType
@@ -26,7 +28,7 @@ const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   delivery: 'Delivery',
 }
 
-export function NewOrderModal({ orderTypes, showTables, onCancel, onConfirm }: Props) {
+export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false, onCancel, onConfirm }: Props) {
   const [type, setType] = useState<OrderType>(orderTypes[0] ?? 'dine_in')
   const [guestCount, setGuestCount] = useState(1)
   const [notes, setNotes] = useState('')
@@ -38,7 +40,10 @@ export function NewOrderModal({ orderTypes, showTables, onCancel, onConfirm }: P
   const tables = useLiveQuery(() => listTables(), []) ?? []
   const selectableTables = tables.filter((t) => t.status === 'available' || t.id === tableId)
 
+  const canConfirm = !requireBuyerName || notes.trim().length > 0
+
   function handleConfirm() {
+    if (!canConfirm) return
     onConfirm({
       type,
       customerId: customer?.id,
@@ -51,6 +56,24 @@ export function NewOrderModal({ orderTypes, showTables, onCancel, onConfirm }: P
   return (
     <Modal onClose={onCancel} className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-ink-900 p-6">
         <h2 className="mb-4 text-lg font-bold text-ink-50">Pesanan Baru</h2>
+
+        {requireBuyerName && (
+          <div className="mb-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">Nama Pembeli</h3>
+            <input
+              className="input-field"
+              placeholder='mis. "Budi"'
+              value={notes}
+              maxLength={60}
+              autoFocus
+              onChange={(e) => setNotes(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirm()
+              }}
+            />
+            <p className="mt-1 text-xs text-ink-500">Tampil di antrean, layar dapur & struk untuk memanggil pembeli.</p>
+          </div>
+        )}
 
         {orderTypes.length > 1 && (
           <div className={`mb-4 grid gap-2 ${orderTypes.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
@@ -112,16 +135,18 @@ export function NewOrderModal({ orderTypes, showTables, onCancel, onConfirm }: P
           </>
         )}
 
-        <div className="mb-4">
-          <h3 className="mb-2 text-sm font-semibold text-ink-300">Catatan / Nama Pelanggan (opsional)</h3>
-          <input
-            className="input-field"
-            placeholder='mis. "Budi" atau "cewe jaket merah"'
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          <p className="mt-1 text-xs text-ink-500">Muncul di layar dapur & struk untuk memudahkan panggil pesanan.</p>
-        </div>
+        {!requireBuyerName && (
+          <div className="mb-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">Catatan / Nama Pelanggan (opsional)</h3>
+            <input
+              className="input-field"
+              placeholder='mis. "Budi" atau "cewe jaket merah"'
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-ink-500">Muncul di layar dapur & struk untuk memudahkan panggil pesanan.</p>
+          </div>
+        )}
 
         <div className="mb-4">
           <h3 className="mb-2 text-sm font-semibold text-ink-300">Pelanggan Terdaftar (opsional)</h3>
@@ -156,7 +181,7 @@ export function NewOrderModal({ orderTypes, showTables, onCancel, onConfirm }: P
           <button className="btn-ghost flex-1" onClick={onCancel}>
             Batal
           </button>
-          <button className="btn-primary flex-[2]" onClick={handleConfirm}>
+          <button className="btn-primary flex-[2]" onClick={handleConfirm} disabled={!canConfirm}>
             Mulai Pesanan
           </button>
         </div>

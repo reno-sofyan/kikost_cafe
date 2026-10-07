@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { completeOnboarding, idbAll, openShift } from './helpers'
 
 interface OrderItemRow { id: string; voided: boolean }
@@ -7,11 +7,6 @@ interface ReturnRow { orderId: string; refundAmount: number; restocked: boolean 
 interface AuditRow { action: string }
 
 const PIN = '246810'
-
-async function typePin(page: Page, dialog: ReturnType<Page['locator']>, pin: string) {
-  for (const d of pin.split('')) await dialog.getByRole('button', { name: d, exact: true }).click()
-  await dialog.getByRole('button', { name: 'Masuk' }).click()
-}
 
 test('retur sebagian: stok kembali, item ditandai voided, ada audit log', async ({ page }) => {
   test.slow()
@@ -54,12 +49,10 @@ test('retur sebagian: stok kembali, item ditandai voided, ada audit log', async 
   // Alasan retur.
   const reason = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Alasan Retur' }) })
   await reason.getByPlaceholder('Tulis alasan...').fill('barang salah')
-  await reason.getByRole('button', { name: 'Lanjut' }).click()
-
-  // PIN supervisor (admin).
-  const pinModal = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Konfirmasi Retur' }) })
-  await typePin(page, pinModal, PIN)
-  await expect(pinModal).toBeHidden()
+  // Admin punya izin `order.return` → disetujui atas namanya sendiri, tanpa PIN ulang.
+  await reason.getByRole('button', { name: 'Proses Retur', exact: true }).click()
+  await expect(reason).toBeHidden()
+  await expect.poll(async () => (await idbAll<ReturnRow>(page, 'returns')).length).toBe(1)
 
   // Verifikasi.
   const returns = await idbAll<ReturnRow>(page, 'returns')

@@ -5,6 +5,7 @@ import { getSettings, updateSettings } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
 import { UserManager } from '@/features/settings/UserManager'
+import { CancelCodePanel } from '@/features/settings/CancelCodePanel'
 import { BackupManager } from '@/features/settings/BackupManager'
 import { PrinterSettings } from '@/features/settings/PrinterSettings'
 import { QueueSettings } from '@/features/settings/QueueSettings'
@@ -28,6 +29,7 @@ type Tab =
   | 'pager'
   | 'meja-qr'
   | 'pengguna'
+  | 'kode-batal'
   | 'sinkronisasi'
   | 'backup'
   | 'audit'
@@ -43,6 +45,7 @@ const TAB_KEYS: Tab[] = [
   'pager',
   'meja-qr',
   'pengguna',
+  'kode-batal',
   'sinkronisasi',
   'backup',
   'audit',
@@ -70,6 +73,7 @@ export function SettingsScreen() {
     { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'meja-qr', label: 'Meja & QR', visible: features.qrOrdering && roleHasPermission(currentUser.role, 'qr.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
+    { key: 'kode-batal', label: 'Kode Pembatalan', visible: features.ownerPinCancel && currentUser.role === 'pemilik' },
     { key: 'sinkronisasi', label: 'Sinkronisasi', visible: true },
     { key: 'backup', label: 'Backup', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'audit', label: 'Log Aktivitas', visible: roleHasPermission(currentUser.role, 'users.manage') },
@@ -101,6 +105,7 @@ export function SettingsScreen() {
         {tab === 'pager' && <PagerSettings />}
         {tab === 'meja-qr' && <TableQrSettings />}
         {tab === 'pengguna' && <UserManager />}
+        {tab === 'kode-batal' && <CancelCodePanel />}
         {tab === 'sinkronisasi' && <SyncPanel />}
         {tab === 'backup' && <BackupManager />}
         {tab === 'audit' && <AuditLogPanel />}

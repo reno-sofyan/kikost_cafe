@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
-import { listOrderItems } from '@/db/repositories/orders'
+import { cancelUnsentOrder, isItemSentToKitchen, listOrderItems } from '@/db/repositories/orders'
 import { voidOrder, returnOrderItems } from '@/db/repositories/checkout'
 import { roleHasPermission } from '@/lib/permissions'
+import { ORDER_CANCEL_REASONS } from '@/lib/orderState'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah } from '@/lib/currency'
@@ -11,6 +12,10 @@ import { prepareReceiptData } from '@/features/printing/printReceipt'
 import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
+import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
+import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import type { Order, User } from '@/types/domain'
@@ -34,7 +39,8 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
 
   const [showPrint, setShowPrint] = useState(false)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
-  const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'return-select' | 'return-reason' | 'return-pin'>(null)
+  const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'void-owner' | 'return-select' | 'return-reason' | 'return-pin'>(null)
+  const ownerPinCancel = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).ownerPinCancel, []) ?? false
   const [reason, setReason] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [restock, setRestock] = useState(false)
@@ -44,6 +50,10 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const canReturn = roleHasPermission(currentUser.role, 'order.return')
   const canRestock = roleHasPermission(currentUser.role, 'refund.restock')
   const activeItems = items.filter((i) => !i.voided && !i.removed)
+  // Belum dibayar & belum ada yang dimasak → kasir boleh batalkan tanpa atasan.
+  const sentToKitchen = activeItems.some(isItemSentToKitchen)
+  // Kantin: tak ada pembatalan bebas — pesanan berisi item selalu butuh kode Pemilik.
+  const freeCancel = order.status === 'open' && !sentToKitchen && !(ownerPinCancel && activeItems.length > 0)
 
   async function openPrintPreview() {
     const data = await prepareReceiptData(order, { isReprint: true })
@@ -51,12 +61,49 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
     setShowPrint(true)
   }
 
+  async function handleFreeCancel(r: string) {
+    try {
+      await cancelUnsentOrder(order.id, r, { userId: currentUser.id, userName: currentUser.name })
+      setFlow(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+      setFlow(null)
+    }
+  }
+
   async function handleVoidApproved(approver: User) {
     try {
-      await voidOrder({ orderId: order.id, reason, approverUserId: approver.id, approverName: approver.name })
+      await voidOrder({
+        orderId: order.id,
+        reason,
+        approverUserId: approver.id,
+        approverName: approver.name,
+        requestedBy: { userId: currentUser.id, userName: currentUser.name },
+      })
       setFlow(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal membatalkan transaksi')
+      setFlow(null)
+    }
+  }
+
+  async function handleOwnerApproved(approval: OwnerApproval) {
+    try {
+      if (order.status === 'open' && !sentToKitchen) {
+        await cancelUnsentOrder(order.id, reason, { userId: currentUser.id, userName: currentUser.name }, approval)
+      } else {
+        await voidOrder({
+          orderId: order.id,
+          reason,
+          approverUserId: approval.approverUserId,
+          approverName: approval.approverName,
+          ownerApproval: approval,
+          requestedBy: { userId: currentUser.id, userName: currentUser.name },
+        })
+      }
+      setFlow(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
       setFlow(null)
     }
   }
@@ -88,6 +135,12 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             <p className="text-sm text-ink-400">
               {STATUS_LABELS[order.status]} • {formatDateTime(order.createdAt)}
             </p>
+            {order.payLater && (
+              <p className="text-sm font-semibold text-accent-500">
+                {order.status === 'open' ? 'Bill Gantung' : 'Dari Bill Gantung'} • {order.payLater.name}
+                {order.payLater.note ? ` — ${order.payLater.note}` : ''}
+              </p>
+            )}
           </div>
           <button className="btn-ghost !min-h-[2.75rem] !px-3 !py-2" aria-label="Tutup" onClick={onClose}>
             <Icon name="close" size={18} />
@@ -234,14 +287,14 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
           <button className="btn-primary" onClick={() => void openPrintPreview()}>
             Reprint Struk
           </button>
-          {canReturn && order.status === 'paid' && activeItems.length > 0 && (
+          {order.status === 'paid' && activeItems.length > 0 && (
             <button className="btn-secondary" onClick={() => setFlow('return-select')}>
               Retur
             </button>
           )}
-          {canVoid && order.status !== 'void' && (
+          {order.status !== 'void' && (
             <button className="btn-danger" onClick={() => setFlow('void-reason')}>
-              Batalkan Transaksi
+              {order.status === 'open' ? 'Batalkan Pesanan' : 'Batalkan Transaksi'}
             </button>
           )}
         </div>
@@ -259,23 +312,43 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
 
       {flow === 'void-reason' && (
         <ReasonPromptModal
-          title="Batalkan Transaksi"
-          description="Pembatalan transaksi memerlukan persetujuan supervisor/administrator."
-          confirmLabel="Lanjut"
+          title={order.status === 'open' ? 'Batalkan Pesanan' : 'Batalkan Transaksi'}
+          description={
+            ownerPinCancel && !freeCancel
+              ? order.status === 'open'
+                ? 'Alasan wajib diisi. Pembatalan butuh kode sekali pakai dari Pemilik.'
+                : 'Transaksi sudah dibayar — uang dikembalikan & tercatat. Butuh kode sekali pakai dari Pemilik.'
+              : freeCancel
+              ? 'Pesanan belum dibayar & belum diteruskan ke dapur. Pembatalan tercatat atas nama Anda.'
+              : order.status === 'open'
+                ? 'Pesanan sudah diteruskan ke dapur — pembatalan butuh persetujuan supervisor.'
+                : 'Transaksi sudah dibayar — uang dikembalikan & tercatat. Butuh persetujuan supervisor.'
+          }
+          presets={ORDER_CANCEL_REASONS}
+          confirmLabel={ownerPinCancel && !freeCancel ? 'Lanjut ke Kode Pemilik' : freeCancel || canVoid ? 'Batalkan' : 'Lanjut ke PIN'}
           onCancel={() => setFlow(null)}
           onConfirm={(r) => {
             setReason(r)
-            setFlow('void-pin')
+            if (freeCancel) void handleFreeCancel(r)
+            else setFlow(ownerPinCancel ? 'void-owner' : 'void-pin')
           }}
         />
       )}
       {flow === 'void-pin' && (
-        <SupervisorPinModal title="Konfirmasi Pembatalan" onCancel={() => setFlow(null)} onApproved={(u) => void handleVoidApproved(u)} />
+        <SupervisorPinModal title="Konfirmasi Pembatalan" permission="order.void" onCancel={() => setFlow(null)} onApproved={(u) => void handleVoidApproved(u)} />
+      )}
+      {flow === 'void-owner' && (
+        <OwnerCancelCodeModal
+          title={order.status === 'open' ? 'Batalkan Pesanan' : 'Batalkan Transaksi'}
+          description={`Alasan: ${reason}`}
+          onCancel={() => setFlow(null)}
+          onApproved={(approval) => void handleOwnerApproved(approval)}
+        />
       )}
       {flow === 'return-reason' && (
         <ReasonPromptModal
           title="Alasan Retur"
-          confirmLabel="Lanjut"
+          confirmLabel={canReturn ? 'Proses Retur' : 'Lanjut ke PIN'}
           onCancel={() => setFlow('return-select')}
           onConfirm={(r) => {
             setReason(r)
@@ -284,7 +357,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
         />
       )}
       {flow === 'return-pin' && (
-        <SupervisorPinModal title="Konfirmasi Retur" onCancel={() => setFlow('return-select')} onApproved={(u) => void handleReturnApproved(u)} />
+        <SupervisorPinModal title="Konfirmasi Retur" permission="order.return" onCancel={() => setFlow('return-select')} onApproved={(u) => void handleReturnApproved(u)} />
       )}
     </>
   )

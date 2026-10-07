@@ -9,8 +9,12 @@ import { getOpenShift } from '@/db/repositories/shifts'
 import { getSettings } from '@/db/repositories/settings'
 import {
   addOrderItem,
+  cancelEmptyOrder,
+  cancelUnsentOrder,
   getOrder,
+  isItemSentToKitchen,
   listOrderItems,
+  markOrderPayLater,
   removeOrderItem,
   setOrderDiscount,
   updateOrderItemQty,
@@ -19,6 +23,8 @@ import {
 } from '@/db/repositories/orders'
 import { canFulfillProductQty } from '@/db/repositories/stock'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
+import { voidOrder } from '@/db/repositories/checkout'
+import { ORDER_CANCEL_REASONS } from '@/lib/orderState'
 import { usePosStore } from '@/state/posStore'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
@@ -28,8 +34,11 @@ import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
 import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
 import { DiscountModal } from '@/features/pos/DiscountModal'
+import { PayLaterModal } from '@/features/pos/PayLaterModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
+import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
+import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { toast } from '@/state/toastStore'
@@ -52,10 +61,14 @@ export function CashierScreen() {
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [showOpenBills, setShowOpenBills] = useState(false)
   const [showDiscount, setShowDiscount] = useState(false)
+  const [showPayLater, setShowPayLater] = useState(false)
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [removeReasonFor, setRemoveReasonFor] = useState<OrderItem | null>(null)
   const [voidItemApproval, setVoidItemApproval] = useState<{ item: OrderItem; reason: string } | null>(null)
+  const [cancelOrderFlow, setCancelOrderFlow] = useState<
+    null | { step: 'reason' } | { step: 'approval'; reason: string } | { step: 'owner'; reason: string }
+  >(null)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const openShift = useLiveQuery(() => getOpenShift(), [])
@@ -199,6 +212,111 @@ export function CashierScreen() {
     }
   }
 
+  /**
+   * Batalkan pesanan aktif (belum dibayar). Kosong → langsung; belum ada item di
+   * dapur → kasir cukup isi alasan; sudah di dapur → butuh persetujuan supervisor.
+   */
+  async function handleCancelOrderClick() {
+    if (!order) return
+    if (activeItems.length === 0) {
+      const ok = await confirm({
+        title: 'Batalkan Pesanan Kosong?',
+        description: `Pesanan ${order.orderNumber} belum berisi item dan akan dibatalkan.`,
+        confirmLabel: 'Ya, Batalkan',
+        tone: 'danger',
+      })
+      if (!ok) return
+      try {
+        await cancelEmptyOrder(order.id, { userId: currentUser.id, userName: currentUser.name })
+        setActiveOrderId(null)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+      }
+      return
+    }
+    setCancelOrderFlow({ step: 'reason' })
+  }
+
+  async function handleCancelReason(reason: string) {
+    if (!order) return
+    // Kantin: setiap pembatalan pesanan berisi item butuh kode sekali pakai dari Pemilik.
+    if (features.ownerPinCancel) {
+      setCancelOrderFlow({ step: 'owner', reason })
+      return
+    }
+    if (activeItems.some(isItemSentToKitchen)) {
+      setCancelOrderFlow({ step: 'approval', reason })
+      return
+    }
+    try {
+      await cancelUnsentOrder(order.id, reason, { userId: currentUser.id, userName: currentUser.name })
+      setActiveOrderId(null)
+      toast.success(`Pesanan ${order.orderNumber} dibatalkan.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+    } finally {
+      setCancelOrderFlow(null)
+    }
+  }
+
+  async function handleCancelApproved(approver: User, reason: string) {
+    if (!order) return
+    setCancelOrderFlow(null)
+    try {
+      await voidOrder({
+        orderId: order.id,
+        reason,
+        approverUserId: approver.id,
+        approverName: approver.name,
+        requestedBy: { userId: currentUser.id, userName: currentUser.name },
+      })
+      setActiveOrderId(null)
+      toast.success(`Pesanan ${order.orderNumber} dibatalkan.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+    }
+  }
+
+  async function handleCancelOwnerApproved(approval: OwnerApproval, reason: string) {
+    if (!order) return
+    setCancelOrderFlow(null)
+    try {
+      if (activeItems.some(isItemSentToKitchen)) {
+        await voidOrder({
+          orderId: order.id,
+          reason,
+          approverUserId: approval.approverUserId,
+          approverName: approval.approverName,
+          ownerApproval: approval,
+          requestedBy: { userId: currentUser.id, userName: currentUser.name },
+        })
+      } else {
+        await cancelUnsentOrder(order.id, reason, { userId: currentUser.id, userName: currentUser.name }, approval)
+      }
+      setActiveOrderId(null)
+      toast.success(`Pesanan ${order.orderNumber} dibatalkan.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
+    }
+  }
+
+  async function handlePayLaterConfirm(params: { name: string; note: string }) {
+    if (!order) return
+    setShowPayLater(false)
+    try {
+      await markOrderPayLater(order.id, { ...params, shiftId: openShift?.id ?? null }, { userId: currentUser.id, userName: currentUser.name })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menyimpan bill gantung')
+      return
+    }
+    // Makanan tetap dibuat sekarang — teruskan ke dapur seperti saat pesanan dibayar.
+    if (features.kitchen && settings?.printerConfig.autoPrintKitchenOrder) {
+      await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }).catch(() => {})
+    }
+    setActiveOrderId(null)
+    toast.success(`Bill gantung ${params.name} tersimpan.`)
+  }
+
   async function handleModifierConfirm(params: { qty: number; notes: string; modifiers: { groupId: string; groupName: string; optionId: string; optionName: string; priceDelta: number }[] }) {
     if (!activeOrderId || !pickerProduct) return
     const canFulfill = await canFulfillProductQty(pickerProduct, params.qty)
@@ -339,6 +457,12 @@ export function CashierScreen() {
                 {order.type === 'dine_in' && order.guestCount ? <span>• {order.guestCount} tamu</span> : null}
                 {order.notes ? <span className="text-ink-300">• {order.notes}</span> : null}
               </div>
+              {order.payLater && (
+                <div className="mt-2 rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500">
+                  Bill Gantung • {order.payLater.name}
+                  {order.payLater.note ? ` — ${order.payLater.note}` : ''}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -438,6 +562,14 @@ export function CashierScreen() {
               >
                 Bayar • {formatRupiah(order.grandTotal)}
               </button>
+              {features.payLater && !order.payLater && (
+                <button className="btn-secondary w-full" disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
+                  Bill Gantung (Bayar Nanti)
+                </button>
+              )}
+              <button className="btn-ghost w-full !text-red-400" onClick={() => void handleCancelOrderClick()}>
+                Batalkan Pesanan
+              </button>
             </div>
           </>
         )}
@@ -447,12 +579,14 @@ export function CashierScreen() {
         <NewOrderModal
           orderTypes={features.orderTypes}
           showTables={features.tables}
+          requireBuyerName={features.buyerName}
           onCancel={() => setShowNewOrder(false)}
           onConfirm={(p) => void handleStartOrder(p)}
         />
       )}
       {showOpenBills && (
         <OpenBillsDrawer
+          showPayLater={features.payLater}
           onClose={() => setShowOpenBills(false)}
           onSelect={(id) => {
             setActiveOrderId(id)
@@ -471,6 +605,15 @@ export function CashierScreen() {
             setEditingItem(null)
           }}
           onConfirm={(p) => void handleModifierConfirm(p)}
+        />
+      )}
+      {showPayLater && order && (
+        <PayLaterModal
+          orderLabel={features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
+          total={order.grandTotal}
+          initialName={order.notes}
+          onCancel={() => setShowPayLater(false)}
+          onConfirm={(p) => void handlePayLaterConfirm(p)}
         />
       )}
       {showDiscount && order && (
@@ -499,6 +642,7 @@ export function CashierScreen() {
       {voidItemApproval && (
         <SupervisorPinModal
           title="Konfirmasi Pembatalan Item"
+          permission="order.void"
           onCancel={() => setVoidItemApproval(null)}
           onApproved={(approver: User) => {
             void voidOrderItem(voidItemApproval.item.id, voidItemApproval.reason, {
@@ -507,6 +651,44 @@ export function CashierScreen() {
             })
             setVoidItemApproval(null)
           }}
+        />
+      )}
+      {cancelOrderFlow?.step === 'reason' && order && (
+        <ReasonPromptModal
+          title={`Batalkan Pesanan ${order.orderNumber}`}
+          description={
+            features.ownerPinCancel
+              ? 'Alasan wajib diisi. Pembatalan butuh kode sekali pakai dari Pemilik.'
+              : activeItems.some(isItemSentToKitchen)
+                ? 'Sebagian item sudah diteruskan ke dapur — pembatalan butuh persetujuan supervisor.'
+                : 'Pesanan belum dibayar & belum diteruskan ke dapur. Pembatalan tercatat atas nama Anda.'
+          }
+          presets={ORDER_CANCEL_REASONS}
+          confirmLabel={
+            features.ownerPinCancel
+              ? 'Lanjut ke Kode Pemilik'
+              : activeItems.some(isItemSentToKitchen) && !roleHasPermission(currentUser.role, 'order.void')
+                ? 'Lanjut ke PIN'
+                : 'Batalkan Pesanan'
+          }
+          onCancel={() => setCancelOrderFlow(null)}
+          onConfirm={(reason) => void handleCancelReason(reason)}
+        />
+      )}
+      {cancelOrderFlow?.step === 'approval' && (
+        <SupervisorPinModal
+          title="Konfirmasi Pembatalan Pesanan"
+          permission="order.void"
+          onCancel={() => setCancelOrderFlow(null)}
+          onApproved={(approver: User) => void handleCancelApproved(approver, cancelOrderFlow.reason)}
+        />
+      )}
+      {cancelOrderFlow?.step === 'owner' && order && (
+        <OwnerCancelCodeModal
+          title={`Batalkan ${order.orderNumber}`}
+          description={`Alasan: ${cancelOrderFlow.reason}`}
+          onCancel={() => setCancelOrderFlow(null)}
+          onApproved={(approval) => void handleCancelOwnerApproved(approval, cancelOrderFlow.reason)}
         />
       )}
       {confirmDialog}

@@ -5,11 +5,13 @@ interface Props {
   title: string
   description?: string
   confirmLabel?: string
+  /** Alasan umum yang bisa diketuk sekali (tetap bisa diubah/ditulis sendiri). */
+  presets?: string[]
   onCancel: () => void
   onConfirm: (reason: string) => void
 }
 
-export function ReasonPromptModal({ title, description, confirmLabel = 'Konfirmasi', onCancel, onConfirm }: Props) {
+export function ReasonPromptModal({ title, description, confirmLabel = 'Konfirmasi', presets, onCancel, onConfirm }: Props) {
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -17,6 +19,23 @@ export function ReasonPromptModal({ title, description, confirmLabel = 'Konfirma
     <Modal onClose={onCancel}>
         <h2 className="mb-1 text-lg font-bold text-ink-50">{title}</h2>
         {description && <p className="mb-3 text-sm text-ink-400">{description}</p>}
+        {presets && presets.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {presets.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`btn btn-compact !px-3 text-sm ${reason === p ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => {
+                  setReason(p)
+                  setError(null)
+                }}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           className="input-field mb-2"
           rows={3}

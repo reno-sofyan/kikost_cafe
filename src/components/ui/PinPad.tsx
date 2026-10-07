@@ -5,12 +5,15 @@ interface PinPadProps {
   onChange: (value: string) => void
   onSubmit: () => void
   maxLength?: number
+  /** Panjang minimum sebelum tombol kirim aktif (default 4 — PIN login). */
+  minLength?: number
+  submitLabel?: string
   disabled?: boolean
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'] as const
 
-export function PinPad({ value, onChange, onSubmit, maxLength = 8, disabled }: PinPadProps) {
+export function PinPad({ value, onChange, onSubmit, maxLength = 8, minLength = 4, submitLabel = 'Masuk', disabled }: PinPadProps) {
   function pressKey(key: string) {
     if (disabled) return
     if (key === 'del') {
@@ -40,8 +43,8 @@ export function PinPad({ value, onChange, onSubmit, maxLength = 8, disabled }: P
         )
       })}
       <div className="col-span-3 mt-2">
-        <button type="button" onClick={onSubmit} disabled={disabled || value.length < 4} className="btn-primary w-full">
-          Masuk
+        <button type="button" onClick={onSubmit} disabled={disabled || value.length < minLength} className="btn-primary w-full">
+          {submitLabel}
         </button>
       </div>
     </div>

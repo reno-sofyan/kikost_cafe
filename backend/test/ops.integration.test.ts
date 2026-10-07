@@ -109,6 +109,70 @@ suite('konsol operator /ops (integrasi)', () => {
     expect(body.auditLogs[0]).toMatchObject({ userName: 'Budi', action: 'auth.login' })
   })
 
+  it('pembatalan: ringkasan hari ini & rekap per tenant dengan peminta/penyetuju', async () => {
+    const now = Date.now()
+    const pool = getPool()
+    const rows: [string, string, Record<string, unknown>][] = [
+      ['orders', 'v1', { id: 'v1', orderNumber: 'TRX-7', status: 'void', lifecycleStatus: 'VOIDED', grandTotal: 30000, createdAt: now, paidAt: now, voidedAt: now, voidReason: 'Komplain', cashierName: 'Andi', voidRequestedByName: 'Andi', voidedByName: 'Bu Sari', voidApproval: 'owner_code', updatedAt: now }],
+      ['orders', 'v2', { id: 'v2', orderNumber: 'TRX-8', status: 'void', lifecycleStatus: 'CANCELLED', grandTotal: 12000, createdAt: now, voidedAt: now, voidReason: 'Salah input', cashierName: 'Andi', updatedAt: now }],
+      ['orders', 'v3', { id: 'v3', orderNumber: 'TRX-9', status: 'void', lifecycleStatus: 'CANCELLED', grandTotal: 0, createdAt: now, voidedAt: now, updatedAt: now }],
+      ['orders', 'old', { id: 'old', orderNumber: 'TRX-1', status: 'void', grandTotal: 9000, createdAt: now - 40 * 86_400_000, voidedAt: now - 40 * 86_400_000, updatedAt: now - 40 * 86_400_000 }],
+      ['auditLogs', 'a2', { id: 'a2', userName: 'Andi', action: 'order.cancel', entityType: 'order', entityId: 'v2', details: 'Pesanan TRX-8 dibatalkan. Alasan: Salah input', createdAt: now }],
+    ]
+    for (const [entity, id, payload] of rows) {
+      await pool.query(
+        `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at) VALUES ('cafe',$1,$2,$3,$4)`,
+        [entity, id, JSON.stringify(payload), now],
+      )
+    }
+
+    const summary = (await app.inject({ method: 'GET', url: '/ops/api/summary', headers: opsAuth })).json()
+    const cafe = summary.tenants.find((t: { tenantId: string }) => t.tenantId === 'cafe')
+    expect(cafe.cancellations).toEqual({ todayCount: 2, todayValue: 42000, last7DaysCount: 2, last7DaysValue: 42000 })
+
+    const r = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations?days=30', headers: opsAuth })
+    expect(r.statusCode).toBe(200)
+    const body = r.json()
+    expect(body.totals).toMatchObject({ count: 2, value: 42000, paidCount: 1, paidValue: 30000, ownerCodeCount: 1 })
+    const v1 = body.rows.find((x: { orderId: string }) => x.orderId === 'v1')
+    expect(v1).toMatchObject({ stage: 'paid', requestedBy: 'Andi', approvedBy: 'Bu Sari', approval: 'owner_code' })
+    const v2 = body.rows.find((x: { orderId: string }) => x.orderId === 'v2')
+    expect(v2).toMatchObject({ stage: 'unprocessed', requestedBy: 'Andi', approval: 'self' })
+
+    const wide = (await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations?days=90', headers: opsAuth })).json()
+    expect(wide.totals.count).toBe(3)
+
+    const noAuth = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations' })
+    expect(noAuth.statusCode).toBe(401)
+  })
+
+  it('data payload rusak tidak membuat dashboard 500 (baris rusak dilewati)', async () => {
+    const now = Date.now()
+    const pool = getPool()
+    const rows: [string, Record<string, unknown>][] = [
+      ['ok', { id: 'ok', orderNumber: 'TRX-1', status: 'paid', grandTotal: 10000, createdAt: now, paidAt: now }],
+      ['iso', { id: 'iso', orderNumber: 'TRX-2', status: 'paid', grandTotal: 5000, createdAt: new Date(now).toISOString(), paidAt: '' }],
+      ['frac', { id: 'frac', orderNumber: 'TRX-3', status: 'paid', grandTotal: 2500.5, createdAt: now + 0.75, paidAt: now + 0.75 }],
+      ['junk', { id: 'junk', orderNumber: 'TRX-4', status: 'void', grandTotal: 'abc', createdAt: 'kemarin', voidedAt: 'x', updatedAt: now }],
+      ['huge', { id: 'huge', orderNumber: 'TRX-5', status: 'paid', grandTotal: 1000, createdAt: 9e20, paidAt: 9e20 }],
+    ]
+    for (const [id, payload] of rows) {
+      await pool.query(
+        `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at) VALUES ('cafe','orders',$1,$2,$3)`,
+        [id, JSON.stringify(payload), now],
+      )
+    }
+    const summary = await app.inject({ method: 'GET', url: '/ops/api/summary', headers: opsAuth })
+    expect(summary.statusCode).toBe(200)
+    const cafe = summary.json().tenants.find((t: { tenantId: string }) => t.tenantId === 'cafe')
+    expect(cafe.today.revenue).toBe(12500.5)
+
+    const detail = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe', headers: opsAuth })
+    expect(detail.statusCode).toBe(200)
+    const cancels = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations', headers: opsAuth })
+    expect(cancels.statusCode).toBe(200)
+  })
+
   it('menolak tenantId tidak valid', async () => {
     const r = await app.inject({ method: 'GET', url: '/ops/api/tenant/..%2Fetc', headers: opsAuth })
     expect(r.statusCode).toBe(400)

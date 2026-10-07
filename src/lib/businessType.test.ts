@@ -14,9 +14,13 @@ describe('featuresForBusinessType', () => {
       orderTypes: ['takeaway'],
       quickSale: true,
       queueNumbers: false,
+      buyerName: false,
       stackSameItems: true,
       serviceCharge: false,
-      paymentProof: false,
+      paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+      paymentProofMethods: [],
+      ownerPinCancel: false,
+      payLater: false,
       shiftReminder: false,
     })
   })
@@ -32,9 +36,11 @@ describe('featuresForBusinessType', () => {
     expect(f.orderTypes).toEqual(['dine_in', 'takeaway'])
     expect(f.quickSale).toBe(false)
     expect(f.queueNumbers).toBe(true)
+    expect(f.buyerName).toBe(true)
     expect(f.stackSameItems).toBe(true)
     expect(f.serviceCharge).toBe(false)
-    expect(f.paymentProof).toBe(true)
+    expect(f.paymentMethods).toEqual(['cash', 'qris'])
+    expect(f.paymentProofMethods).toEqual(['qris'])
     expect(f.shiftReminder).toBe(true)
   })
 
@@ -49,10 +55,14 @@ describe('featuresForBusinessType', () => {
       orderTypes: ['dine_in', 'takeaway', 'delivery'],
       quickSale: false,
       queueNumbers: true,
+      buyerName: false,
       stackSameItems: false,
       serviceCharge: true,
       // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
-      paymentProof: false,
+      paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+      paymentProofMethods: [],
+      ownerPinCancel: false,
+      payLater: false,
       shiftReminder: false,
     })
   })
@@ -68,10 +78,14 @@ describe('featuresForBusinessType', () => {
       orderTypes: ['dine_in', 'takeaway', 'delivery'],
       quickSale: false,
       queueNumbers: true,
+      buyerName: false,
       stackSameItems: false,
       serviceCharge: true,
       // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
-      paymentProof: false,
+      paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+      paymentProofMethods: [],
+      ownerPinCancel: false,
+      payLater: false,
       shiftReminder: false,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
@@ -84,10 +98,14 @@ describe('featuresForBusinessType', () => {
       orderTypes: ['dine_in', 'takeaway', 'delivery'],
       quickSale: false,
       queueNumbers: true,
+      buyerName: false,
       stackSameItems: false,
       serviceCharge: true,
       // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
-      paymentProof: false,
+      paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+      paymentProofMethods: [],
+      ownerPinCancel: false,
+      payLater: false,
       shiftReminder: false,
     })
   })

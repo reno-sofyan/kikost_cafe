@@ -75,3 +75,6 @@ export function deriveKitchenPhase(
   if (itemKitchenStatuses.some((s) => s === 'in_progress' || s === 'ready' || s === 'done')) return 'PREPARING'
   return 'CONFIRMED'
 }
+
+/** Alasan pembatalan pesanan yang umum — dipakai sebagai pilihan cepat. */
+export const ORDER_CANCEL_REASONS = ['Salah input', 'Pembeli tidak jadi', 'Menu habis', 'Komplain pembeli']

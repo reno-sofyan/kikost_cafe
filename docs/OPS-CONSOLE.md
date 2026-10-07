@@ -41,6 +41,20 @@ Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/
 | GET | `/ops` | — | Shell HTML (tanpa data) |
 | GET | `/ops/api/summary` | Bearer | Ringkasan semua tenant (omzet hari ini, 7 hari, perangkat, kesehatan) |
 | GET | `/ops/api/tenant/:tenantId` | Bearer | Detail satu tenant (total omzet, transaksi terbaru, log aktivitas) |
+| GET | `/ops/api/tenant/:tenantId/cancellations?days=30` | Bearer | Rekap pembatalan pesanan (1–90 hari): jumlah & nilai, yang batal setelah lunas, rekap per peminta / penyetuju / alasan, dan daftar per pesanan |
+
+### Pelacakan pembatalan
+
+Ringkasan (`/summary`) menyertakan `cancellations` per tenant (jumlah & nilai hari ini dan 7 hari);
+dashboard menampilkannya sebagai "Batal hari ini" di kartu tenant dan tab **Pembatalan** di detail.
+
+- Yang dihitung: pesanan berstatus `void` dengan nilai > 0. Pesanan kosong (Rp0) diabaikan.
+- **Tahap** saat batal: `paid` (sudah lunas, uang dikembalikan), `kitchen` (sudah dikonfirmasi/ke dapur), `unprocessed` (masih draft).
+- **Peminta / penyetuju / cara persetujuan** dibaca dari field order `voidRequestedByName`, `voidedByName`,
+  `voidApproval` (`self` | `supervisor` | `owner_code`) yang diisi app sejak v1.0.13. Untuk data lama,
+  diturunkan dari log audit pesanan itu (`order.cancel` → pelaku = peminta; `order.void` → pelaku = penyetuju,
+  peminta tidak diketahui). Logika ada di `backend/src/lib/opsCancellations.ts`.
+- Hanya data yang sudah tersinkron yang terlihat — tablet tanpa sinkronisasi tidak muncul.
 
 ## Keamanan
 

@@ -1,4 +1,4 @@
-import type { BusinessType, OrderType } from '@/types/domain'
+import type { BusinessType, OrderType, PaymentMethod } from '@/types/domain'
 
 export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   cafe_resto: 'Kafe & Restoran',
@@ -39,12 +39,31 @@ export interface BusinessFeatures {
   quickSale: boolean
   /** Nomor antrean (#N) di kasir, struk, & layar sukses bayar — untuk memanggil pesanan. */
   queueNumbers: boolean
+  /** Kasir wajib isi "Nama Pembeli" saat membuat pesanan — untuk memanggil pesanan di antrean. */
+  buyerName: boolean
   /** Tap/pindai produk yang sama menambah qty baris yang ada, bukan baris baru. */
   stackSameItems: boolean
   /** Isian Service Charge di onboarding & Pengaturan → Pajak & Struk. */
   serviceCharge: boolean
-  /** Wajib foto bukti pembayaran (QRIS/tunai) setiap kali kasir membayar. */
-  paymentProof: boolean
+  /** Metode bayar yang ditawarkan di layar pembayaran (urutan = urutan tombol). */
+  paymentMethods: PaymentMethod[]
+  /**
+   * Metode yang WAJIB disertai foto bukti saat kasir membayar — harus foto, tanpa
+   * jalan pintas "Tidak bisa ambil foto". Metode lain tetap boleh melampirkan
+   * foto (atau alasan tanpa foto) secara opsional. Kosong = tak ada kewajiban.
+   */
+  paymentProofMethods: PaymentMethod[]
+  /**
+   * Pembatalan pesanan berisi item (belum dibayar maupun sudah) wajib alasan +
+   * PIN akun berperan Pemilik — PIN supervisor/administrator tidak berlaku.
+   */
+  ownerPinCancel: boolean
+  /**
+   * "Bill Gantung": pesanan internal dicatat & diteruskan ke dapur sekarang,
+   * dibayar nanti. Tidak menghalangi tutup shift; pelunasannya masuk ke shift
+   * yang sedang buka saat dibayar.
+   */
+  payLater: boolean
   /** Notifikasi saat shift dibuka + popup tiap 21.00 WIB "lanjutkan atau tutup shift?". */
   shiftReminder: boolean
 }
@@ -59,9 +78,13 @@ const ALL_FEATURES: BusinessFeatures = {
   orderTypes: ['dine_in', 'takeaway', 'delivery'],
   quickSale: false,
   queueNumbers: true,
+  buyerName: false,
   stackSameItems: false,
   serviceCharge: true,
-  paymentProof: false,
+  paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+  paymentProofMethods: [],
+  ownerPinCancel: false,
+  payLater: false,
   shiftReminder: false,
 }
 
@@ -86,9 +109,13 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         orderTypes: ['takeaway'],
         quickSale: true,
         queueNumbers: false,
+        buyerName: false,
         stackSameItems: true,
         serviceCharge: false,
-        paymentProof: false,
+        paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+        paymentProofMethods: [],
+        ownerPinCancel: false,
+        payLater: false,
         shiftReminder: false,
       }
     case 'kantin':
@@ -96,9 +123,13 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         ...ALL_FEATURES,
         tables: false,
         orderTypes: ['dine_in', 'takeaway'],
+        buyerName: true,
         stackSameItems: true,
         serviceCharge: false,
-        paymentProof: true,
+        paymentMethods: ['cash', 'qris'],
+        paymentProofMethods: ['qris'],
+        ownerPinCancel: true,
+        payLater: true,
         shiftReminder: true,
       }
     case 'cafe_resto':
@@ -107,4 +138,9 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
     default:
       return ALL_FEATURES
   }
+}
+
+/** Apakah pembayaran dengan metode-metode ini wajib disertai foto bukti. */
+export function requiresPaymentProof(features: Pick<BusinessFeatures, 'paymentProofMethods'>, methods: PaymentMethod[]): boolean {
+  return methods.some((m) => features.paymentProofMethods.includes(m))
 }

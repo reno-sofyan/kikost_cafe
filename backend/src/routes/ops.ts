@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { getPool } from '../db/pool.js'
 import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
+import { buildCancellationReport } from '../lib/opsCancellations.js'
 
 /**
  * Konsol operator lintas-tenant untuk pemilik backend (bukan untuk kasir/pemilik
@@ -31,6 +32,26 @@ function tokenMatches(provided: string, expected: string): boolean {
   if (a.length !== b.length) return false
   return timingSafeEqual(a, b)
 }
+
+/**
+ * Cast aman dari payload JSONB: nilai yang bukan angka murni (string tanggal, kosong,
+ * notasi aneh dari perangkat lama) menjadi NULL alih-alih menggagalkan SELURUH query
+ * dengan "invalid input syntax" (500) — satu baris rusak tak boleh mematikan dashboard.
+ */
+const numField = (field: string): string =>
+  `(CASE WHEN jsonb_typeof(payload->'${field}') = 'number' THEN (payload->>'${field}')::numeric
+         WHEN payload->>'${field}' ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (payload->>'${field}')::numeric END)`
+/** Epoch ms → timestamptz, aman untuk nilai di luar jangkauan tanggal Postgres. */
+const tsOf = (msSql: string): string =>
+  `(CASE WHEN ${msSql} BETWEEN 0 AND 32503680000000 THEN to_timestamp(${msSql} / 1000.0) END)`
+const PAID_OR_CREATED_MS = `coalesce(${numField('paidAt')}, ${numField('createdAt')})`
+const GRAND_TOTAL = `coalesce(${numField('grandTotal')}, 0)`
+
+/** Waktu batal (epoch ms) sebuah order di payload; data lama tanpa `voidedAt` → `updatedAt`. */
+const VOIDED_AT_SQL = `coalesce(${numField('voidedAt')}, ${numField('updatedAt')})`
+/** Pesanan batal yang dihitung: berstatus void & bernilai (pesanan kosong Rp0 diabaikan). */
+const COUNTED_CANCEL_SQL = `entity = 'orders' AND deleted = FALSE AND payload->>'status' = 'void'
+            AND ${GRAND_TOTAL} > 0`
 
 const num = (v: unknown): number => {
   const n = Number(v)
@@ -62,7 +83,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
   app.get('/api/summary', async () => {
     const pool = getPool()
 
-    const [universe, settings, devices, today, week, pushHealth, activity] = await Promise.all([
+    const [universe, settings, devices, today, week, pushHealth, activity, cancels] = await Promise.all([
       pool.query<{ tenant_id: string }>(
         `SELECT tenant_id FROM sync_entity_state
          UNION SELECT tenant_id FROM sync_devices`,
@@ -85,25 +106,25 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       ),
       pool.query<{ tenant_id: string; revenue: string; txns: string }>(
         `SELECT tenant_id,
-                coalesce(sum((payload->>'grandTotal')::numeric), 0) AS revenue,
+                coalesce(sum(${GRAND_TOTAL}), 0) AS revenue,
                 count(*)                                            AS txns
            FROM sync_entity_state
           WHERE entity = 'orders' AND deleted = FALSE
             AND payload->>'status' IN ('paid', 'completed')
-            AND (to_timestamp(coalesce((payload->>'paidAt')::bigint, (payload->>'createdAt')::bigint) / 1000.0)
+            AND (${tsOf(PAID_OR_CREATED_MS)}
                    AT TIME ZONE 'Asia/Jakarta')::date
                 = (now() AT TIME ZONE 'Asia/Jakarta')::date
           GROUP BY tenant_id`,
       ),
       pool.query<{ tenant_id: string; d: string; revenue: string }>(
         `SELECT tenant_id,
-                (to_timestamp(coalesce((payload->>'paidAt')::bigint, (payload->>'createdAt')::bigint) / 1000.0)
+                (${tsOf(PAID_OR_CREATED_MS)}
                    AT TIME ZONE 'Asia/Jakarta')::date AS d,
-                sum((payload->>'grandTotal')::numeric) AS revenue
+                sum(${GRAND_TOTAL}) AS revenue
            FROM sync_entity_state
           WHERE entity = 'orders' AND deleted = FALSE
             AND payload->>'status' IN ('paid', 'completed')
-            AND to_timestamp(coalesce((payload->>'paidAt')::bigint, (payload->>'createdAt')::bigint) / 1000.0)
+            AND ${tsOf(PAID_OR_CREATED_MS)}
                 > now() - interval '8 days'
           GROUP BY tenant_id, d`,
       ),
@@ -120,6 +141,23 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
            FROM sync_entity_state
           GROUP BY tenant_id`,
       ),
+      pool.query<{ tenant_id: string; today_count: string; today_value: string; week_count: string; week_value: string }>(
+        `SELECT tenant_id,
+                count(*) FILTER (WHERE is_today)                AS today_count,
+                coalesce(sum(total) FILTER (WHERE is_today), 0) AS today_value,
+                count(*)                                        AS week_count,
+                coalesce(sum(total), 0)                         AS week_value
+           FROM (
+             SELECT tenant_id,
+                    ${GRAND_TOTAL} AS total,
+                    (${tsOf(VOIDED_AT_SQL)} AT TIME ZONE 'Asia/Jakarta')::date
+                      = (now() AT TIME ZONE 'Asia/Jakarta')::date AS is_today
+               FROM sync_entity_state
+              WHERE ${COUNTED_CANCEL_SQL}
+                AND ${tsOf(VOIDED_AT_SQL)} > now() - interval '7 days'
+           ) c
+          GROUP BY tenant_id`,
+      ),
     ])
 
     const byTenant = new Map<string, Record<string, unknown>>()
@@ -134,6 +172,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
           today: { revenue: 0, txns: 0 },
           last7Days: [] as { date: string; revenue: number }[],
           health: { pushRejected24h: 0, pushItems24h: 0, lastActivityAt: null },
+          cancellations: { todayCount: 0, todayValue: 0, last7DaysCount: 0, last7DaysValue: 0 },
         }
         byTenant.set(id, t)
       }
@@ -179,6 +218,15 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
         r.last_activity == null ? null : Math.round(num(r.last_activity))
     }
 
+    for (const r of cancels.rows) {
+      ensure(r.tenant_id).cancellations = {
+        todayCount: num(r.today_count),
+        todayValue: num(r.today_value),
+        last7DaysCount: num(r.week_count),
+        last7DaysValue: num(r.week_value),
+      }
+    }
+
     const tenants = [...byTenant.values()].sort((a, b) =>
       String(a.tenantId).localeCompare(String(b.tenantId)),
     )
@@ -196,10 +244,10 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
 
     const [totals, orders, audit] = await Promise.all([
       pool.query<{ revenue: string; txns: string; month_revenue: string }>(
-        `SELECT coalesce(sum((payload->>'grandTotal')::numeric), 0) AS revenue,
+        `SELECT coalesce(sum(${GRAND_TOTAL}), 0) AS revenue,
                 count(*)                                            AS txns,
-                coalesce(sum((payload->>'grandTotal')::numeric) FILTER (
-                  WHERE to_timestamp(coalesce((payload->>'paidAt')::bigint, (payload->>'createdAt')::bigint) / 1000.0)
+                coalesce(sum(${GRAND_TOTAL}) FILTER (
+                  WHERE ${tsOf(PAID_OR_CREATED_MS)}
                         > now() - interval '30 days'), 0)          AS month_revenue
            FROM sync_entity_state
           WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
@@ -209,14 +257,14 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       pool.query<{ payload: Record<string, unknown> }>(
         `SELECT payload FROM sync_entity_state
           WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
-          ORDER BY (payload->>'createdAt')::bigint DESC NULLS LAST
+          ORDER BY ${numField('createdAt')} DESC NULLS LAST
           LIMIT 60`,
         [tenantId],
       ),
       pool.query<{ payload: Record<string, unknown> }>(
         `SELECT payload FROM sync_entity_state
           WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
-          ORDER BY (payload->>'createdAt')::bigint DESC NULLS LAST
+          ORDER BY ${numField('createdAt')} DESC NULLS LAST
           LIMIT 120`,
         [tenantId],
       ),
@@ -255,4 +303,47 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       }),
     }
   })
+
+  // ---- Rekap pembatalan pesanan satu tenant (siapa minta, siapa setujui, alasan) ----
+  app.get<{ Params: { tenantId: string }; Querystring: { days?: string } }>(
+    '/api/tenant/:tenantId/cancellations',
+    async (request, reply) => {
+      const tenantId = request.params.tenantId
+      if (!TENANT_ID_RE.test(tenantId)) {
+        reply.code(400)
+        return { error: 'tenantId tidak valid' }
+      }
+      const days = Math.min(90, Math.max(1, Math.trunc(num(request.query.days) || 30)))
+      const since = Date.now() - days * 86_400_000
+      const pool = getPool()
+
+      const orders = await pool.query<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM sync_entity_state
+          WHERE tenant_id = $1 AND ${COUNTED_CANCEL_SQL}
+            AND ${VOIDED_AT_SQL} > $2
+          ORDER BY ${VOIDED_AT_SQL} DESC
+          LIMIT 500`,
+        [tenantId, since],
+      )
+      const orderIds = orders.rows.map((r) => String(r.payload.id ?? ''))
+      const audits = orderIds.length
+        ? await pool.query<{ payload: Record<string, unknown> }>(
+            `SELECT payload FROM sync_entity_state
+              WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
+                AND payload->>'action' IN ('order.cancel', 'order.void')
+                AND payload->>'entityId' = ANY($2::text[])`,
+            [tenantId, orderIds],
+          )
+        : { rows: [] }
+
+      return {
+        tenantId,
+        ...buildCancellationReport(
+          days,
+          orders.rows.map((r) => r.payload),
+          audits.rows.map((r) => r.payload),
+        ),
+      }
+    },
+  )
 }

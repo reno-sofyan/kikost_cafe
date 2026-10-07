@@ -4,6 +4,7 @@ import { newId, newIdempotencyKey } from '@/lib/id'
 import { computeLineTotal, computeOrderTotals } from '@/lib/orderTotals'
 import { getSettings, nextTransactionNumber, updateSettings } from '@/db/repositories/settings'
 import { markAvailable, occupyTable } from '@/db/repositories/tables'
+import { consumeCancelCodeInTx, isOwnerCancelRequired, OwnerApprovalRequiredError, type OwnerApproval } from '@/db/repositories/cancelCodes'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { assertTransition, deriveKitchenPhase, legacyStatusFor } from '@/lib/orderState'
 import { stationForCategory } from '@/db/repositories/printers'
@@ -19,6 +20,7 @@ import type {
   OrderLifecycleStatus,
   OrderSource,
   OrderType,
+  VoidApproval,
 } from '@/types/domain'
 
 /**
@@ -216,19 +218,7 @@ export async function cancelEmptyOrder(orderId: string, actor: { userId: string;
     if (activeItemCount > 0) {
       throw new Error('Pesanan masih berisi item. Kosongkan keranjang atau batalkan lewat menu Void (supervisor) dahulu.')
     }
-    const from = order.lifecycleStatus ?? 'DRAFT'
-    const to: OrderLifecycleStatus = from === 'DRAFT' || from === 'PENDING_CONFIRMATION' ? 'CANCELLED' : 'VOIDED'
-    await transitionOrder(orderId, to, {
-      voidReason: 'Pesanan kosong dibatalkan',
-      voidedBy: actor.userId,
-      voidedAt: getTrustedNow(),
-    })
-    if (order.tableId) {
-      const table = await db.cafeTables.get(order.tableId)
-      if (table && table.currentOrderId === orderId) {
-        await markAvailable(order.tableId)
-      }
-    }
+    await closeOpenOrder(order, 'Pesanan kosong dibatalkan', { approverId: actor.userId, approverName: actor.userName, requestedByName: actor.userName, approval: 'self' })
     await recordAuditLog({
       userId: actor.userId,
       userName: actor.userName,
@@ -238,6 +228,144 @@ export async function cancelEmptyOrder(orderId: string, actor: { userId: string;
       details: `Pesanan kosong ${order.orderNumber} dibatalkan (tidak ada item).`,
     })
   })
+}
+
+/** Item sudah diteruskan ke dapur/bar (tiket tercetak atau sudah diproses dapur). */
+export function isItemSentToKitchen(item: OrderItem): boolean {
+  return !item.skipKitchen && (item.kitchenStatus !== 'new' || item.kitchenPrintedAt != null)
+}
+
+export class CancelNeedsApprovalError extends Error {
+  constructor() {
+    super('Pesanan ini sudah diteruskan ke dapur — pembatalan butuh persetujuan supervisor.')
+    this.name = 'CancelNeedsApprovalError'
+  }
+}
+
+/**
+ * Membatalkan pesanan BELUM DIBAYAR yang belum ada itemnya diteruskan ke dapur
+ * (salah input, pembeli tidak jadi). Boleh oleh kasir tanpa persetujuan —
+ * belum ada uang masuk maupun bahan yang dimasak — tetapi alasan wajib dan
+ * tercatat di log. Pesanan yang sudah di dapur atau sudah dibayar harus lewat
+ * `voidOrder` (persetujuan supervisor).
+ */
+export async function cancelUnsentOrder(
+  orderId: string,
+  reason: string,
+  actor: { userId: string; userName: string },
+  /** Wajib bila `ownerPinCancel` aktif (kantin) — kodenya dihapus dalam transaksi yang sama. */
+  ownerApproval?: OwnerApproval,
+): Promise<void> {
+  const trimmed = reason.trim()
+  if (!trimmed) throw new Error('Alasan pembatalan wajib diisi')
+  if (!ownerApproval && (await isOwnerCancelRequired())) throw new OwnerApprovalRequiredError()
+  await db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.cancelCodes, db.syncQueue, db.auditLogs], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
+    const items = await db.orderItems
+      .where('orderId')
+      .equals(orderId)
+      .filter((i) => !i.removed && !i.voided)
+      .toArray()
+    if (items.some(isItemSentToKitchen)) throw new CancelNeedsApprovalError()
+    if (ownerApproval) await consumeCancelCodeInTx(ownerApproval)
+    await closeOpenOrder(order, trimmed, {
+      approverId: ownerApproval?.approverUserId ?? actor.userId,
+      approverName: ownerApproval?.approverName ?? actor.userName,
+      requestedByName: actor.userName,
+      approval: ownerApproval ? 'owner_code' : 'self',
+    })
+    await recordAuditLog({
+      userId: actor.userId,
+      userName: actor.userName,
+      action: 'order.cancel',
+      entityType: 'order',
+      entityId: orderId,
+      details:
+        `Pesanan ${order.orderNumber} (belum dibayar, ${items.length} item) dibatalkan. Alasan: ${trimmed}` +
+        (ownerApproval ? ` • Disetujui Pemilik: ${ownerApproval.approverName} (kode sekali pakai)` : ''),
+    })
+  })
+}
+
+/**
+ * "Bill Gantung" (kantin, flag `payLater`): pesanan internal yang dicatat sekarang
+ * dan dibayar nanti. Order tetap `open` — dilunasi lewat alur bayar biasa — tapi
+ * tak menghalangi tutup shift (lihat `closeShift`) dan pelunasannya masuk ke shift
+ * yang sedang buka saat dibayar (lihat `payBill`).
+ */
+export async function markOrderPayLater(
+  orderId: string,
+  params: { name: string; note: string; shiftId: string | null },
+  actor: { userId: string; userName: string },
+): Promise<Order> {
+  const name = params.name.trim()
+  if (!name) throw new Error('Nama penanggung bill gantung wajib diisi')
+  return db.transaction('rw', [db.orders, db.orderItems, db.syncQueue, db.auditLogs], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
+    const itemCount = await db.orderItems
+      .where('orderId')
+      .equals(orderId)
+      .filter((i) => !i.removed && !i.voided)
+      .count()
+    if (itemCount === 0) throw new Error('Pesanan kosong tidak bisa dijadikan bill gantung')
+    const now = getTrustedNow()
+    const updated: Order = {
+      ...order,
+      payLater: {
+        name,
+        note: params.note.trim(),
+        markedAt: order.payLater?.markedAt ?? now,
+        markedByUserId: actor.userId,
+        markedByName: actor.userName,
+        shiftId: order.payLater?.shiftId ?? params.shiftId,
+      },
+      updatedAt: now,
+    }
+    await db.orders.put(updated)
+    await enqueueSync('orders', orderId, updated)
+    await recordAuditLog({
+      userId: actor.userId,
+      userName: actor.userName,
+      action: 'order.pay_later',
+      entityType: 'order',
+      entityId: orderId,
+      details: `Pesanan ${order.orderNumber} (${itemCount} item) dicatat sebagai bill gantung atas nama ${name}.`,
+    })
+    return updated
+  })
+}
+
+/** Bill gantung yang belum lunas. */
+export function isOpenPayLater(order: Order): boolean {
+  return order.status === 'open' && !!order.payLater
+}
+
+/** Menutup pesanan terbuka sebagai batal (CANCELLED bila masih draft) & melepas mejanya. */
+async function closeOpenOrder(
+  order: Order,
+  reason: string,
+  by: { approverId: string; approverName: string; requestedByName: string; approval: VoidApproval },
+): Promise<void> {
+  const from = order.lifecycleStatus ?? 'DRAFT'
+  const to: OrderLifecycleStatus = from === 'DRAFT' || from === 'PENDING_CONFIRMATION' ? 'CANCELLED' : 'VOIDED'
+  await transitionOrder(order.id, to, {
+    voidReason: reason,
+    voidedBy: by.approverId,
+    voidedAt: getTrustedNow(),
+    voidedByName: by.approverName,
+    voidRequestedByName: by.requestedByName,
+    voidApproval: by.approval,
+  })
+  if (order.tableId) {
+    const table = await db.cafeTables.get(order.tableId)
+    if (table && table.currentOrderId === order.id) {
+      await markAvailable(order.tableId)
+    }
+  }
 }
 
 export async function listOrderItems(orderId: string): Promise<OrderItem[]> {

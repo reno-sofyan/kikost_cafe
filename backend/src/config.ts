@@ -55,7 +55,12 @@ const schema = z.object({
   // Token konsol operator (dashboard /ops lintas-tenant untuk pemilik backend).
   // Kosong = seluruh rute /ops dimatikan & mengembalikan 404. Wajib panjang & acak:
   //   openssl rand -hex 32
-  OPS_TOKEN: z.string().default(''),
+  // Dirapikan: spasi/baris baru/kutip yang ikut tersalin ke env Coolify membuat token
+  // yang benar selalu ditolak (input di halaman /ops sudah di-trim).
+  OPS_TOKEN: z
+    .string()
+    .default('')
+    .transform((v) => v.trim().replace(/^(['"])(.*)\1$/, '$2').trim()),
 })
 
 export type AppConfig = z.infer<typeof schema> & {

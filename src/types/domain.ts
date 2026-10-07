@@ -659,11 +659,49 @@ export interface Order {
   /** Alasan penolakan pesanan QR oleh kasir/waiter (lifecycle REJECTED). */
   rejectedReason: string | null
   voidReason: string | null
+  /** Id penyetuju pembatalan (atau kasir sendiri bila batal tanpa persetujuan). */
   voidedBy: string | null
   voidedAt: number | null
+  /** Nama penyetuju pembatalan — snapshot, karena data pengguna tidak disinkronkan. */
+  voidedByName?: string | null
+  /** Nama pengguna yang meminta/melakukan pembatalan di kasir. */
+  voidRequestedByName?: string | null
+  /** Cara pembatalan disetujui. Kosong = data lama (sebelum v1.0.13). */
+  voidApproval?: VoidApproval | null
+  /** "Bill Gantung" (kantin): pesanan internal yang dicatat sekarang, dibayar nanti.
+   *  Tetap terisi setelah lunas sebagai jejak. Kosong/undefined = pesanan biasa. */
+  payLater?: PayLaterInfo | null
   createdAt: number
   updatedAt: number
   paidAt: number | null
+}
+
+/** `self` = tanpa persetujuan atasan; `supervisor` = PIN supervisor/admin; `owner_code` = kode sekali pakai Pemilik. */
+export type VoidApproval = 'self' | 'supervisor' | 'owner_code'
+
+export interface PayLaterInfo {
+  /** Atas nama siapa tagihan ini (mis. nama karyawan / divisi). */
+  name: string
+  note: string
+  markedAt: number
+  markedByUserId: string
+  markedByName: string
+  /** Shift saat bill gantung dicatat — `Order.shiftId` pindah ke shift pelunasan. */
+  shiftId: string | null
+}
+
+/**
+ * Kode pembatalan sekali pakai yang dibuat Pemilik di tablet ini (kantin). Hanya
+ * hash-nya yang disimpan, TIDAK ikut sinkronisasi maupun backup, dan hangus
+ * setelah dipakai satu kali. Satu baris aktif (`id = 'active'`) per perangkat.
+ */
+export interface CancelCode {
+  id: 'active'
+  hash: string
+  salt: string
+  createdAt: number
+  createdByUserId: string
+  createdByName: string
 }
 
 export type BillPaymentStatus =

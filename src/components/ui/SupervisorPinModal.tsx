@@ -1,20 +1,40 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { verifySupervisorPin } from '@/db/repositories/users'
 import { PinPad } from '@/components/ui/PinPad'
 import { Modal } from '@/components/ui/Modal'
-import type { User } from '@/types/domain'
+import { useSessionStore } from '@/state/sessionStore'
+import { roleHasPermission } from '@/lib/permissions'
+import type { Permission, User } from '@/types/domain'
 
 interface Props {
   title: string
   description?: string
+  /**
+   * Izin yang dimintakan persetujuannya. Bila pengguna yang sedang login sudah
+   * memilikinya (supervisor/administrator/pemilik), persetujuan langsung atas
+   * namanya tanpa PIN ulang — PIN hanya diminta saat kasir butuh atasan.
+   */
+  permission?: Permission
   onCancel: () => void
   onApproved: (approver: User) => void
 }
 
-export function SupervisorPinModal({ title, description, onCancel, onApproved }: Props) {
+export function SupervisorPinModal({ title, description, permission, onCancel, onApproved }: Props) {
+  const currentUser = useSessionStore((s) => s.currentUser)
+  const selfApproved = !!permission && !!currentUser && roleHasPermission(currentUser.role, permission)
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const approvedRef = useRef(false)
+
+  useEffect(() => {
+    if (selfApproved && currentUser && !approvedRef.current) {
+      approvedRef.current = true
+      onApproved(currentUser)
+    }
+  }, [selfApproved, currentUser, onApproved])
+
+  if (selfApproved) return null
 
   async function handleSubmit() {
     setBusy(true)

@@ -1,7 +1,7 @@
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { recordAuditLog } from '@/db/repositories/auditLog'
-import { addExpectedCash } from '@/db/repositories/shifts'
+import { addExpectedCash, getOpenShift } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
 import { deductSaleStock, findOrderStockShortages } from '@/db/repositories/stock'
 import type { Bill, BillPaymentStatus, Order, OrderItem, Payment, PaymentInput, PaymentProof } from '@/types/domain'
@@ -16,14 +16,18 @@ export interface PaymentProofInput {
   takenByName: string
 }
 
-/** Bukti dianggap lengkap: ada foto, atau ada alasan tertulis kenapa tidak ada foto. */
+/**
+ * Bukti untuk metode WAJIB (kantin: QRIS) harus berupa foto — alasan "tidak bisa
+ * ambil foto" tidak lagi menggantikannya. `noPhotoReason` tetap diterima untuk
+ * data lama/pembayaran opsional, tapi tak memenuhi kewajiban.
+ */
 export function hasPaymentProof(proof: PaymentProofInput | undefined): boolean {
-  return !!proof && (proof.photoDataUrls.length > 0 || !!proof.noPhotoReason?.trim())
+  return !!proof && proof.photoDataUrls.length > 0
 }
 
 export class PaymentProofRequiredError extends Error {
   constructor() {
-    super('Foto bukti pembayaran wajib diambil (atau isi alasan bila tidak bisa) sebelum pembayaran diselesaikan.')
+    super('Foto bukti pembayaran QRIS wajib diambil sebelum pembayaran diselesaikan.')
     this.name = 'PaymentProofRequiredError'
   }
 }
@@ -138,7 +142,7 @@ export async function payBill(params: {
     async () => {
       let bill = await db.bills.get(params.billId)
       if (!bill) throw new Error('Tagihan tidak ditemukan')
-      const order = await db.orders.get(bill.orderId)
+      let order = await db.orders.get(bill.orderId)
       if (!order) throw new Error('Pesanan tidak ditemukan')
 
       // Bill "seluruh order" tanpa pecahan: total selalu ikut order terkini
@@ -161,6 +165,19 @@ export async function payBill(params: {
       if (bill.paymentStatus === 'PAID' || bill.paymentStatus === 'VOIDED') throw new OrderAlreadyFinalizedError()
 
       const now = getTrustedNow()
+
+      // Bill gantung bisa dilunasi shift lain: pindahkan order ke shift yang sedang
+      // buka supaya kas tunai, ringkasan shift, & laporan ikut shift pelunasan
+      // (shift asal sudah boleh ditutup). Shift asal tetap tercatat di `payLater.shiftId`.
+      if (order.payLater && order.status === 'open') {
+        const current = await getOpenShift()
+        if (current && current.id !== order.shiftId) {
+          order = { ...order, shiftId: current.id, updatedAt: now }
+          await db.orders.put(order)
+          await enqueueSync('orders', order.id, order)
+        }
+      }
+
       const created: Payment[] = []
       let addedThisCall = 0
       for (let i = 0; i < params.payments.length; i++) {

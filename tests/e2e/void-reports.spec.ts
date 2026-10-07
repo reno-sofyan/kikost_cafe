@@ -22,12 +22,7 @@ async function payTakeawayKentang(page: Page) {
   await expect(page.getByRole('heading', { name: 'Pembayaran Berhasil' })).toBeVisible({ timeout: 10_000 })
 }
 
-async function typePin(dialog: ReturnType<Page['locator']>, pin: string) {
-  for (const d of pin.split('')) await dialog.getByRole('button', { name: d, exact: true }).click()
-  await dialog.getByRole('button', { name: 'Masuk' }).click()
-}
-
-test('pembatalan transaksi via UI (PIN admin): status void, pembayaran pembalik, audit log', async ({ page }) => {
+test('pembatalan transaksi via UI (admin, tanpa PIN ulang): status void, pembayaran pembalik, audit log', async ({ page }) => {
   test.slow()
   await completeOnboarding(page, { pin: PIN })
   await openShift(page)
@@ -41,11 +36,10 @@ test('pembatalan transaksi via UI (PIN admin): status void, pembayaran pembalik,
 
   const reason = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Batalkan Transaksi' }) })
   await reason.getByPlaceholder('Tulis alasan...').fill('uji pembatalan')
-  await reason.getByRole('button', { name: 'Lanjut' }).click()
-
-  const pinModal = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Konfirmasi Pembatalan' }) })
-  await typePin(pinModal, PIN)
-  await expect(pinModal).toBeHidden()
+  // Admin punya izin `order.void` → disetujui atas namanya sendiri, tanpa PIN ulang.
+  await reason.getByRole('button', { name: 'Batalkan', exact: true }).click()
+  await expect(reason).toBeHidden()
+  await expect.poll(async () => (await idbAll<{ status: string }>(page, 'orders'))[0]?.status).toBe('void')
 
   const orders = await idbAll<{ status: string; lifecycleStatus: string; voidReason: string | null }>(page, 'orders')
   expect(orders).toHaveLength(1)

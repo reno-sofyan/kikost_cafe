@@ -25,7 +25,7 @@ import { SplitBillModal } from '@/features/payments/SplitBillModal'
 import { PaymentProofCapture } from '@/features/payments/PaymentProofCapture'
 import { EMPTY_PROOF, isProofComplete, type PaymentProofDraft } from '@/features/payments/paymentProofDraft'
 import { warmUpStationPrinters } from '@/db/repositories/printQueue'
-import { featuresForBusinessType } from '@/lib/businessType'
+import { featuresForBusinessType, requiresPaymentProof } from '@/lib/businessType'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
 import type { Bill, Order, OrderItem, PaymentMethod, User } from '@/types/domain'
@@ -42,6 +42,9 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   card: 'Kartu',
 }
 
+const DEFAULT_METHODS: PaymentMethod[] = ['cash', 'qris', 'transfer', 'card']
+const NO_METHODS: PaymentMethod[] = []
+
 export function OrderPaymentScreen() {
   const { orderId } = useParams<{ orderId: string }>()
   const navigate = useNavigate()
@@ -50,8 +53,9 @@ export function OrderPaymentScreen() {
   const order = useLiveQuery(() => (orderId ? getOrder(orderId) : undefined), [orderId])
   const items = useLiveQuery(() => (orderId ? listOrderItems(orderId) : []), [orderId]) ?? []
   const allowPartial = useLiveQuery(async () => (await getSettings()).allowPartialPayment, []) ?? false
-  const requireProof =
-    useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).paymentProof, []) ?? false
+  const features = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType), [])
+  const paymentMethods = features?.paymentMethods ?? DEFAULT_METHODS
+  const proofMethods = features?.paymentProofMethods ?? NO_METHODS
   const bills = useLiveQuery(() => (orderId ? listOrderBills(orderId) : []), [orderId]) ?? []
 
   const [completed, setCompleted] = useState(false)
@@ -115,7 +119,8 @@ export function OrderPaymentScreen() {
                 bill={bill}
                 items={(bill.itemIds === 'all' ? activeItems : bill.itemIds.map((id) => itemById.get(id)).filter(Boolean) as OrderItem[])}
                 allowPartial={allowPartial}
-                requireProof={requireProof}
+                paymentMethods={paymentMethods}
+                proofMethods={proofMethods}
                 user={currentUser}
                 onCompleted={() => setCompleted(true)}
               />
@@ -126,7 +131,8 @@ export function OrderPaymentScreen() {
             order={order}
             items={activeItems}
             allowPartial={allowPartial}
-            requireProof={requireProof}
+            paymentMethods={paymentMethods}
+            proofMethods={proofMethods}
             user={currentUser}
             onPartial={() => navigate('/kasir')}
             onCompleted={() => setCompleted(true)}
@@ -147,7 +153,8 @@ function SingleBillPayment({
   order,
   items,
   allowPartial,
-  requireProof,
+  paymentMethods,
+  proofMethods,
   user,
   onPartial,
   onCompleted,
@@ -155,7 +162,8 @@ function SingleBillPayment({
   order: Order
   items: OrderItem[]
   allowPartial: boolean
-  requireProof: boolean
+  paymentMethods: PaymentMethod[]
+  proofMethods: PaymentMethod[]
   user: User
   onPartial: () => void
   onCompleted: () => void
@@ -185,9 +193,7 @@ function SingleBillPayment({
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
-        proof: isProofComplete(proof)
-          ? { photoDataUrls: proof.photos, noPhotoReason: proof.noPhotoReason ?? undefined, takenByUserId: user.id, takenByName: user.name }
-          : undefined,
+        proof: isProofComplete(proof) ? { photoDataUrls: proof.photos, takenByUserId: user.id, takenByName: user.name } : undefined,
       })
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()
       else onPartial()
@@ -202,6 +208,7 @@ function SingleBillPayment({
 
   const linesTotal = lines.reduce((sum, l) => sum + l.amount, 0)
   const remaining = Math.max(0, order.grandTotal - priorPaid - linesTotal)
+  const requireProof = requiresPaymentProof({ paymentProofMethods: proofMethods }, lines.map((l) => l.method))
   const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || isProofComplete(proof))
 
   return (
@@ -232,6 +239,7 @@ function SingleBillPayment({
         lines={lines}
         activeModal={activeModal}
         setActiveModal={setActiveModal}
+        methods={paymentMethods}
         addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
         removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
       />
@@ -247,7 +255,7 @@ function SingleBillPayment({
         <span className={`text-lg font-bold ${remaining > 0 ? 'text-brand-400' : 'text-success-500'}`}>{formatRupiah(remaining)}</span>
       </div>
 
-      {(requireProof || isProofComplete(proof)) && lines.length > 0 && (
+      {(proofMethods.length > 0 || isProofComplete(proof)) && lines.length > 0 && (
         <PaymentProofCapture draft={proof} onChange={setProof} required={requireProof} />
       )}
 
@@ -278,14 +286,16 @@ function BillPayCard({
   bill,
   items,
   allowPartial,
-  requireProof,
+  paymentMethods,
+  proofMethods,
   user,
   onCompleted,
 }: {
   bill: Bill
   items: OrderItem[]
   allowPartial: boolean
-  requireProof: boolean
+  paymentMethods: PaymentMethod[]
+  proofMethods: PaymentMethod[]
   user: User
   onCompleted: () => void
 }) {
@@ -298,6 +308,7 @@ function BillPayCard({
 
   const paid = bill.paymentStatus === 'PAID'
   const remaining = Math.max(0, bill.grandTotal - bill.amountPaid - lines.reduce((s, l) => s + l.amount, 0))
+  const requireProof = requiresPaymentProof({ paymentProofMethods: proofMethods }, lines.map((l) => l.method))
   const canSettle = lines.length > 0 && (remaining <= 0 || allowPartial) && (!requireProof || isProofComplete(proof))
 
   async function run(allowNegativeStock?: { approverUserId: string; approverName: string }) {
@@ -309,9 +320,7 @@ function BillPayCard({
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
-        proof: isProofComplete(proof)
-          ? { photoDataUrls: proof.photos, noPhotoReason: proof.noPhotoReason ?? undefined, takenByUserId: user.id, takenByName: user.name }
-          : undefined,
+        proof: isProofComplete(proof) ? { photoDataUrls: proof.photos, takenByUserId: user.id, takenByName: user.name } : undefined,
       })
       setLines([])
       setProof(EMPTY_PROOF)
@@ -352,10 +361,11 @@ function BillPayCard({
             lines={lines}
             activeModal={activeModal}
             setActiveModal={setActiveModal}
+            methods={paymentMethods}
             addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
           />
-          {(requireProof || isProofComplete(proof)) && lines.length > 0 && (
+          {(proofMethods.length > 0 || isProofComplete(proof)) && lines.length > 0 && (
             <PaymentProofCapture draft={proof} onChange={setProof} required={requireProof} />
           )}
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
@@ -383,6 +393,7 @@ function BillPayCard({
 // ---- Kontrol metode pembayaran (dipakai kedua mode) ----
 
 function PayControls({
+  methods,
   remaining,
   lines,
   activeModal,
@@ -390,6 +401,7 @@ function PayControls({
   addLine,
   removeLine,
 }: {
+  methods: PaymentMethod[]
   remaining: number
   lines: PaymentLine[]
   activeModal: PaymentMethod | null
@@ -399,8 +411,8 @@ function PayControls({
 }) {
   return (
     <>
-      <div className="mb-3 grid grid-cols-4 gap-2">
-        {(['cash', 'qris', 'transfer', 'card'] as PaymentMethod[]).map((method) => (
+      <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
+        {methods.map((method) => (
           <button key={method} disabled={remaining <= 0} onClick={() => setActiveModal(method)} className="btn-secondary !min-h-[2.75rem] !py-2 text-sm">
             {METHOD_LABELS[method]}
           </button>

@@ -101,6 +101,30 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   .loading { color: var(--ink-400); padding: 24px; text-align: center; }
   .empty { color: var(--ink-500); padding: 20px; text-align: center; font-size: .85rem; }
   .hide { display: none !important; }
+
+  /* Pembatalan */
+  .cancel-flag { color: var(--bad); }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { padding: 6px 12px; font-size: .8rem; }
+  .seg button.active { background: var(--brand-600); border-color: var(--brand-600); color: #fff; }
+  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .group h4 { margin: 0 0 8px; font-size: .72rem; color: var(--ink-400); text-transform: uppercase; letter-spacing: .4px; }
+  .group .gr { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; padding: 3px 0; }
+  .group .gr span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group .gr span:last-child { white-space: nowrap; color: var(--ink-200); }
+  .crow { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .crow .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .crow .no { font-weight: 600; }
+  .crow .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .crow .reason { margin: 6px 0; font-size: .85rem; color: var(--ink-50); }
+  .crow .who { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .76rem; color: var(--ink-400); }
+  .crow .who b { color: var(--ink-200); font-weight: 600; }
+  .tag.stage-paid { color: #fca5a5; border-color: #b91c1c; background: rgba(185,28,28,.15); }
+  .tag.stage-kitchen { color: #fcd34d; border-color: #b45309; }
+  .tag.stage-unprocessed { color: var(--ink-200); }
+  .tag.appr-owner { color: #93c5fd; border-color: #1d4ed8; }
 </style>
 </head>
 <body>
@@ -145,15 +169,19 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
       <div class="tabs">
         <button id="tabActivity" class="active" onclick="showTab('activity')">Log Aktivitas</button>
         <button id="tabOrders" onclick="showTab('orders')">Transaksi</button>
+        <button id="tabCancels" onclick="showTab('cancels')">Pembatalan</button>
       </div>
       <div id="paneActivity"></div>
       <div id="paneOrders" class="hide"></div>
+      <div id="paneCancels" class="hide"></div>
     </div>
   </aside>
 
 <script>
   const TK = 'kione_ops_token';
   let currentDetail = null;
+  let currentTenantId = null;
+  let cancelDays = 30;
 
   function token() { try { return sessionStorage.getItem(TK) || ''; } catch { return ''; } }
   function setToken(v) { try { v ? sessionStorage.setItem(TK, v) : sessionStorage.removeItem(TK); } catch {} }
@@ -183,9 +211,15 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   }
 
   async function api(path) {
-    const res = await fetch('/ops/api' + path, { headers: { Authorization: 'Bearer ' + token() } });
-    if (res.status === 401) { setToken(''); showGate('Token ditolak. Masuk lagi.'); throw new Error('401'); }
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    let res;
+    try {
+      res = await fetch('/ops/api' + path, { headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+    } catch {
+      throw new Error('Tidak bisa menghubungi server. Periksa koneksi internet.');
+    }
+    if (res.status === 401) { setToken(''); showGate('Token ditolak — tidak sama dengan OPS_TOKEN di server.'); throw new Error('401'); }
+    if (res.status === 429) throw new Error('Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.');
+    if (!res.ok) throw new Error('Server error (HTTP ' + res.status + '). Coba lagi atau periksa log backend.');
     return res.json();
   }
 
@@ -204,7 +238,17 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     const v = document.getElementById('token').value.trim();
     if (!v) return;
     setToken(v);
-    try { await load(); showApp(); } catch { /* showGate already handled on 401 */ }
+    const btn = document.querySelector('#gate button.primary');
+    btn.disabled = true; btn.textContent = 'Memeriksa…';
+    document.getElementById('gateErr').textContent = '';
+    try {
+      await load(); showApp();
+    } catch (e) {
+      // 401 sudah ditangani \`api()\` (kembali ke gerbang + pesan). Error lain jangan diam saja.
+      if (String(e.message) !== '401') { setToken(''); document.getElementById('gateErr').textContent = e.message; }
+    } finally {
+      btn.disabled = false; btn.textContent = 'Masuk';
+    }
   }
   function logout() { setToken(''); showGate(''); }
 
@@ -219,9 +263,10 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     document.getElementById('mainLoading').classList.add('hide');
     document.getElementById('updated').textContent = 'Diperbarui ' + fmtTime(data.generatedAt);
 
-    let totalToday = 0, totalTxns = 0, devOnline = 0, devTotal = 0, issues = 0;
+    let totalToday = 0, totalTxns = 0, devOnline = 0, devTotal = 0, issues = 0, cancelsToday = 0;
     for (const t of data.tenants) {
       totalToday += t.today.revenue; totalTxns += t.today.txns;
+      cancelsToday += (t.cancellations && t.cancellations.todayCount) || 0;
       devOnline += t.devices.online; devTotal += t.devices.total;
       if (t.health.pushRejected24h > 0) issues++;
     }
@@ -229,6 +274,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
       kpi('Tenant', data.tenantCount),
       kpi('Omzet hari ini', compact(totalToday)),
       kpi('Transaksi hari ini', totalTxns.toLocaleString('id-ID')),
+      kpi('Pembatalan hari ini', cancelsToday, cancelsToday ? 'var(--bad)' : null),
       kpi('Perangkat online', devOnline + ' / ' + devTotal),
       kpi('Tenant bermasalah', issues, issues ? 'var(--warn)' : null),
     ].join('');
@@ -271,6 +317,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
       '<div class="statline">' +
         '<div class="stat"><div class="k">Omzet hari ini</div><div class="v">' + compact(t.today.revenue) + '</div></div>' +
         '<div class="stat"><div class="k">Transaksi</div><div class="v">' + t.today.txns + '</div></div>' +
+        cancelStatHtml(t.cancellations) +
       '</div>' +
       sparkHtml(t.last7Days) +
       '<div style="display:flex;justify-content:space-between;align-items:center">' +
@@ -280,12 +327,21 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     '</button>';
   }
 
+  function cancelStatHtml(c) {
+    c = c || { todayCount: 0, todayValue: 0, last7DaysCount: 0 };
+    const cls = c.todayCount ? ' cancel-flag' : '';
+    return '<div class="stat" title="' + c.last7DaysCount + ' pembatalan dalam 7 hari"><div class="k">Batal hari ini</div>' +
+      '<div class="v' + cls + '">' + c.todayCount + (c.todayCount ? ' · ' + compact(c.todayValue) : '') + '</div></div>';
+  }
+
   async function openTenant(id, name, btLabel) {
+    currentTenantId = id;
     document.getElementById('dName').textContent = name;
     document.getElementById('dMeta').textContent = btLabel + ' · ' + id;
     document.getElementById('dKpis').innerHTML = '';
     document.getElementById('paneActivity').innerHTML = '<div class="loading">Memuat…</div>';
     document.getElementById('paneOrders').innerHTML = '';
+    document.getElementById('paneCancels').innerHTML = '';
     document.getElementById('overlay').classList.add('open');
     document.getElementById('drawer').classList.add('open');
     showTab('activity');
@@ -299,6 +355,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
       ].join('');
       renderActivity(d.auditLogs);
       renderOrders(d.orders);
+      loadCancels();
     } catch (e) {
       if (String(e.message) !== '401')
         document.getElementById('paneActivity').innerHTML = '<div class="empty">Gagal memuat detail.</div>';
@@ -309,11 +366,81 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     document.getElementById('drawer').classList.remove('open');
   }
   function showTab(which) {
-    const a = which === 'activity';
-    document.getElementById('tabActivity').classList.toggle('active', a);
-    document.getElementById('tabOrders').classList.toggle('active', !a);
-    document.getElementById('paneActivity').classList.toggle('hide', !a);
-    document.getElementById('paneOrders').classList.toggle('hide', a);
+    for (const [tab, pane, key] of [['tabActivity', 'paneActivity', 'activity'], ['tabOrders', 'paneOrders', 'orders'], ['tabCancels', 'paneCancels', 'cancels']]) {
+      document.getElementById(tab).classList.toggle('active', which === key);
+      document.getElementById(pane).classList.toggle('hide', which !== key);
+    }
+  }
+
+  const STAGE = {
+    paid: ['Sudah lunas · uang dikembalikan', 'stage-paid'],
+    kitchen: ['Sudah ke dapur', 'stage-kitchen'],
+    unprocessed: ['Belum diproses', 'stage-unprocessed'],
+  };
+  const APPROVAL = { owner_code: 'Kode Pemilik', supervisor: 'PIN Supervisor', self: 'Tanpa persetujuan' };
+
+  async function loadCancels(days) {
+    if (days) cancelDays = days;
+    const id = currentTenantId;
+    const pane = document.getElementById('paneCancels');
+    pane.innerHTML = '<div class="loading">Memuat…</div>';
+    try {
+      const d = await api('/tenant/' + encodeURIComponent(id) + '/cancellations?days=' + cancelDays);
+      if (id === currentTenantId) renderCancels(d);
+    } catch (e) {
+      if (String(e.message) !== '401') pane.innerHTML = '<div class="empty">Gagal memuat pembatalan.</div>';
+    }
+  }
+
+  function groupHtml(title, groups) {
+    const top = (groups || []).slice(0, 5);
+    return '<div class="group"><h4>' + esc(title) + '</h4>' +
+      (top.length
+        ? top.map((g) => '<div class="gr"><span>' + esc(g.name) + '</span><span>' + g.count + '× · ' + compact(g.value) + '</span></div>').join('')
+        : '<div class="muted">—</div>') +
+      '</div>';
+  }
+
+  function renderCancels(d) {
+    const seg = '<div class="seg">' + [7, 30, 90].map((n) =>
+      '<button class="' + (n === cancelDays ? 'active' : '') + '" onclick="loadCancels(' + n + ')">' + n + ' hari</button>').join('') + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Pembatalan ' + d.days + ' hari terakhir (pesanan kosong tidak dihitung)</span>' + seg + '</div>';
+    const t = d.totals;
+    const kpis = '<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">' + [
+      kpi('Jumlah batal', t.count, t.count ? 'var(--bad)' : null),
+      kpi('Nilai batal', compact(t.value)),
+      kpi('Setelah lunas · ' + compact(t.paidValue), t.paidCount, t.paidCount ? 'var(--bad)' : null),
+      kpi('Pakai kode Pemilik', t.ownerCodeCount),
+    ].join('') + '</div>';
+    if (!d.rows.length) {
+      document.getElementById('paneCancels').innerHTML = head + kpis + '<div class="empty">Tidak ada pembatalan pada periode ini.</div>';
+      return;
+    }
+    const groups = '<div class="groups">' +
+      groupHtml('Diminta oleh', d.byRequester) +
+      groupHtml('Disetujui oleh', d.byApprover) +
+      groupHtml('Alasan', d.byReason) +
+      '</div>';
+    const list = d.rows.map((r) => {
+      const st = STAGE[r.stage] || STAGE.unprocessed;
+      const label = (r.queueNumber ? '#' + r.queueNumber + ' · ' : '') + (r.orderNumber || '—') + (r.buyer ? ' · ' + r.buyer : '');
+      return '<div class="crow">' +
+        '<div class="top"><span class="no">' + esc(label) + '</span><span class="amt">' + rupiah(r.grandTotal) + '</span></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+          '<span class="tag ' + st[1] + '">' + st[0] + '</span>' +
+          (r.approval ? '<span class="tag' + (r.approval === 'owner_code' ? ' appr-owner' : '') + '">' + esc(APPROVAL[r.approval] || r.approval) + '</span>' : '') +
+          (r.payLater ? '<span class="tag open">Bill gantung</span>' : '') +
+        '</div>' +
+        '<div class="reason">' + esc(r.reason || '(tanpa alasan)') + '</div>' +
+        '<div class="who">' +
+          '<span>Dibatalkan <b>' + esc(fmtTime(r.voidedAt)) + '</b></span>' +
+          '<span>Diminta <b>' + esc(r.requestedBy || '—') + '</b></span>' +
+          '<span>Disetujui <b>' + esc(r.approvedBy || '—') + '</b></span>' +
+          '<span>Kasir pembuat <b>' + esc(r.cashierName || '—') + '</b></span>' +
+          '<span>Dibuat ' + esc(fmtTime(r.createdAt)) + '</span>' +
+        '</div></div>';
+    }).join('');
+    document.getElementById('paneCancels').innerHTML = head + kpis + groups + list;
   }
 
   function renderActivity(logs) {
@@ -347,7 +474,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
   // Auto-masuk bila token sudah tersimpan di sesi ini.
-  if (token()) { load().then(showApp).catch(() => showGate('')); } else { showGate(''); }
+  if (token()) { load().then(showApp).catch((e) => showGate(String(e.message) === '401' ? 'Token ditolak — tidak sama dengan OPS_TOKEN di server.' : e.message)); } else { showGate(''); }
 </script>
 </body>
 </html>

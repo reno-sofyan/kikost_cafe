@@ -2,6 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { recordAuditLog } from '@/db/repositories/auditLog'
+import { consumeCancelCodeInTx, isOwnerCancelRequired, OwnerApprovalRequiredError, type OwnerApproval } from '@/db/repositories/cancelCodes'
 import { addExpectedCash } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
 import { restockSaleStock } from '@/db/repositories/stock'
@@ -21,21 +22,26 @@ import { activePrinterForStation } from '@/db/repositories/printers'
 import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { getSettings } from '@/db/repositories/settings'
-import { featuresForBusinessType } from '@/lib/businessType'
+import { featuresForBusinessType, requiresPaymentProof } from '@/lib/businessType'
 import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, Refund, RefundReason, ReturnRecord } from '@/types/domain'
 
 export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError, PaymentProofRequiredError }
 export type { PaymentInput, PaymentProofInput }
 
 /**
- * Usaha dengan fitur `paymentProof` (kantin) WAJIB melampirkan foto bukti setiap
- * kali kasir membayar. Pembayaran online dari webhook gateway (tanpa kasir)
+ * Pembayaran kasir dengan metode di `paymentProofMethods` (kantin: QRIS) WAJIB
+ * melampirkan foto bukti. Pembayaran online dari webhook gateway (tanpa kasir)
  * melewati cek ini lewat `skipProofCheck`.
  */
-async function assertPaymentProof(params: { proof?: PaymentProofInput; skipProofCheck?: boolean }): Promise<void> {
+async function assertPaymentProof(params: {
+  payments: PaymentInput[]
+  proof?: PaymentProofInput
+  skipProofCheck?: boolean
+}): Promise<void> {
   if (params.skipProofCheck) return
   const settings = await getSettings()
-  if (featuresForBusinessType(settings.businessType).paymentProof && !hasPaymentProof(params.proof)) {
+  const features = featuresForBusinessType(settings.businessType)
+  if (requiresPaymentProof(features, params.payments.map((p) => p.method)) && !hasPaymentProof(params.proof)) {
     throw new PaymentProofRequiredError()
   }
 }
@@ -125,7 +131,8 @@ export async function payOrderBill(params: {
 }
 
 /**
- * Membatalkan seluruh transaksi (harus dengan PIN supervisor).
+ * Membatalkan seluruh transaksi (harus dengan PIN supervisor — atau, bila
+ * `ownerPinCancel` aktif (kantin), kode pembatalan sekali pakai dari Pemilik).
  * - Order yang sudah dibayar: buat pembayaran pembalik (amount negatif) untuk tiap
  *   pembayaran asli, sesuaikan kas shift, dan (opsional) kembalikan stok.
  * - Stok TIDAK otomatis dikembalikan kecuali `restock: true`.
@@ -136,14 +143,20 @@ export async function voidOrder(params: {
   approverUserId: string
   approverName: string
   restock?: boolean
+  ownerApproval?: OwnerApproval
+  /** Kasir yang meminta pembatalan (bisa berbeda dari penyetuju). */
+  requestedBy?: { userId: string; userName: string }
 }): Promise<void> {
+  if (!params.reason.trim()) throw new Error('Alasan pembatalan wajib diisi')
+  if (!params.ownerApproval && (await isOwnerCancelRequired())) throw new OwnerApprovalRequiredError()
   await db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.payments, db.refunds, db.shifts, db.cashMovements, db.syncQueue, db.auditLogs],
+    [db.orders, db.orderItems, db.bills, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.payments, db.refunds, db.shifts, db.cashMovements, db.cancelCodes, db.syncQueue, db.auditLogs],
     async () => {
       const order = await db.orders.get(params.orderId)
       if (!order) throw new Error('Pesanan tidak ditemukan')
       if (order.status === 'void') throw new Error('Pesanan sudah dibatalkan sebelumnya')
+      if (params.ownerApproval) await consumeCancelCodeInTx(params.ownerApproval)
       const now = getTrustedNow()
       const wasPaid = order.status === 'paid' || order.status === 'completed'
 
@@ -180,6 +193,9 @@ export async function voidOrder(params: {
         voidReason: params.reason,
         voidedBy: params.approverUserId,
         voidedAt: now,
+        voidedByName: params.approverName,
+        voidRequestedByName: params.requestedBy?.userName ?? null,
+        voidApproval: params.ownerApproval ? 'owner_code' : 'supervisor',
       })
       for (const b of await db.bills.where('orderId').equals(order.id).toArray()) {
         await db.bills.update(b.id, { paymentStatus: 'VOIDED', updatedAt: now })
@@ -206,7 +222,10 @@ export async function voidOrder(params: {
         action: 'order.void',
         entityType: 'order',
         entityId: order.id,
-        details: `Pesanan ${order.orderNumber} dibatalkan. Alasan: ${params.reason}`,
+        details:
+          `Pesanan ${order.orderNumber} dibatalkan. Alasan: ${params.reason}` +
+          (params.requestedBy ? ` • Diminta oleh: ${params.requestedBy.userName}` : '') +
+          (params.ownerApproval ? ' • Disetujui Pemilik (kode sekali pakai)' : ''),
       })
     },
   )

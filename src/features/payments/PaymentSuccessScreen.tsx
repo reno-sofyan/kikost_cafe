@@ -56,6 +56,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         <div className="rounded-2xl border border-brand-500/30 bg-brand-600/12 px-8 py-3">
           <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Nomor Antrean</p>
           <p className="text-5xl font-bold text-ink-50">#{order.queueNumber}</p>
+          {order.notes ? <p className="mt-1 text-lg font-semibold text-ink-200">{order.notes}</p> : null}
         </div>
       ) : null}
       <p className="text-ink-400">Transaksi {order.orderNumber}</p>
