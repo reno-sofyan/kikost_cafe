@@ -592,6 +592,14 @@ export interface OrderItem {
   skipKitchen?: boolean
   /** Soft-delete: item dihapus sebelum dikirim ke dapur (menggantikan hard delete). */
   removed: boolean
+  /** Alasan & pelaku penghapusan item (kantin, sejak v1.0.14). Kosong = data lama. */
+  removedReason?: string | null
+  removedByName?: string | null
+  removedAt?: number | null
+  /** `owner_code` = ikut "Kosongkan" yang disetujui kode Pemilik; `reason` = hapus biasa dengan alasan. */
+  removedApproval?: 'reason' | 'owner_code' | null
+  /** Akumulasi nilai (Rp) yang hilang karena qty item ini dikurangi — jejak koreksi. */
+  reducedValue?: number
   /** Waktu item ini dicetak ke tiket dapur/bar. Item tambahan (belum tercetak) tak
    *  memicu cetak ulang seluruh pesanan. */
   kitchenPrintedAt: number | null

@@ -9,7 +9,7 @@ import { getOpenShift } from '@/db/repositories/shifts'
 import { getSettings } from '@/db/repositories/settings'
 import {
   addOrderItem,
-  cancelEmptyOrder,
+  clearOrderItems,
   cancelUnsentOrder,
   getOrder,
   isItemSentToKitchen,
@@ -24,7 +24,7 @@ import {
 import { canFulfillProductQty } from '@/db/repositories/stock'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { voidOrder } from '@/db/repositories/checkout'
-import { ORDER_CANCEL_REASONS } from '@/lib/orderState'
+import { ITEM_CORRECTION_REASONS, ORDER_CANCEL_REASONS } from '@/lib/orderState'
 import { usePosStore } from '@/state/posStore'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
@@ -35,6 +35,7 @@ import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { PayLaterModal } from '@/features/pos/PayLaterModal'
+import { useEmptyOrderCancel } from '@/features/pos/useEmptyOrderCancel'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
@@ -62,6 +63,10 @@ export function CashierScreen() {
   const [showOpenBills, setShowOpenBills] = useState(false)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showPayLater, setShowPayLater] = useState(false)
+  /** Kantin: kurangi/hapus item butuh alasan. `nextQty` 0 = hapus. */
+  const [itemCorrection, setItemCorrection] = useState<{ item: OrderItem; nextQty: number } | null>(null)
+  const [clearFlow, setClearFlow] = useState<null | { step: 'reason' } | { step: 'owner'; reason: string }>(null)
+  const cancelEmpty = useEmptyOrderCancel(() => setActiveOrderId(null))
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [removeReasonFor, setRemoveReasonFor] = useState<OrderItem | null>(null)
@@ -198,6 +203,11 @@ export function CashierScreen() {
 
   async function handleClearCart() {
     if (!activeOrderId) return
+    // Kantin: kosongkan = alasan + kode Pemilik (lihat clearOrderItems).
+    if (features.ownerPinCancel) {
+      setClearFlow({ step: 'reason' })
+      return
+    }
     if (!(await confirm({ title: 'Kosongkan Keranjang?', description: 'Semua item pada pesanan ini akan dihapus. Tindakan ini tidak dapat dibatalkan.', confirmLabel: 'Ya, Kosongkan', tone: 'danger' }))) {
       return
     }
@@ -212,6 +222,32 @@ export function CashierScreen() {
     }
   }
 
+  async function handleClearApproved(reason: string, approval: OwnerApproval) {
+    if (!activeOrderId) return
+    setClearFlow(null)
+    try {
+      const n = await clearOrderItems(activeOrderId, reason, { userId: currentUser.id, userName: currentUser.name }, approval)
+      toast.success(`${n} item dihapus dari keranjang.`)
+      if (activeItems.some((i) => i.kitchenStatus !== 'new')) {
+        toast.error('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal mengosongkan keranjang')
+    }
+  }
+
+  /** Kantin: terapkan koreksi item (kurangi/hapus) setelah alasan diisi. */
+  async function applyItemCorrection(item: OrderItem, nextQty: number, reason: string) {
+    setItemCorrection(null)
+    const correction = { reason, actor: { userId: currentUser.id, userName: currentUser.name } }
+    try {
+      if (nextQty <= 0) await removeOrderItem(item.id, correction)
+      else await updateOrderItemQty(item.id, nextQty, correction)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal mengubah item')
+    }
+  }
+
   /**
    * Batalkan pesanan aktif (belum dibayar). Kosong → langsung; belum ada item di
    * dapur → kasir cukup isi alasan; sudah di dapur → butuh persetujuan supervisor.
@@ -219,19 +255,7 @@ export function CashierScreen() {
   async function handleCancelOrderClick() {
     if (!order) return
     if (activeItems.length === 0) {
-      const ok = await confirm({
-        title: 'Batalkan Pesanan Kosong?',
-        description: `Pesanan ${order.orderNumber} belum berisi item dan akan dibatalkan.`,
-        confirmLabel: 'Ya, Batalkan',
-        tone: 'danger',
-      })
-      if (!ok) return
-      try {
-        await cancelEmptyOrder(order.id, { userId: currentUser.id, userName: currentUser.name })
-        setActiveOrderId(null)
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
-      }
+      await cancelEmpty.start(order)
       return
     }
     setCancelOrderFlow({ step: 'reason' })
@@ -326,7 +350,11 @@ export function CashierScreen() {
       return
     }
     if (editingItem) {
-      await updateOrderItemQty(editingItem.id, params.qty)
+      if (features.ownerPinCancel && params.qty < editingItem.qty) {
+        setItemCorrection({ item: editingItem, nextQty: params.qty })
+      } else {
+        await updateOrderItemQty(editingItem.id, params.qty)
+      }
     } else {
       await addOrderItem({
         orderId: activeOrderId,
@@ -346,10 +374,15 @@ export function CashierScreen() {
     const nextQty = item.qty + delta
     if (nextQty <= 0) {
       if (item.kitchenStatus === 'new') {
-        await removeOrderItem(item.id)
+        if (features.ownerPinCancel) setItemCorrection({ item, nextQty: 0 })
+        else await removeOrderItem(item.id)
       } else {
         setRemoveReasonFor(item)
       }
+      return
+    }
+    if (features.ownerPinCancel && delta < 0) {
+      setItemCorrection({ item, nextQty })
       return
     }
     await updateOrderItemQty(item.id, nextQty)
@@ -691,6 +724,39 @@ export function CashierScreen() {
           onApproved={(approval) => void handleCancelOwnerApproved(approval, cancelOrderFlow.reason)}
         />
       )}
+      {itemCorrection && (
+        <ReasonPromptModal
+          title={
+            itemCorrection.nextQty <= 0
+              ? `Hapus ${itemCorrection.item.productName}`
+              : `Kurangi ${itemCorrection.item.productName} (${itemCorrection.item.qty} → ${itemCorrection.nextQty})`
+          }
+          description="Alasan wajib diisi — tercatat bersama nama Anda."
+          presets={ITEM_CORRECTION_REASONS}
+          confirmLabel={itemCorrection.nextQty <= 0 ? 'Hapus Item' : 'Kurangi'}
+          onCancel={() => setItemCorrection(null)}
+          onConfirm={(reason) => void applyItemCorrection(itemCorrection.item, itemCorrection.nextQty, reason)}
+        />
+      )}
+      {clearFlow?.step === 'reason' && order && (
+        <ReasonPromptModal
+          title={`Kosongkan Keranjang ${order.orderNumber}`}
+          description="Semua item yang belum ke dapur akan dihapus. Alasan wajib diisi dan butuh kode sekali pakai dari Pemilik."
+          presets={ITEM_CORRECTION_REASONS}
+          confirmLabel="Lanjut ke Kode Pemilik"
+          onCancel={() => setClearFlow(null)}
+          onConfirm={(reason) => setClearFlow({ step: 'owner', reason })}
+        />
+      )}
+      {clearFlow?.step === 'owner' && order && (
+        <OwnerCancelCodeModal
+          title={`Kosongkan ${order.orderNumber}`}
+          description={`Alasan: ${clearFlow.reason}`}
+          onCancel={() => setClearFlow(null)}
+          onApproved={(approval) => void handleClearApproved(clearFlow.reason, approval)}
+        />
+      )}
+      {cancelEmpty.dialogs}
       {confirmDialog}
     </div>
   )

@@ -49,9 +49,20 @@ const GRAND_TOTAL = `coalesce(${numField('grandTotal')}, 0)`
 
 /** Waktu batal (epoch ms) sebuah order di payload; data lama tanpa `voidedAt` → `updatedAt`. */
 const VOIDED_AT_SQL = `coalesce(${numField('voidedAt')}, ${numField('updatedAt')})`
-/** Pesanan batal yang dihitung: berstatus void & bernilai (pesanan kosong Rp0 diabaikan). */
-const COUNTED_CANCEL_SQL = `entity = 'orders' AND deleted = FALSE AND payload->>'status' = 'void'
-            AND ${GRAND_TOTAL} > 0`
+/**
+ * Pesanan batal yang dihitung: SEMUA yang berstatus void — termasuk Rp0, karena
+ * "kosongkan dulu lalu batalkan sebagai pesanan kosong" justru jalur yang harus terlihat.
+ */
+const COUNTED_CANCEL_SQL = `entity = 'orders' AND deleted = FALSE AND payload->>'status' = 'void'`
+/** Nilai item yang dihapus/di-void + pengurangan qty pada satu pesanan (subquery berkorelasi ke `c.id`). */
+const CORRECTED_VALUE_SQL = `(SELECT coalesce(sum(
+      CASE WHEN i.payload->>'removed' = 'true' OR i.payload->>'voided' = 'true'
+           THEN coalesce(CASE WHEN jsonb_typeof(i.payload->'lineTotal') = 'number' THEN (i.payload->>'lineTotal')::numeric END, 0)
+           ELSE 0 END
+      + coalesce(CASE WHEN jsonb_typeof(i.payload->'reducedValue') = 'number' THEN (i.payload->>'reducedValue')::numeric END, 0)), 0)
+     FROM sync_entity_state i
+    WHERE i.tenant_id = c.tenant_id AND i.entity = 'orderItems' AND i.deleted = FALSE
+      AND i.payload->>'orderId' = c.id)`
 
 const num = (v: unknown): number => {
   const n = Number(v)
@@ -144,18 +155,23 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       pool.query<{ tenant_id: string; today_count: string; today_value: string; week_count: string; week_value: string }>(
         `SELECT tenant_id,
                 count(*) FILTER (WHERE is_today)                AS today_count,
-                coalesce(sum(total) FILTER (WHERE is_today), 0) AS today_value,
+                coalesce(sum(value) FILTER (WHERE is_today), 0) AS today_value,
                 count(*)                                        AS week_count,
-                coalesce(sum(total), 0)                         AS week_value
+                coalesce(sum(value), 0)                         AS week_value
            FROM (
+             SELECT c.tenant_id, c.is_today,
+                    CASE WHEN c.total > 0 THEN c.total ELSE ${CORRECTED_VALUE_SQL} END AS value
+               FROM (
              SELECT tenant_id,
+                    payload->>'id' AS id,
                     ${GRAND_TOTAL} AS total,
                     (${tsOf(VOIDED_AT_SQL)} AT TIME ZONE 'Asia/Jakarta')::date
                       = (now() AT TIME ZONE 'Asia/Jakarta')::date AS is_today
                FROM sync_entity_state
               WHERE ${COUNTED_CANCEL_SQL}
                 AND ${tsOf(VOIDED_AT_SQL)} > now() - interval '7 days'
-           ) c
+               ) c
+           ) v
           GROUP BY tenant_id`,
       ),
     ])
@@ -328,15 +344,23 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
         [tenantId, since],
       )
       const orderIds = orders.rows.map((r) => String(r.payload.id ?? ''))
-      const audits = orderIds.length
-        ? await pool.query<{ payload: Record<string, unknown> }>(
-            `SELECT payload FROM sync_entity_state
-              WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
-                AND payload->>'action' IN ('order.cancel', 'order.void')
-                AND payload->>'entityId' = ANY($2::text[])`,
-            [tenantId, orderIds],
-          )
-        : { rows: [] }
+      const [audits, items] = orderIds.length
+        ? await Promise.all([
+            pool.query<{ payload: Record<string, unknown> }>(
+              `SELECT payload FROM sync_entity_state
+                WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
+                  AND payload->>'action' IN ('order.cancel', 'order.cancelEmpty', 'order.void')
+                  AND payload->>'entityId' = ANY($2::text[])`,
+              [tenantId, orderIds],
+            ),
+            pool.query<{ payload: Record<string, unknown> }>(
+              `SELECT payload FROM sync_entity_state
+                WHERE tenant_id = $1 AND entity = 'orderItems' AND deleted = FALSE
+                  AND payload->>'orderId' = ANY($2::text[])`,
+              [tenantId, orderIds],
+            ),
+          ])
+        : [{ rows: [] }, { rows: [] }]
 
       return {
         tenantId,
@@ -344,6 +368,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
           days,
           orders.rows.map((r) => r.payload),
           audits.rows.map((r) => r.payload),
+          items.rows.map((r) => r.payload),
         ),
       }
     },

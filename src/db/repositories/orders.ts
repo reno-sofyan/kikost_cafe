@@ -198,15 +198,42 @@ export async function countActiveOrderItems(orderId: string): Promise<number> {
 }
 
 /**
+ * Apa yang dibutuhkan untuk membatalkan pesanan kosong. Kantin (`ownerPinCancel`):
+ * pesanan yang PERNAH berisi item wajib alasan, dan wajib kode Pemilik bila ada
+ * item yang dihapus tanpa persetujuan Pemilik — menutup celah "kosongkan dulu,
+ * lalu batalkan sebagai pesanan kosong" tanpa jejak.
+ */
+export async function emptyOrderCancelRequirements(
+  orderId: string,
+): Promise<{ hadItems: boolean; needsReason: boolean; needsOwnerCode: boolean }> {
+  const items = await db.orderItems.where('orderId').equals(orderId).toArray()
+  const hadItems = items.length > 0
+  if (!(await isOwnerCancelRequired())) return { hadItems, needsReason: false, needsOwnerCode: false }
+  return {
+    hadItems,
+    needsReason: hadItems,
+    needsOwnerCode: items.some((i) => (i.removed || i.voided) && i.removedApproval !== 'owner_code'),
+  }
+}
+
+/**
  * Membatalkan pesanan terbuka yang TIDAK punya item aktif — mis. dibuka lalu
  * tak jadi dipakai, atau semua itemnya dihapus/dibatalkan. Pesanan kosong ini
  * tetap berstatus `open` dan ikut memblokir penutupan shift
  * (`closeShift` di shifts.ts) sampai dibatalkan lewat sini. Melepas meja bila
  * dine-in. Pesanan yang masih punya item harus dibatalkan lewat `voidOrder`
- * (butuh persetujuan supervisor).
+ * (butuh persetujuan supervisor). Kantin: lihat `emptyOrderCancelRequirements`.
  */
-export async function cancelEmptyOrder(orderId: string, actor: { userId: string; userName: string }): Promise<void> {
-  await db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.auditLogs], async () => {
+export async function cancelEmptyOrder(
+  orderId: string,
+  actor: { userId: string; userName: string },
+  opts: { reason?: string; ownerApproval?: OwnerApproval } = {},
+): Promise<void> {
+  const req = await emptyOrderCancelRequirements(orderId)
+  const reason = opts.reason?.trim() ?? ''
+  if (req.needsReason && !reason) throw new Error('Alasan pembatalan wajib diisi')
+  if (req.needsOwnerCode && !opts.ownerApproval) throw new OwnerApprovalRequiredError()
+  await db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.cancelCodes, db.syncQueue, db.auditLogs], async () => {
     const order = await db.orders.get(orderId)
     if (!order) throw new Error('Pesanan tidak ditemukan')
     if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
@@ -218,14 +245,24 @@ export async function cancelEmptyOrder(orderId: string, actor: { userId: string;
     if (activeItemCount > 0) {
       throw new Error('Pesanan masih berisi item. Kosongkan keranjang atau batalkan lewat menu Void (supervisor) dahulu.')
     }
-    await closeOpenOrder(order, 'Pesanan kosong dibatalkan', { approverId: actor.userId, approverName: actor.userName, requestedByName: actor.userName, approval: 'self' })
+    if (opts.ownerApproval) await consumeCancelCodeInTx(opts.ownerApproval)
+    await closeOpenOrder(order, reason || 'Pesanan kosong dibatalkan', {
+      approverId: opts.ownerApproval?.approverUserId ?? actor.userId,
+      approverName: opts.ownerApproval?.approverName ?? actor.userName,
+      requestedByName: actor.userName,
+      approval: opts.ownerApproval ? 'owner_code' : 'self',
+    })
     await recordAuditLog({
       userId: actor.userId,
       userName: actor.userName,
       action: 'order.cancelEmpty',
       entityType: 'order',
       entityId: orderId,
-      details: `Pesanan kosong ${order.orderNumber} dibatalkan (tidak ada item).`,
+      details:
+        (req.hadItems
+          ? `Pesanan ${order.orderNumber} (semua item sudah dihapus) dibatalkan. Alasan: ${reason || '-'}`
+          : `Pesanan kosong ${order.orderNumber} dibatalkan (tidak ada item).`) +
+        (opts.ownerApproval ? ` • Disetujui Pemilik: ${opts.ownerApproval.approverName} (kode sekali pakai)` : ''),
     })
   })
 }
@@ -437,20 +474,61 @@ export async function addOrderItem(params: {
   return item
 }
 
-export async function updateOrderItemQty(itemId: string, qty: number): Promise<void> {
+/**
+ * Koreksi item (kantin, `ownerPinCancel`): menghapus atau MENGURANGI item wajib
+ * alasan, tercatat di item & log aktivitas (terlihat di konsol /ops). Menambah
+ * qty tetap bebas.
+ */
+export interface ItemCorrection {
+  reason: string
+  actor: { userId: string; userName: string }
+}
+
+export class ItemCorrectionReasonRequiredError extends Error {
+  constructor() {
+    super('Alasan wajib diisi untuk menghapus atau mengurangi item.')
+    this.name = 'ItemCorrectionReasonRequiredError'
+  }
+}
+
+async function assertCorrectionReason(correction: ItemCorrection | undefined): Promise<void> {
+  if (correction?.reason.trim()) return
+  if (await isOwnerCancelRequired()) throw new ItemCorrectionReasonRequiredError()
+}
+
+export async function updateOrderItemQty(itemId: string, qty: number, correction?: ItemCorrection): Promise<void> {
   const item = await db.orderItems.get(itemId)
   if (!item) return
+  const reducing = qty < item.qty
+  if (reducing) await assertCorrectionReason(correction)
   const lineTotal = computeLineTotal({
     unitPrice: item.unitPrice,
     qty,
     modifiers: item.modifiers,
     discountAmount: item.discountAmount,
   })
-  await db.transaction('rw', db.orderItems, db.orders, db.syncQueue, db.settings, async () => {
-    await db.orderItems.update(itemId, { qty, lineTotal, updatedAt: getTrustedNow() })
+  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.auditLogs], async () => {
+    const lost = Math.max(0, item.lineTotal - lineTotal)
+    await db.orderItems.update(itemId, {
+      qty,
+      lineTotal,
+      updatedAt: getTrustedNow(),
+      ...(reducing ? { reducedValue: (item.reducedValue ?? 0) + lost } : {}),
+    })
     const updated = await db.orderItems.get(itemId)
     if (updated) await enqueueSync('orderItems', itemId, updated)
     await recalcOrderTotals(item.orderId)
+    if (reducing && correction?.reason.trim()) {
+      const order = await db.orders.get(item.orderId)
+      await recordAuditLog({
+        userId: correction.actor.userId,
+        userName: correction.actor.userName,
+        action: 'order.item_reduce',
+        entityType: 'order',
+        entityId: item.orderId,
+        details: `"${item.productName}" dikurangi ${item.qty} → ${qty} (−Rp${lost}) di ${order?.orderNumber ?? 'pesanan'}. Alasan: ${correction.reason.trim()}`,
+      })
+    }
   })
 }
 
@@ -476,14 +554,89 @@ export async function setOrderItemDiscount(itemId: string, discountAmount: numbe
  * bukan hard delete — supaya penghapusan terwakili di sinkronisasi dan tak ada
  * data transaksi yang lenyap tanpa jejak.
  */
-export async function removeOrderItem(itemId: string): Promise<void> {
+export async function removeOrderItem(itemId: string, correction?: ItemCorrection): Promise<void> {
   const item = await db.orderItems.get(itemId)
   if (!item || item.removed) return
-  await db.transaction('rw', db.orderItems, db.orders, db.syncQueue, db.settings, async () => {
-    await db.orderItems.update(itemId, { removed: true, updatedAt: getTrustedNow() })
+  await assertCorrectionReason(correction)
+  const reason = correction?.reason.trim() || null
+  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.auditLogs], async () => {
+    const now = getTrustedNow()
+    await db.orderItems.update(itemId, {
+      removed: true,
+      updatedAt: now,
+      ...(reason
+        ? { removedReason: reason, removedByName: correction!.actor.userName, removedAt: now, removedApproval: 'reason' as const }
+        : {}),
+    })
     const updated = await db.orderItems.get(itemId)
     if (updated) await enqueueSync('orderItems', itemId, updated)
     await recalcOrderTotals(item.orderId)
+    if (reason) {
+      const order = await db.orders.get(item.orderId)
+      await recordAuditLog({
+        userId: correction!.actor.userId,
+        userName: correction!.actor.userName,
+        action: 'order.item_remove',
+        entityType: 'order',
+        entityId: item.orderId,
+        details: `"${item.productName}" ×${item.qty} (Rp${item.lineTotal}) dihapus dari ${order?.orderNumber ?? 'pesanan'}. Alasan: ${reason}`,
+      })
+    }
+  })
+}
+
+/**
+ * "Kosongkan" (kantin): hapus semua item yang belum ke dapur sekaligus — wajib
+ * alasan + kode Pemilik (dihanguskan di transaksi yang sama). Item ditandai
+ * `removedApproval: 'owner_code'`, jadi membatalkan pesanan kosongnya setelah ini
+ * cukup dengan alasan.
+ */
+export async function clearOrderItems(
+  orderId: string,
+  reason: string,
+  actor: { userId: string; userName: string },
+  ownerApproval?: OwnerApproval,
+): Promise<number> {
+  const trimmed = reason.trim()
+  if (!trimmed) throw new ItemCorrectionReasonRequiredError()
+  if (!ownerApproval && (await isOwnerCancelRequired())) throw new OwnerApprovalRequiredError()
+  return db.transaction('rw', [db.orders, db.orderItems, db.cancelCodes, db.syncQueue, db.settings, db.auditLogs], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
+    const items = await db.orderItems
+      .where('orderId')
+      .equals(orderId)
+      .filter((i) => !i.removed && !i.voided && i.kitchenStatus === 'new')
+      .toArray()
+    if (items.length === 0) return 0
+    if (ownerApproval) await consumeCancelCodeInTx(ownerApproval)
+    const now = getTrustedNow()
+    for (const item of items) {
+      await db.orderItems.update(item.id, {
+        removed: true,
+        removedReason: trimmed,
+        removedByName: actor.userName,
+        removedAt: now,
+        removedApproval: ownerApproval ? 'owner_code' : 'reason',
+        updatedAt: now,
+      })
+      const updated = await db.orderItems.get(item.id)
+      if (updated) await enqueueSync('orderItems', item.id, updated)
+    }
+    await recalcOrderTotals(orderId)
+    const value = items.reduce((s, i) => s + i.lineTotal, 0)
+    await recordAuditLog({
+      userId: actor.userId,
+      userName: actor.userName,
+      action: 'order.clear',
+      entityType: 'order',
+      entityId: orderId,
+      details:
+        `Keranjang ${order.orderNumber} dikosongkan (${items.length} item, Rp${value}). Alasan: ${trimmed}` +
+        (ownerApproval ? ` • Disetujui Pemilik: ${ownerApproval.approverName} (kode sekali pakai)` : ''),
+    })
+    return items.length
   })
 }
 

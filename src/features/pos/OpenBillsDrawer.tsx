@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { cancelEmptyOrder, listOpenOrders, listOrderItems } from '@/db/repositories/orders'
-import { useSessionStore } from '@/state/sessionStore'
+import { listOpenOrders, listOrderItems } from '@/db/repositories/orders'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince, formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
-import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
-import { toast } from '@/state/toastStore'
+import { useEmptyOrderCancel } from '@/features/pos/useEmptyOrderCancel'
 import type { Order } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
@@ -25,8 +23,7 @@ interface Props {
 
 export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Props) {
   const allOpen = useLiveQuery(() => listOpenOrders(), []) ?? []
-  const currentUser = useSessionStore((s) => s.currentUser)!
-  const { confirm, dialog: confirmDialog } = useConfirmDialog()
+  const cancelEmpty = useEmptyOrderCancel()
   const [tab, setTab] = useState<'open' | 'payLater'>('open')
   const payLaterOrders = showPayLater ? allOpen.filter((o) => o.payLater) : []
   const openOrders = showPayLater && tab === 'payLater' ? payLaterOrders : allOpen.filter((o) => !showPayLater || !o.payLater)
@@ -66,25 +63,12 @@ export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Pro
                 key={order.id}
                 order={order}
                 onSelect={() => onSelect(order.id)}
-                onCancel={async () => {
-                  const ok = await confirm({
-                    title: 'Batalkan Pesanan Kosong?',
-                    description: `Pesanan ${order.orderNumber} belum berisi item dan akan dibatalkan. Meja (bila ada) akan dilepas.`,
-                    confirmLabel: 'Ya, Batalkan',
-                    tone: 'danger',
-                  })
-                  if (!ok) return
-                  try {
-                    await cancelEmptyOrder(order.id, { userId: currentUser.id, userName: currentUser.name })
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
-                  }
-                }}
+                onCancel={() => void cancelEmpty.start(order)}
               />
             ))}
           </div>
         </div>
-        {confirmDialog}
+        {cancelEmpty.dialogs}
     </Modal>
   )
 }

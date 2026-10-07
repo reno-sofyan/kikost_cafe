@@ -48,7 +48,10 @@ Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/
 Ringkasan (`/summary`) menyertakan `cancellations` per tenant (jumlah & nilai hari ini dan 7 hari);
 dashboard menampilkannya sebagai "Batal hari ini" di kartu tenant dan tab **Pembatalan** di detail.
 
-- Yang dihitung: pesanan berstatus `void` dengan nilai > 0. Pesanan kosong (Rp0) diabaikan.
+- Yang dihitung: SEMUA pesanan berstatus `void`, termasuk Rp0. Pesanan yang **dikosongkan dulu** (item
+  dihapus) lalu dibatalkan sebagai pesanan kosong ditandai khusus; nilainya = total item yang dihapus, dan
+  daftar item yang dihapus/dikurangi (beserta alasan & pelaku sejak app v1.0.14) ikut ditampilkan dari
+  entitas `orderItems` (`removed`, `voided`, `removedReason`, `removedByName`, `removedApproval`, `reducedValue`).
 - **Tahap** saat batal: `paid` (sudah lunas, uang dikembalikan), `kitchen` (sudah dikonfirmasi/ke dapur), `unprocessed` (masih draft).
 - **Peminta / penyetuju / cara persetujuan** dibaca dari field order `voidRequestedByName`, `voidedByName`,
   `voidApproval` (`self` | `supervisor` | `owner_code`) yang diisi app sejak v1.0.13. Untuk data lama,

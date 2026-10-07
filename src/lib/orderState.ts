@@ -78,3 +78,6 @@ export function deriveKitchenPhase(
 
 /** Alasan pembatalan pesanan yang umum — dipakai sebagai pilihan cepat. */
 export const ORDER_CANCEL_REASONS = ['Salah input', 'Pembeli tidak jadi', 'Menu habis', 'Komplain pembeli']
+
+/** Alasan umum menghapus/mengurangi item (kantin) — pilihan cepat. */
+export const ITEM_CORRECTION_REASONS = ['Salah tap/input', 'Pembeli ganti menu', 'Menu habis', 'Pembeli batal sebagian']

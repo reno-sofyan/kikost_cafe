@@ -35,19 +35,41 @@ describe('describeCancellation', () => {
 })
 
 describe('buildCancellationReport', () => {
-  it('mengabaikan pesanan kosong Rp0, menjumlah, dan mengelompokkan', () => {
+  it('menghitung semua pembatalan, termasuk yang dikosongkan dulu (nilai = item yang dihapus)', () => {
     const report = buildCancellationReport(
       30,
       [
         { ...base, id: 'a', voidedAt: 10, paidAt: 3, voidReason: 'Salah input', voidRequestedByName: 'Kasir A', voidedByName: 'Bu Sari', voidApproval: 'owner_code' },
         { ...base, id: 'b', voidedAt: 20, grandTotal: 5000, lifecycleStatus: 'CANCELLED', voidReason: 'Salah input', voidRequestedByName: 'Kasir A', voidedByName: 'Kasir A', voidApproval: 'self' },
-        { ...base, id: 'c', voidedAt: 30, grandTotal: 0, voidReason: 'Pesanan kosong dibatalkan' },
+        { ...base, id: 'c', voidedAt: 30, grandTotal: 0, lifecycleStatus: 'CANCELLED', voidReason: 'Pesanan kosong dibatalkan' },
+        { ...base, id: 'd', voidedAt: 40, grandTotal: 0, lifecycleStatus: 'CANCELLED', voidReason: 'Pesanan kosong dibatalkan' },
       ],
-      [],
+      [{ action: 'order.cancelEmpty', entityId: 'c', userName: 'Kasir B', details: 'Pesanan kosong dibatalkan' }],
+      [
+        { orderId: 'c', productName: 'Nasi Goreng', qty: 2, lineTotal: 30000, removed: true, updatedAt: 25 },
+        { orderId: 'c', productName: 'Es Teh', qty: 1, lineTotal: 5000, removed: true, removedReason: 'Salah tap', removedByName: 'Kasir B', removedAt: 26 },
+        { orderId: 'a', productName: 'Mie', qty: 1, lineTotal: 20000, removed: false, reducedValue: 4000 },
+      ],
     )
-    expect(report.totals).toEqual({ count: 2, value: 25000, paidCount: 1, paidValue: 20000, ownerCodeCount: 1 })
-    expect(report.rows.map((r) => r.orderId)).toEqual(['b', 'a'])
-    expect(report.byRequester).toEqual([{ name: 'Kasir A', count: 2, value: 25000 }])
-    expect(report.byReason[0]).toEqual({ name: 'Salah input', count: 2, value: 25000 })
+    expect(report.totals).toMatchObject({
+      count: 4,
+      value: 60000,
+      paidCount: 1,
+      paidValue: 20000,
+      ownerCodeCount: 1,
+      emptiedFirstCount: 1,
+      emptiedFirstValue: 35000,
+      neverHadItemsCount: 2,
+    })
+    const c = report.rows.find((r) => r.orderId === 'c')!
+    expect(c).toMatchObject({ emptiedFirst: true, neverHadItems: false, value: 35000, requestedBy: 'Kasir B', approval: 'self' })
+    expect(c.corrections.map((x) => [x.name, x.kind, x.reason])).toEqual([
+      ['Nasi Goreng', 'removed', null],
+      ['Es Teh', 'removed', 'Salah tap'],
+    ])
+    expect(report.rows.find((r) => r.orderId === 'd')).toMatchObject({ emptiedFirst: false, neverHadItems: true, value: 0 })
+    expect(report.rows.find((r) => r.orderId === 'a')!.corrections).toEqual([
+      expect.objectContaining({ kind: 'reduced', value: 4000 }),
+    ])
   })
 })

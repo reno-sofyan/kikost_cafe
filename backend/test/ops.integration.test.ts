@@ -118,6 +118,11 @@ suite('konsol operator /ops (integrasi)', () => {
       ['orders', 'v3', { id: 'v3', orderNumber: 'TRX-9', status: 'void', lifecycleStatus: 'CANCELLED', grandTotal: 0, createdAt: now, voidedAt: now, updatedAt: now }],
       ['orders', 'old', { id: 'old', orderNumber: 'TRX-1', status: 'void', grandTotal: 9000, createdAt: now - 40 * 86_400_000, voidedAt: now - 40 * 86_400_000, updatedAt: now - 40 * 86_400_000 }],
       ['auditLogs', 'a2', { id: 'a2', userName: 'Andi', action: 'order.cancel', entityType: 'order', entityId: 'v2', details: 'Pesanan TRX-8 dibatalkan. Alasan: Salah input', createdAt: now }],
+      // v4: dikosongkan dulu (item dihapus) lalu dibatalkan sebagai pesanan Rp0.
+      ['orders', 'v4', { id: 'v4', orderNumber: 'TRX-10', status: 'void', lifecycleStatus: 'CANCELLED', grandTotal: 0, createdAt: now, voidedAt: now, voidReason: 'Pesanan kosong dibatalkan', cashierName: 'Andi', updatedAt: now }],
+      ['orderItems', 'i4a', { id: 'i4a', orderId: 'v4', productName: 'Ayam Geprek', qty: 2, lineTotal: 36000, removed: true, voided: false, updatedAt: now }],
+      ['orderItems', 'i4b', { id: 'i4b', orderId: 'v4', productName: 'Es Jeruk', qty: 1, lineTotal: 6000, removed: true, voided: false, updatedAt: now }],
+      ['auditLogs', 'a4', { id: 'a4', userName: 'Andi', action: 'order.cancelEmpty', entityType: 'order', entityId: 'v4', details: 'Pesanan kosong TRX-10 dibatalkan (tidak ada item).', createdAt: now }],
     ]
     for (const [entity, id, payload] of rows) {
       await pool.query(
@@ -128,19 +133,32 @@ suite('konsol operator /ops (integrasi)', () => {
 
     const summary = (await app.inject({ method: 'GET', url: '/ops/api/summary', headers: opsAuth })).json()
     const cafe = summary.tenants.find((t: { tenantId: string }) => t.tenantId === 'cafe')
-    expect(cafe.cancellations).toEqual({ todayCount: 2, todayValue: 42000, last7DaysCount: 2, last7DaysValue: 42000 })
+    // Semua void dihitung: v1 30rb + v2 12rb + v3 Rp0 tanpa item + v4 dikosongkan (42rb item dihapus).
+    expect(cafe.cancellations).toEqual({ todayCount: 4, todayValue: 84000, last7DaysCount: 4, last7DaysValue: 84000 })
 
     const r = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations?days=30', headers: opsAuth })
     expect(r.statusCode).toBe(200)
     const body = r.json()
-    expect(body.totals).toMatchObject({ count: 2, value: 42000, paidCount: 1, paidValue: 30000, ownerCodeCount: 1 })
+    expect(body.totals).toMatchObject({
+      count: 4,
+      value: 84000,
+      paidCount: 1,
+      paidValue: 30000,
+      ownerCodeCount: 1,
+      emptiedFirstCount: 1,
+      emptiedFirstValue: 42000,
+      neverHadItemsCount: 3,
+    })
+    const v4 = body.rows.find((x: { orderId: string }) => x.orderId === 'v4')
+    expect(v4).toMatchObject({ emptiedFirst: true, value: 42000, requestedBy: 'Andi' })
+    expect(v4.corrections).toHaveLength(2)
     const v1 = body.rows.find((x: { orderId: string }) => x.orderId === 'v1')
     expect(v1).toMatchObject({ stage: 'paid', requestedBy: 'Andi', approvedBy: 'Bu Sari', approval: 'owner_code' })
     const v2 = body.rows.find((x: { orderId: string }) => x.orderId === 'v2')
     expect(v2).toMatchObject({ stage: 'unprocessed', requestedBy: 'Andi', approval: 'self' })
 
     const wide = (await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations?days=90', headers: opsAuth })).json()
-    expect(wide.totals.count).toBe(3)
+    expect(wide.totals.count).toBe(5)
 
     const noAuth = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations' })
     expect(noAuth.statusCode).toBe(401)

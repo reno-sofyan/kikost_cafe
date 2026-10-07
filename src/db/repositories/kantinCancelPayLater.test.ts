@@ -4,7 +4,18 @@ import { resetLocalDb } from '@/test/db'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { ensureDefaultSettings, updateSettings } from './settings'
 import { createUser } from './users'
-import { addOrderItem, cancelUnsentOrder, markOrderPayLater, startOrder } from './orders'
+import {
+  addOrderItem,
+  cancelEmptyOrder,
+  cancelUnsentOrder,
+  clearOrderItems,
+  emptyOrderCancelRequirements,
+  ItemCorrectionReasonRequiredError,
+  markOrderPayLater,
+  removeOrderItem,
+  startOrder,
+  updateOrderItemQty,
+} from './orders'
 import { closeShift, openShift } from './shifts'
 import { finalizePayment, voidOrder } from './checkout'
 import { generateCancelCode, getActiveCancelCode, OwnerApprovalRequiredError, verifyCancelCode, type OwnerApproval } from './cancelCodes'
@@ -167,5 +178,68 @@ describe('bill gantung (kantin)', () => {
     const shift = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 0 })
     await orderWithItem(shift)
     await expect(closeShift({ shiftId: shift.id, closingCashActual: 0, notes: '' })).rejects.toThrow('open bill')
+  })
+})
+
+describe('koreksi item & pembatalan pesanan kosong (kantin)', () => {
+  async function itemOf(orderId: string) {
+    return (await db.orderItems.where('orderId').equals(orderId).toArray())[0]
+  }
+
+  it('hapus/kurangi item wajib alasan; tambah qty tetap bebas', async () => {
+    const order = await orderWithItem()
+    const item = await itemOf(order.id)
+    await updateOrderItemQty(item.id, 3)
+    await expect(updateOrderItemQty(item.id, 2)).rejects.toThrow(ItemCorrectionReasonRequiredError)
+    await expect(removeOrderItem(item.id)).rejects.toThrow(ItemCorrectionReasonRequiredError)
+
+    await updateOrderItemQty(item.id, 2, { reason: 'Pembeli batal sebagian', actor })
+    expect(await itemOf(order.id)).toMatchObject({ qty: 2, reducedValue: 15000 })
+    await removeOrderItem(item.id, { reason: 'Salah tap', actor })
+    expect(await itemOf(order.id)).toMatchObject({ removed: true, removedReason: 'Salah tap', removedByName: 'Kasir', removedApproval: 'reason' })
+    const actions = (await db.auditLogs.toArray()).map((l) => l.action)
+    expect(actions).toEqual(expect.arrayContaining(['order.item_reduce', 'order.item_remove']))
+  })
+
+  it('pesanan yang dikosongkan per item: batal wajib alasan + kode Pemilik', async () => {
+    const owner = await createUser({ name: 'Bu Sari', role: 'pemilik', pin: '9999' })
+    const order = await orderWithItem()
+    await removeOrderItem((await itemOf(order.id)).id, { reason: 'Salah tap', actor })
+
+    expect(await emptyOrderCancelRequirements(order.id)).toEqual({ hadItems: true, needsReason: true, needsOwnerCode: true })
+    await expect(cancelEmptyOrder(order.id, actor)).rejects.toThrow('Alasan')
+    await expect(cancelEmptyOrder(order.id, actor, { reason: 'Pembeli tidak jadi' })).rejects.toThrow(OwnerApprovalRequiredError)
+
+    const approval = await approvalFrom(owner)
+    await cancelEmptyOrder(order.id, actor, { reason: 'Pembeli tidak jadi', ownerApproval: approval })
+    expect(await db.orders.get(order.id)).toMatchObject({ status: 'void', voidReason: 'Pembeli tidak jadi', voidApproval: 'owner_code', voidedByName: 'Bu Sari' })
+  })
+
+  it('Kosongkan dengan kode Pemilik → batal pesanan kosongnya cukup alasan', async () => {
+    const owner = await createUser({ name: 'Bu Sari', role: 'pemilik', pin: '9999' })
+    const order = await orderWithItem()
+    await expect(clearOrderItems(order.id, 'Salah input', actor)).rejects.toThrow(OwnerApprovalRequiredError)
+    expect(await clearOrderItems(order.id, 'Salah input', actor, await approvalFrom(owner))).toBe(1)
+    expect(await itemOf(order.id)).toMatchObject({ removed: true, removedApproval: 'owner_code' })
+
+    expect(await emptyOrderCancelRequirements(order.id)).toMatchObject({ needsReason: true, needsOwnerCode: false })
+    await cancelEmptyOrder(order.id, actor, { reason: 'Salah input' })
+    expect((await db.orders.get(order.id))?.status).toBe('void')
+  })
+
+  it('pesanan yang tak pernah berisi item tetap bisa dibatalkan bebas', async () => {
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 0 })
+    const empty = await startOrder({ type: 'takeaway', cashierId: 'u1', cashierName: 'Kasir', shiftId: shift.id })
+    expect(await emptyOrderCancelRequirements(empty.id)).toEqual({ hadItems: false, needsReason: false, needsOwnerCode: false })
+    await cancelEmptyOrder(empty.id, actor)
+    expect((await db.orders.get(empty.id))?.status).toBe('void')
+  })
+
+  it('usaha lain: hapus item & batal pesanan kosong tetap bebas', async () => {
+    await updateSettings({ businessType: 'cafe_resto' })
+    const order = await orderWithItem()
+    await removeOrderItem((await itemOf(order.id)).id)
+    await cancelEmptyOrder(order.id, actor)
+    expect((await db.orders.get(order.id))?.status).toBe('void')
   })
 })

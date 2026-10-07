@@ -118,6 +118,11 @@
   .tag.stage-kitchen { color: #fcd34d; border-color: #b45309; }
   .tag.stage-unprocessed { color: var(--ink-200); }
   .tag.appr-owner { color: #93c5fd; border-color: #1d4ed8; }
+  .tag.emptied { color: #fecaca; border-color: #dc2626; background: rgba(220,38,38,.25); font-weight: 600; }
+  .corr { margin: 6px 0 2px; padding: 8px 10px; border-left: 2px solid var(--bad); background: rgba(239,68,68,.06); border-radius: 0 8px 8px 0; font-size: .78rem; }
+  .corr .ci { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .corr .ci span:last-child { white-space: nowrap; color: var(--ink-200); }
+  .corr .cm { color: var(--ink-400); font-size: .72rem; margin-bottom: 3px; }
 </style>
 </head>
 <body>
@@ -395,15 +400,30 @@
       '</div>';
   }
 
+  const KIND = { removed: 'dihapus', voided: 'di-void', reduced: 'dikurangi' };
+  function correctionsHtml(r) {
+    const list = r.corrections || [];
+    if (!list.length) return '';
+    return '<div class="corr"><div class="cm">Koreksi item sebelum dibatalkan' +
+      (r.emptiedFirst ? ' — nilai di atas = total item yang dihapus' : '') + '</div>' +
+      list.map((c) =>
+        '<div class="ci"><span>' + esc(c.name) + (c.qty ? ' ×' + c.qty : '') + ' · ' + KIND[c.kind] +
+        ' · ' + esc(c.reason || (c.kind === 'reduced' ? 'lihat Log Aktivitas' : 'tanpa alasan (versi lama)')) +
+        (c.by ? ' · ' + esc(c.by) : '') + (c.ownerApproved ? ' · kode Pemilik' : '') +
+        '</span><span>−' + rupiah(c.value) + '</span></div>').join('') +
+      '</div>';
+  }
+
   function renderCancels(d) {
     const seg = '<div class="seg">' + [7, 30, 90].map((n) =>
       '<button class="' + (n === cancelDays ? 'active' : '') + '" onclick="loadCancels(' + n + ')">' + n + ' hari</button>').join('') + '</div>';
-    const head = '<div class="toolbar"><span class="muted">Pembatalan ' + d.days + ' hari terakhir (pesanan kosong tidak dihitung)</span>' + seg + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Pembatalan ' + d.days + ' hari terakhir (semua, termasuk yang dikosongkan dulu)</span>' + seg + '</div>';
     const t = d.totals;
     const kpis = '<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">' + [
       kpi('Jumlah batal', t.count, t.count ? 'var(--bad)' : null),
       kpi('Nilai batal', compact(t.value)),
       kpi('Setelah lunas · ' + compact(t.paidValue), t.paidCount, t.paidCount ? 'var(--bad)' : null),
+      kpi('Dikosongkan dulu · ' + compact(t.emptiedFirstValue), t.emptiedFirstCount, t.emptiedFirstCount ? 'var(--bad)' : null),
       kpi('Pakai kode Pemilik', t.ownerCodeCount),
     ].join('') + '</div>';
     if (!d.rows.length) {
@@ -419,13 +439,16 @@
       const st = STAGE[r.stage] || STAGE.unprocessed;
       const label = (r.queueNumber ? '#' + r.queueNumber + ' · ' : '') + (r.orderNumber || '—') + (r.buyer ? ' · ' + r.buyer : '');
       return '<div class="crow">' +
-        '<div class="top"><span class="no">' + esc(label) + '</span><span class="amt">' + rupiah(r.grandTotal) + '</span></div>' +
+        '<div class="top"><span class="no">' + esc(label) + '</span><span class="amt">' + rupiah(r.value) + '</span></div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
           '<span class="tag ' + st[1] + '">' + st[0] + '</span>' +
           (r.approval ? '<span class="tag' + (r.approval === 'owner_code' ? ' appr-owner' : '') + '">' + esc(APPROVAL[r.approval] || r.approval) + '</span>' : '') +
           (r.payLater ? '<span class="tag open">Bill gantung</span>' : '') +
+          (r.emptiedFirst ? '<span class="tag emptied">Dikosongkan dulu lalu dibatalkan</span>' : '') +
+          (r.neverHadItems ? '<span class="tag">Pesanan kosong (tanpa item)</span>' : '') +
         '</div>' +
         '<div class="reason">' + esc(r.reason || '(tanpa alasan)') + '</div>' +
+        correctionsHtml(r) +
         '<div class="who">' +
           '<span>Dibatalkan <b>' + esc(fmtTime(r.voidedAt)) + '</b></span>' +
           '<span>Diminta <b>' + esc(r.requestedBy || '—') + '</b></span>' +
