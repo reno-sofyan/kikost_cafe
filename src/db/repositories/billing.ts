@@ -166,7 +166,7 @@ export async function payBill(params: {
 
       const now = getTrustedNow()
 
-      // Bill gantung bisa dilunasi shift lain: pindahkan order ke shift yang sedang
+      // Tagihan tertunda bisa dilunasi shift lain: pindahkan order ke shift yang sedang
       // buka supaya kas tunai, ringkasan shift, & laporan ikut shift pelunasan
       // (shift asal sudah boleh ditutup). Shift asal tetap tercatat di `payLater.shiftId`.
       if (order.payLater && order.status === 'open') {

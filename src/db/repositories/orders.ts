@@ -327,7 +327,7 @@ export async function cancelUnsentOrder(
 }
 
 /**
- * "Bill Gantung" (kantin, flag `payLater`): pesanan internal yang dicatat sekarang
+ * "Tagihan Tertunda" (kantin, flag `payLater`): pesanan internal yang dicatat sekarang
  * dan dibayar nanti. Order tetap `open` — dilunasi lewat alur bayar biasa — tapi
  * tak menghalangi tutup shift (lihat `closeShift`) dan pelunasannya masuk ke shift
  * yang sedang buka saat dibayar (lihat `payBill`).
@@ -338,7 +338,7 @@ export async function markOrderPayLater(
   actor: { userId: string; userName: string },
 ): Promise<Order> {
   const name = params.name.trim()
-  if (!name) throw new Error('Nama penanggung bill gantung wajib diisi')
+  if (!name) throw new Error('Nama penanggung tagihan tertunda wajib diisi')
   return db.transaction('rw', [db.orders, db.orderItems, db.syncQueue, db.auditLogs], async () => {
     const order = await db.orders.get(orderId)
     if (!order) throw new Error('Pesanan tidak ditemukan')
@@ -348,7 +348,7 @@ export async function markOrderPayLater(
       .equals(orderId)
       .filter((i) => !i.removed && !i.voided)
       .count()
-    if (itemCount === 0) throw new Error('Pesanan kosong tidak bisa dijadikan bill gantung')
+    if (itemCount === 0) throw new Error('Pesanan kosong tidak bisa dijadikan tagihan tertunda')
     const now = getTrustedNow()
     const updated: Order = {
       ...order,
@@ -370,13 +370,13 @@ export async function markOrderPayLater(
       action: 'order.pay_later',
       entityType: 'order',
       entityId: orderId,
-      details: `Pesanan ${order.orderNumber} (${itemCount} item) dicatat sebagai bill gantung atas nama ${name}.`,
+      details: `Pesanan ${order.orderNumber} (${itemCount} item) dicatat sebagai tagihan tertunda atas nama ${name}.`,
     })
     return updated
   })
 }
 
-/** Bill gantung yang belum lunas. */
+/** Tagihan tertunda yang belum lunas. */
 export function isOpenPayLater(order: Order): boolean {
   return order.status === 'open' && !!order.payLater
 }

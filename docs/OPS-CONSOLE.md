@@ -42,7 +42,7 @@ Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/
 | GET | `/ops/api/summary` | Bearer | Ringkasan semua tenant (omzet hari ini, 7 hari, perangkat, kesehatan) |
 | GET | `/ops/api/tenant/:tenantId` | Bearer | Detail satu tenant (total omzet, transaksi terbaru, log aktivitas) |
 | GET | `/ops/api/tenant/:tenantId/cancellations?days=30` | Bearer | Rekap pembatalan pesanan (1–90 hari): jumlah & nilai, yang batal setelah lunas, rekap per peminta / penyetuju / alasan, dan daftar per pesanan |
-| GET | `/ops/api/tenant/:tenantId/export/transactions.pdf?from=YYYY-MM-DD&to=YYYY-MM-DD` | Bearer | PDF transaksi periode (WIB, inklusif, maks 92 hari): lunas per waktu bayar, batal, rekap per metode, bill gantung yang belum lunas |
+| GET | `/ops/api/tenant/:tenantId/export/transactions.pdf?from=YYYY-MM-DD&to=YYYY-MM-DD` | Bearer | PDF transaksi periode (WIB, inklusif, maks 92 hari): lunas per waktu bayar, batal, rekap per metode, tagihan tertunda yang belum lunas |
 | GET | `/ops/api/tenant/:tenantId/export/cancellations.pdf?from=…&to=…` | Bearer | PDF pembatalan periode: ringkasan, rekap peminta/penyetuju/alasan, daftar + item yang dihapus |
 
 ### Pelacakan pembatalan

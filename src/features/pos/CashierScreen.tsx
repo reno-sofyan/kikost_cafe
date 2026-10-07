@@ -330,7 +330,7 @@ export function CashierScreen() {
     try {
       await markOrderPayLater(order.id, { ...params, shiftId: openShift?.id ?? null }, { userId: currentUser.id, userName: currentUser.name })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gagal menyimpan bill gantung')
+      toast.error(e instanceof Error ? e.message : 'Gagal menyimpan tagihan tertunda')
       return
     }
     // Makanan tetap dibuat sekarang — teruskan ke dapur seperti saat pesanan dibayar.
@@ -338,7 +338,7 @@ export function CashierScreen() {
       await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }).catch(() => {})
     }
     setActiveOrderId(null)
-    toast.success(`Bill gantung ${params.name} tersimpan.`)
+    toast.success(`Tagihan tertunda ${params.name} tersimpan.`)
   }
 
   async function handleModifierConfirm(params: { qty: number; notes: string; modifiers: { groupId: string; groupName: string; optionId: string; optionName: string; priceDelta: number }[] }) {
@@ -492,7 +492,7 @@ export function CashierScreen() {
               </div>
               {order.payLater && (
                 <div className="mt-2 rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500">
-                  Bill Gantung • {order.payLater.name}
+                  Tagihan Tertunda • {order.payLater.name}
                   {order.payLater.note ? ` — ${order.payLater.note}` : ''}
                 </div>
               )}
@@ -597,7 +597,7 @@ export function CashierScreen() {
               </button>
               {features.payLater && !order.payLater && (
                 <button className="btn-secondary w-full" disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
-                  Bill Gantung (Bayar Nanti)
+                  Tagihan Tertunda (Bayar Nanti)
                 </button>
               )}
               <button className="btn-ghost w-full !text-red-400" onClick={() => void handleCancelOrderClick()}>

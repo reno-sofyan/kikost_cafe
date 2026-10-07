@@ -147,7 +147,7 @@ describe('kode pembatalan sekali pakai (kantin)', () => {
   })
 })
 
-describe('bill gantung (kantin)', () => {
+describe('tagihan tertunda (kantin)', () => {
   it('nama wajib & pesanan kosong ditolak', async () => {
     const shift = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 0 })
     const order = await orderWithItem(shift)

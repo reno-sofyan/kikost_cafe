@@ -10,7 +10,7 @@ interface Props {
   onConfirm: (params: { name: string; note: string }) => void
 }
 
-/** Kantin: catat pesanan sebagai "Bill Gantung" — dibuat sekarang, dibayar nanti. */
+/** Kantin: catat pesanan sebagai "Tagihan Tertunda" — dibuat sekarang, dibayar nanti. */
 export function PayLaterModal({ orderLabel, total, initialName, onCancel, onConfirm }: Props) {
   const [name, setName] = useState(initialName)
   const [note, setNote] = useState('')
@@ -18,10 +18,10 @@ export function PayLaterModal({ orderLabel, total, initialName, onCancel, onConf
 
   return (
     <Modal onClose={onCancel}>
-      <h2 className="mb-1 text-lg font-bold text-ink-50">Bill Gantung • {orderLabel}</h2>
+      <h2 className="mb-1 text-lg font-bold text-ink-50">Tagihan Tertunda • {orderLabel}</h2>
       <p className="mb-4 text-sm text-ink-400">
-        Pesanan tetap diproses sekarang, tagihan {formatRupiah(total)} dibayar nanti. Bill gantung tidak menghalangi tutup shift dan
-        bisa dilunasi dari "Pesanan Terbuka → Bill Gantung".
+        Pesanan tetap diproses sekarang, tagihan {formatRupiah(total)} dibayar nanti. Tagihan tertunda tidak menghalangi tutup shift dan
+        bisa dilunasi dari "Pesanan Terbuka → Tagihan Tertunda".
       </p>
       <label className="mb-3 block">
         <span className="mb-1 block text-sm text-ink-300">
@@ -50,7 +50,7 @@ export function PayLaterModal({ orderLabel, total, initialName, onCancel, onConf
           Batal
         </button>
         <button className="btn-primary flex-[2]" disabled={!canConfirm} onClick={() => onConfirm({ name: name.trim(), note: note.trim() })}>
-          Simpan Bill Gantung
+          Simpan Tagihan Tertunda
         </button>
       </div>
     </Modal>

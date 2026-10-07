@@ -59,7 +59,7 @@ export interface BusinessFeatures {
    */
   ownerPinCancel: boolean
   /**
-   * "Bill Gantung": pesanan internal dicatat & diteruskan ke dapur sekarang,
+   * "Tagihan Tertunda": pesanan internal dicatat & diteruskan ke dapur sekarang,
    * dibayar nanti. Tidak menghalangi tutup shift; pelunasannya masuk ke shift
    * yang sedang buka saat dibayar.
    */

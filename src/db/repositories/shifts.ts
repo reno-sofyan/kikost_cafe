@@ -120,7 +120,7 @@ export async function closeShift(params: {
     const openOrdersInShift = await db.orders
       .where('shiftId')
       .equals(params.shiftId)
-      // Bill gantung (kantin) boleh tetap belum lunas lintas shift.
+      // Tagihan tertunda (kantin) boleh tetap belum lunas lintas shift.
       .filter((o) => o.status === 'open' && !o.payLater)
       .count()
     if (openOrdersInShift > 0) {

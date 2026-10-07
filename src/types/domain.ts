@@ -676,7 +676,7 @@ export interface Order {
   voidRequestedByName?: string | null
   /** Cara pembatalan disetujui. Kosong = data lama (sebelum v1.0.13). */
   voidApproval?: VoidApproval | null
-  /** "Bill Gantung" (kantin): pesanan internal yang dicatat sekarang, dibayar nanti.
+  /** "Tagihan Tertunda" (kantin): pesanan internal yang dicatat sekarang, dibayar nanti.
    *  Tetap terisi setelah lunas sebagai jejak. Kosong/undefined = pesanan biasa. */
   payLater?: PayLaterInfo | null
   createdAt: number
@@ -694,7 +694,7 @@ export interface PayLaterInfo {
   markedAt: number
   markedByUserId: string
   markedByName: string
-  /** Shift saat bill gantung dicatat — `Order.shiftId` pindah ke shift pelunasan. */
+  /** Shift saat tagihan tertunda dicatat — `Order.shiftId` pindah ke shift pelunasan. */
   shiftId: string | null
 }
 

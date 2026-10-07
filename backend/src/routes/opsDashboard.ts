@@ -573,7 +573,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
           '<span class="tag ' + st[1] + '">' + st[0] + '</span>' +
           (r.approval ? '<span class="tag' + (r.approval === 'owner_code' ? ' appr-owner' : '') + '">' + esc(APPROVAL[r.approval] || r.approval) + '</span>' : '') +
-          (r.payLater ? '<span class="tag open">Bill gantung</span>' : '') +
+          (r.payLater ? '<span class="tag open">Tagihan tertunda</span>' : '') +
           (r.emptiedFirst ? '<span class="tag emptied">Dikosongkan dulu lalu dibatalkan</span>' : '') +
           (r.neverHadItems ? '<span class="tag">Pesanan kosong (tanpa item)</span>' : '') +
         '</div>' +

@@ -224,7 +224,7 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
     ['Transaksi lunas', String(r.paidCount)],
     ['Omzet', rupiah(r.paidValue)],
     ['Dibatalkan', String(r.voidCount)],
-    ['Bill gantung belum lunas', `${r.openPayLaterCount} - ${rupiah(r.openPayLaterValue)}`],
+    ['Tagihan tertunda belum lunas', `${r.openPayLaterCount} - ${rupiah(r.openPayLaterValue)}`],
   ])
   if (r.byMethod.length) {
     doc.heading('Per metode pembayaran')
@@ -254,7 +254,7 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
       [t.queueNumber ? `#${t.queueNumber}` : '', t.buyer ?? ''].filter(Boolean).join(' ') || '-',
       t.cashierName ?? '-',
       t.methods.map((m) => METHOD_LABEL[m] ?? m).join(', ') || '-',
-      STATUS_LABEL[t.status] + (t.payLater ? ' (bill gantung)' : ''),
+      STATUS_LABEL[t.status] + (t.payLater ? ' (tagihan tertunda)' : ''),
       rupiah(t.grandTotal),
     ]),
   )
@@ -321,7 +321,7 @@ export function buildCancellationsPdf(meta: ReportMeta, r: CancellationReport): 
     r.rows.map((c) => [
       fmtWib(c.voidedAt),
       [c.queueNumber ? `#${c.queueNumber}` : '', c.orderNumber ?? '-', c.buyer ?? ''].filter(Boolean).join(' '),
-      STAGE_LABEL[c.stage] + (c.payLater ? ', bill gantung' : '') + (c.neverHadItems ? ', tanpa item' : ''),
+      STAGE_LABEL[c.stage] + (c.payLater ? ', tagihan tertunda' : '') + (c.neverHadItems ? ', tanpa item' : ''),
       c.reason ?? '(tanpa alasan)',
       c.requestedBy ?? '-',
       (c.approvedBy ?? '-') + (c.approval ? ` (${APPROVAL_LABEL[c.approval] ?? c.approval})` : ''),

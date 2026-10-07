@@ -137,7 +137,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             </p>
             {order.payLater && (
               <p className="text-sm font-semibold text-accent-500">
-                {order.status === 'open' ? 'Bill Gantung' : 'Dari Bill Gantung'} • {order.payLater.name}
+                {order.status === 'open' ? 'Tagihan Tertunda' : 'Dari Tagihan Tertunda'} • {order.payLater.name}
                 {order.payLater.note ? ` — ${order.payLater.note}` : ''}
               </p>
             )}

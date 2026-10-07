@@ -15,7 +15,7 @@ const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
 }
 
 interface Props {
-  /** Kantin: pisahkan bill gantung ke tab sendiri. */
+  /** Kantin: pisahkan tagihan tertunda ke tab sendiri. */
   showPayLater?: boolean
   onSelect: (orderId: string) => void
   onClose: () => void
@@ -43,7 +43,7 @@ export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Pro
               Terbuka
             </button>
             <button className={`btn btn-compact flex-1 text-sm ${tab === 'payLater' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('payLater')}>
-              Bill Gantung ({payLaterOrders.length})
+              Tagihan Tertunda ({payLaterOrders.length})
             </button>
           </div>
         )}
@@ -55,7 +55,7 @@ export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Pro
             </div>
           )}
           {openOrders.length === 0 && (
-            <p className="text-center text-sm text-ink-500">{tab === 'payLater' ? 'Tidak ada bill gantung' : 'Tidak ada pesanan terbuka'}</p>
+            <p className="text-center text-sm text-ink-500">{tab === 'payLater' ? 'Tidak ada tagihan tertunda' : 'Tidak ada pesanan terbuka'}</p>
           )}
           <div className="space-y-2">
             {openOrders.map((order) => (
@@ -93,7 +93,7 @@ function OpenBillRow({ order, onSelect, onCancel }: { order: Order; onSelect: ()
         </div>
         {order.payLater && (
           <div className="mt-1 text-sm">
-            <span className="font-semibold text-accent-500">Bill Gantung • {order.payLater.name}</span>
+            <span className="font-semibold text-accent-500">Tagihan Tertunda • {order.payLater.name}</span>
             {order.payLater.note && <span className="text-ink-400"> — {order.payLater.note}</span>}
             <div className="text-xs text-ink-500">
               Dicatat {formatDateTime(order.payLater.markedAt)} oleh {order.payLater.markedByName}

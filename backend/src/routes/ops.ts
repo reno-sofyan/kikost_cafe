@@ -459,7 +459,7 @@ async function loadCancellationReport(
 
 /**
  * Transaksi satu periode: pesanan lunas (berdasarkan waktu bayar) & batal (waktu
- * batal) di periode itu, plus SEMUA bill gantung yang masih belum lunas.
+ * batal) di periode itu, plus SEMUA tagihan tertunda yang masih belum lunas.
  */
 async function loadTransactionReport(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<TransactionReport> {
   const orders = await pool.query<{ payload: Record<string, unknown> }>(
