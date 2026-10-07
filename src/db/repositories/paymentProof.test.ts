@@ -46,7 +46,8 @@ const pay = (orderId: string, withProof: boolean) =>
 describe('fitur bukti pembayaran per jenis usaha', () => {
   it('hanya kantin yang mewajibkan (khusus QRIS)', () => {
     expect(featuresForBusinessType('kantin').paymentProofMethods).toEqual(['qris'])
-    for (const t of ['cafe_resto', 'minimarket', 'lainnya'] as const) expect(featuresForBusinessType(t).paymentProofMethods).toEqual([])
+    expect(featuresForBusinessType('cafe_resto').paymentProofMethods).toEqual(['qris'])
+    for (const t of ['minimarket', 'lainnya'] as const) expect(featuresForBusinessType(t).paymentProofMethods).toEqual([])
   })
 })
 
@@ -118,9 +119,18 @@ describe('kantin: foto bukti wajib untuk QRIS', () => {
   })
 })
 
-describe('usaha lain: foto opsional', () => {
-  it('cafe boleh bayar tanpa foto', async () => {
+describe('kafe: QRIS juga wajib foto', () => {
+  it('cafe menolak QRIS tanpa foto, menerima dengan foto', async () => {
     await setBusinessType('cafe_resto')
+    const order = await openOrder()
+    await expect(pay(order.id, false)).rejects.toThrow(PaymentProofRequiredError)
+    expect((await pay(order.id, true)).order.lifecycleStatus).toBe('COMPLETED')
+  })
+})
+
+describe('usaha lain: foto opsional', () => {
+  it('minimarket boleh bayar QRIS tanpa foto', async () => {
+    await setBusinessType('minimarket')
     const order = await openOrder()
     expect((await pay(order.id, false)).order.lifecycleStatus).toBe('COMPLETED')
   })

@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/db/schema'
+import { retryPrintJob } from '@/db/repositories/printQueue'
+import { useSessionStore } from '@/state/sessionStore'
 import { getOrder } from '@/db/repositories/orders'
 import { prepareReceiptData } from '@/features/printing/printReceipt'
 import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
@@ -8,7 +12,7 @@ import { getSettings } from '@/db/repositories/settings'
 import { formatRupiah } from '@/lib/currency'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
-import type { Order } from '@/types/domain'
+import type { Order, PrintJob } from '@/types/domain'
 import type { ReceiptData } from '@/features/printing/receiptData'
 
 export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
@@ -19,6 +23,9 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   const [showPreview, setShowPreview] = useState(false)
   const [autoPrinted, setAutoPrinted] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
+  const currentUser = useSessionStore((s) => s.currentUser)
+  // Struk otomatis (lihat enqueueReceiptForOrder) — undefined = memuat, null = tak ada printer kasir.
+  const receiptJob = useLiveQuery(async () => (await db.printJobs.get(`rc_${orderId}`)) ?? null, [orderId])
 
   useEffect(() => {
     void (async () => {
@@ -62,16 +69,56 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
       <p className="text-ink-400">Transaksi {order.orderNumber}</p>
       <p className="text-3xl font-bold text-success-500">{formatRupiah(order.grandTotal)}</p>
 
-      <div className="mt-4 flex w-full max-w-xs flex-col gap-3">
-        <button className="btn-primary" onClick={() => setShowPreview(true)}>
-          Cetak / Pratinjau Struk
+      <ReceiptPrintStatus
+        job={receiptJob}
+        onRetry={() => receiptJob && currentUser && void retryPrintJob(receiptJob.id, { userId: currentUser.id, userName: currentUser.name })}
+      />
+
+      <div className="mt-2 flex w-full max-w-xs flex-col gap-3">
+        <button
+          className="btn-primary"
+          disabled={!!receiptJob && (receiptJob.status === 'QUEUED' || receiptJob.status === 'PRINTING')}
+          onClick={() => setShowPreview(true)}
+        >
+          {receiptJob ? 'Cetak Ulang / Bagikan Struk' : 'Cetak / Pratinjau Struk'}
         </button>
         <button className="btn-secondary" onClick={handleNewTransaction}>
           Transaksi Baru
         </button>
       </div>
 
-      {showPreview && <PrintPreviewModal data={receipt} onClose={() => setShowPreview(false)} />}
+      {showPreview && <PrintPreviewModal data={receipt} orderId={order.id} onClose={() => setShowPreview(false)} />}
     </div>
   )
+}
+
+/**
+ * Status struk otomatis — supaya kasir tak menekan "Cetak" lagi saat struk masih
+ * menunggu printer (dulu menghasilkan struk dobel).
+ */
+function ReceiptPrintStatus({ job, onRetry }: { job: PrintJob | null | undefined; onRetry: () => void }) {
+  if (!job) return null
+  const base = 'flex w-full max-w-xs items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm'
+  switch (job.status) {
+    case 'QUEUED':
+    case 'PRINTING':
+      return <div className={`${base} bg-ink-800 text-ink-200`}>Mencetak struk…</div>
+    case 'PRINTED':
+      return (
+        <div className={`${base} bg-success-600/15 text-success-500`}>
+          <Icon name="checkCircle" size={16} /> Struk tercetak
+        </div>
+      )
+    case 'RETRYING':
+      return <div className={`${base} bg-yellow-900/20 text-yellow-300`}>Printer belum merespons — mencoba lagi otomatis…</div>
+    default:
+      return (
+        <div className={`${base} flex-col bg-red-900/25 text-red-300`}>
+          <span>Struk gagal dicetak{job.lastError ? `: ${job.lastError}` : ''}</span>
+          <button className="btn-secondary !min-h-[2.5rem] !py-1.5 text-sm" onClick={onRetry}>
+            Coba Cetak Lagi
+          </button>
+        </div>
+      )
+  }
 }

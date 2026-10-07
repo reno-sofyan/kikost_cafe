@@ -23,10 +23,10 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -38,15 +38,18 @@ import java.util.concurrent.TimeUnit;
  * Dipanggil dari src/native/escPosPrinterPlugin.ts.
  *
  * Kinerja:
- * - Koneksi DIPAKAI ULANG antar cetakan, SATU PER PRINTER (struk kasir & tiket
- *   dapur bergantian tak saling memutus) — menyambung Bluetooth SPP makan 1-4
- *   detik. Tiap koneksi ditutup otomatis setelah IDLE_DISCONNECT_MS tanpa
- *   aktivitas supaya tablet lain yang berbagi printer tetap bisa menyambung.
- * - Semua I/O printer berjalan di satu thread khusus (berurutan, satu printer
- *   fisik tak bisa dua koneksi), BUKAN di thread plugin Capacitor — kalau tidak,
+ * - Koneksi DIPAKAI ULANG antar cetakan, SATU PER PRINTER — menyambung Bluetooth
+ *   SPP makan 2-5 detik (sampai ±10 detik bila cara pertama gagal). Koneksi
+ *   DIJAGA HIDUP selama aplikasi dipakai: tiap KEEPALIVE_MS dikirim satu byte NUL
+ *   (diabaikan printer ESC/POS) supaya modul Bluetooth printer tak memutus link,
+ *   dan koneksi yang ternyata putus disambung ulang di latar sebelum cetakan
+ *   berikutnya. Baru ditutup setelah IDLE_DISCONNECT_MS tanpa cetakan sama sekali
+ *   (tablet lain yang berbagi printer tetap bisa menyambung).
+ * - Tiap printer punya THREAD SENDIRI (berurutan per printer, satu printer fisik
+ *   tak bisa dua koneksi) — printer dapur yang mati/menyambung lama tak menahan
+ *   struk di printer kasir. Bukan di thread plugin Capacitor — kalau tidak,
  *   connect() yang memblokir ikut menahan plugin lain (Preferences, Network, dst.).
- * - Koneksi basi (printer sempat mati/keluar jangkauan) disambung ulang otomatis
- *   sekali saat penulisan gagal.
+ * - Koneksi basi disambung ulang otomatis sekali saat penulisan gagal.
  */
 @CapacitorPlugin(
     name = "EscPosPrinter",
@@ -61,20 +64,25 @@ public class EscPosPrinterPlugin extends Plugin {
 
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final int NETWORK_CONNECT_TIMEOUT_MS = 5000;
-    private static final long IDLE_DISCONNECT_MS = 45_000;
+    /** Tutup koneksi setelah selama ini tak ada cetakan/pemanasan (dulu 45 detik — terlalu
+     *  pendek untuk kantin: hampir tiap struk harus menyambung ulang Bluetooth). */
+    private static final long IDLE_DISCONNECT_MS = 30 * 60_000;
+    private static final long KEEPALIVE_MS = 20_000;
+    private static final byte[] KEEPALIVE_BYTE = new byte[] { 0x00 };
 
-    private final ScheduledExecutorService printerThread = Executors.newSingleThreadScheduledExecutor();
-
-    /** Koneksi terbuka per printer (kunci = Target.key()). Hanya diakses dari printerThread. */
-    private final Map<String, Connection> connections = new HashMap<>();
+    /** Satu thread per printer (kunci = Target.key()). */
+    private final Map<String, ScheduledExecutorService> threads = new ConcurrentHashMap<>();
+    /** Koneksi terbuka per printer. Tiap entri hanya disentuh oleh thread printernya. */
+    private final Map<String, Connection> connections = new ConcurrentHashMap<>();
     /** Printer terakhir yang disambung lewat API lama connect* (untuk printBytes). */
-    private Target legacyTarget;
+    private volatile Target legacyTarget;
 
     private static final class Connection {
         BluetoothSocket bluetoothSocket;
         Socket networkSocket;
         OutputStream output;
-        ScheduledFuture<?> idleDisconnect;
+        ScheduledFuture<?> keepAlive;
+        long lastUsedAt = System.currentTimeMillis();
 
         boolean isAlive() {
             if (output == null) return false;
@@ -83,7 +91,7 @@ public class EscPosPrinterPlugin extends Plugin {
         }
 
         void close() {
-            if (idleDisconnect != null) idleDisconnect.cancel(false);
+            if (keepAlive != null) keepAlive.cancel(false);
             try { if (output != null) output.close(); } catch (Exception ignored) {}
             try { if (bluetoothSocket != null) bluetoothSocket.close(); } catch (Exception ignored) {}
             try { if (networkSocket != null) networkSocket.close(); } catch (Exception ignored) {}
@@ -122,9 +130,13 @@ public class EscPosPrinterPlugin extends Plugin {
         return needsRuntimeBtPermission() && getPermissionState("bluetooth") != PermissionState.GRANTED;
     }
 
-    /** Jalankan di thread printer; tolak call dengan pesan yang ramah bila gagal. */
-    private void onPrinterThread(PluginCall call, String failPrefix, PrinterTask task) {
-        printerThread.execute(() -> {
+    private ScheduledExecutorService threadFor(Target target) {
+        return threads.computeIfAbsent(target.key(), k -> Executors.newSingleThreadScheduledExecutor());
+    }
+
+    /** Jalankan di thread milik printer ini; tolak call dengan pesan yang ramah bila gagal. */
+    private void onPrinterThread(Target target, PluginCall call, String failPrefix, PrinterTask task) {
+        threadFor(target).execute(() -> {
             try {
                 task.run();
             } catch (SecurityException e) {
@@ -135,10 +147,38 @@ public class EscPosPrinterPlugin extends Plugin {
         });
     }
 
-    /** (Ulang) jadwalkan penutupan otomatis koneksi printer ini setelah idle. */
-    private void touch(Target target, Connection conn) {
-        if (conn.idleDisconnect != null) conn.idleDisconnect.cancel(false);
-        conn.idleDisconnect = printerThread.schedule(() -> closeConnection(target), IDLE_DISCONNECT_MS, TimeUnit.MILLISECONDS);
+    /** Tandai printer ini baru dipakai (cetak/pemanasan) — memperpanjang masa jaga-hidup. */
+    private void touch(Connection conn) {
+        conn.lastUsedAt = System.currentTimeMillis();
+    }
+
+    /**
+     * Tik jaga-hidup (di thread printer itu): kirim satu byte NUL. Bila gagal,
+     * sambung ulang di latar supaya cetakan berikutnya tak menunggu. Setelah
+     * IDLE_DISCONNECT_MS tanpa cetakan, koneksi ditutup dan tik berhenti.
+     */
+    private void startKeepAlive(Target target, Connection conn) {
+        if (conn.keepAlive != null) conn.keepAlive.cancel(false);
+        conn.keepAlive = threadFor(target).scheduleWithFixedDelay(() -> {
+            Connection current = connections.get(target.key());
+            if (current != conn) return;
+            if (System.currentTimeMillis() - conn.lastUsedAt > IDLE_DISCONNECT_MS) {
+                closeConnection(target);
+                return;
+            }
+            try {
+                write(conn, KEEPALIVE_BYTE);
+            } catch (IOException dropped) {
+                long lastUsedAt = conn.lastUsedAt;
+                closeConnection(target);
+                try {
+                    Connection fresh = ensureConnected(target, false);
+                    fresh.lastUsedAt = lastUsedAt; // sambung ulang latar tak memperpanjang masa jaga
+                } catch (Exception stillDown) {
+                    // Printer mati/di luar jangkauan — cetakan berikutnya mencoba lagi.
+                }
+            }
+        }, KEEPALIVE_MS, KEEPALIVE_MS, TimeUnit.MILLISECONDS);
     }
 
     // ---- Daftar perangkat ----
@@ -224,7 +264,7 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         byte[] payload = Base64.decode(base64, Base64.DEFAULT);
-        onPrinterThread(call, "Gagal mencetak: ", () -> {
+        onPrinterThread(target, call, "Gagal mencetak: ", () -> {
             writeWithReconnect(target, payload);
             JSObject ret = new JSObject();
             ret.put("success", true);
@@ -259,7 +299,7 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         Target target = new Target(true, address, null, 0);
-        onPrinterThread(call, "Gagal terhubung ke printer Bluetooth: ", () -> {
+        onPrinterThread(target, call, "Gagal terhubung ke printer Bluetooth: ", () -> {
             ensureConnected(target, false);
             legacyTarget = target;
             JSObject ret = new JSObject();
@@ -277,7 +317,7 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         Target target = new Target(false, null, host, port != null ? port : 9100);
-        onPrinterThread(call, "Gagal terhubung ke printer jaringan: ", () -> {
+        onPrinterThread(target, call, "Gagal terhubung ke printer jaringan: ", () -> {
             ensureConnected(target, false);
             legacyTarget = target;
             JSObject ret = new JSObject();
@@ -294,9 +334,13 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         byte[] payload = Base64.decode(base64, Base64.DEFAULT);
-        onPrinterThread(call, "Gagal mengirim data ke printer: ", () -> {
-            if (legacyTarget == null) throw new IOException("Printer belum terhubung");
-            writeWithReconnect(legacyTarget, payload);
+        Target target = legacyTarget;
+        if (target == null) {
+            call.reject("Gagal mengirim data ke printer: Printer belum terhubung");
+            return;
+        }
+        onPrinterThread(target, call, "Gagal mengirim data ke printer: ", () -> {
+            writeWithReconnect(target, payload);
             JSObject ret = new JSObject();
             ret.put("success", true);
             call.resolve(ret);
@@ -305,13 +349,11 @@ public class EscPosPrinterPlugin extends Plugin {
 
     @PluginMethod
     public void disconnect(PluginCall call) {
-        printerThread.execute(() -> {
-            closeAll();
-            call.resolve();
-        });
+        closeAll();
+        call.resolve();
     }
 
-    // ---- Koneksi (hanya dari printerThread) ----
+    // ---- Koneksi (hanya dari thread printer bersangkutan) ----
 
     /** Kirim ke printer; bila koneksi lama ternyata basi, sambung ulang sekali lalu kirim lagi. */
     private void writeWithReconnect(Target target, byte[] payload) throws Exception {
@@ -322,13 +364,13 @@ public class EscPosPrinterPlugin extends Plugin {
             conn = ensureConnected(target, true);
             write(conn, payload);
         }
-        touch(target, conn);
+        touch(conn);
     }
 
     private Connection ensureConnected(Target target, boolean forceReconnect) throws Exception {
         Connection existing = connections.get(target.key());
         if (!forceReconnect && existing != null && existing.isAlive()) {
-            touch(target, existing);
+            touch(existing);
             return existing;
         }
         closeConnection(target);
@@ -345,7 +387,8 @@ public class EscPosPrinterPlugin extends Plugin {
             conn.output = socket.getOutputStream();
         }
         connections.put(target.key(), conn);
-        touch(target, conn);
+        touch(conn);
+        startKeepAlive(target, conn);
         return conn;
     }
 
@@ -399,16 +442,22 @@ public class EscPosPrinterPlugin extends Plugin {
         if (conn != null) conn.close();
     }
 
+    /** Tutup semua koneksi — tiap penutupan dijalankan di thread printernya sendiri. */
     private void closeAll() {
-        for (Connection conn : connections.values()) conn.close();
-        connections.clear();
+        for (Map.Entry<String, ScheduledExecutorService> e : threads.entrySet()) {
+            String key = e.getKey();
+            e.getValue().execute(() -> {
+                Connection conn = connections.remove(key);
+                if (conn != null) conn.close();
+            });
+        }
         legacyTarget = null;
     }
 
     @Override
     protected void handleOnDestroy() {
-        printerThread.execute(this::closeAll);
-        printerThread.shutdown();
+        closeAll();
+        for (ScheduledExecutorService t : threads.values()) t.shutdown();
         super.handleOnDestroy();
     }
 }

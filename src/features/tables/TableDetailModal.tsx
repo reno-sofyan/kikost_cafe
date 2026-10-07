@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { cancelEmptyOrder, getOrder, listOrderItems, mergeOrders } from '@/db/repositories/orders'
+import { getOrder, listOrderItems, mergeOrders } from '@/db/repositories/orders'
 import { listTables, markAvailable, markNeedsCleaning, moveTable, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
-import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince } from '@/lib/datetime'
+import { useEmptyOrderCancel } from '@/features/pos/useEmptyOrderCancel'
 import { Modal } from '@/components/ui/Modal'
-import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
-import { toast } from '@/state/toastStore'
 import type { CafeTable } from '@/types/domain'
 
 interface Props {
@@ -18,28 +16,15 @@ interface Props {
 
 export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
   const [mode, setMode] = useState<'default' | 'move' | 'merge'>('default')
-  const currentUser = useSessionStore((s) => s.currentUser)!
-  const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const order = useLiveQuery(() => (table.currentOrderId ? getOrder(table.currentOrderId) : undefined), [table.currentOrderId])
   const orderItems = useLiveQuery(() => (order ? listOrderItems(order.id) : []), [order?.id]) ?? []
   const allTables = useLiveQuery(() => listTables(), []) ?? []
   const orderIsEmpty = !!order && orderItems.filter((i) => !i.removed && !i.voided).length === 0
 
+  // Alur bersama: pesanan yang PERNAH berisi item butuh alasan (+ kode Pemilik di kafe/kantin).
+  const cancelEmpty = useEmptyOrderCancel(() => onClose())
   async function handleCancelEmptyOrder() {
-    if (!order) return
-    const ok = await confirm({
-      title: 'Batalkan Pesanan Kosong?',
-      description: `Pesanan ${order.orderNumber} di ${table.name} belum berisi item dan akan dibatalkan. Meja akan tersedia kembali.`,
-      confirmLabel: 'Ya, Batalkan',
-      tone: 'danger',
-    })
-    if (!ok) return
-    try {
-      await cancelEmptyOrder(order.id, { userId: currentUser.id, userName: currentUser.name })
-      onClose()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gagal membatalkan pesanan')
-    }
+    if (order) await cancelEmpty.start(order)
   }
 
   const otherAvailable = allTables.filter((t) => t.id !== table.id && t.status === 'available')
@@ -161,7 +146,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
             </button>
           </div>
         )}
-        {confirmDialog}
+        {cancelEmpty.dialogs}
     </Modal>
   )
 }

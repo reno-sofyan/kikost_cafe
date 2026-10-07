@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { activePrinterForStation } from '@/db/repositories/printers'
+import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
+import { useSessionStore } from '@/state/sessionStore'
 import { renderReceiptBodyHtml } from '@/features/printing/renderReceiptHtml'
 import { printReceiptData, saveReceiptAsPdf } from '@/features/printing/printReceipt'
 import { Modal } from '@/components/ui/Modal'
@@ -6,17 +10,32 @@ import type { ReceiptData } from '@/features/printing/receiptData'
 
 interface Props {
   data: ReceiptData
+  /**
+   * Bila diisi dan printer kasir terpasang, "Cetak" masuk ANTREAN cetak sebagai
+   * cetak ulang (tercatat di log, tak bertabrakan dengan struk otomatis yang
+   * mungkin masih tercetak) — bukan mencetak langsung.
+   */
+  orderId?: string
   onClose: () => void
 }
 
-export function PrintPreviewModal({ data, onClose }: Props) {
+export function PrintPreviewModal({ data, orderId, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const currentUser = useSessionStore((s) => s.currentUser)
+  const hasQueuedPrinter = useLiveQuery(async () => !!(await activePrinterForStation('cashier')), []) ?? false
 
   async function handlePrint() {
     setBusy(true)
     setError(null)
+    setInfo(null)
     try {
+      if (orderId && hasQueuedPrinter && currentUser) {
+        await enqueueReceiptForOrder(orderId, { userId: currentUser.id, userName: currentUser.name }, { isReprint: true })
+        setInfo('Cetak ulang dikirim ke printer kasir.')
+        return
+      }
       await printReceiptData(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal mencetak struk')
@@ -38,6 +57,7 @@ export function PrintPreviewModal({ data, onClose }: Props) {
           />
         </div>
         {error && <p className="px-4 pb-2 text-sm text-red-400">{error}</p>}
+        {info && <p className="px-4 pb-2 text-sm text-success-500">{info}</p>}
         <div className="flex flex-none flex-col gap-2 border-t border-ink-800 p-4">
           <button className="btn-primary" disabled={busy} onClick={() => void handlePrint()}>
             {busy ? 'Mencetak...' : 'Cetak'}

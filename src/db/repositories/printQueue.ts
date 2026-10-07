@@ -130,15 +130,59 @@ async function runJob(job: PrintJob): Promise<void> {
   }
 }
 
-let currentRun: Promise<void> | null = null
-let rerunRequested = false
+/** Kunci printer FISIK tujuan sebuah job (dua entri printer bisa menunjuk alat yang sama). */
+async function physicalPrinterKey(job: PrintJob): Promise<string> {
+  let printer = job.printerId ? await db.printers.get(job.printerId) : null
+  if (!printer || !printer.active) printer = await activePrinterForStation(job.station)
+  if (!printer) return `none:${job.station}`
+  if (printer.connectionType === 'bluetooth') return `bt:${printer.bluetoothAddress ?? printer.id}`
+  if (printer.connectionType === 'network') return `net:${printer.networkHost}:${printer.networkPort}`
+  return `printer:${printer.id}`
+}
+
+async function readyJobsByPrinter(): Promise<Map<string, PrintJob[]>> {
+  const candidates = (await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt')).filter(backoffReady)
+  const byPrinter = new Map<string, PrintJob[]>()
+  for (const job of candidates) {
+    const key = await physicalPrinterKey(job)
+    const list = byPrinter.get(key) ?? []
+    list.push(job)
+    byPrinter.set(key, list)
+  }
+  return byPrinter
+}
+
+/**
+ * Satu "pekerja" per printer fisik: job printer itu dijalankan berurutan (satu
+ * printer tak bisa dua koneksi), tapi antar-printer berjalan PARALEL dan saling
+ * bebas — printer dapur yang mati/lama menyambung (sampai 20 dtk per percobaan)
+ * tak lagi menahan struk di printer kasir, termasuk struk yang masuk saat printer
+ * dapur sedang macet.
+ */
+const workers = new Map<string, Promise<void>>()
+const rerunRequested = new Set<string>()
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-async function runReadyJobs(): Promise<void> {
-  const candidates = await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt')
-  for (const job of candidates) {
-    if (backoffReady(job)) await runJob(job)
+function startWorker(key: string): Promise<void> {
+  const existing = workers.get(key)
+  if (existing) {
+    rerunRequested.add(key)
+    return existing
   }
+  const worker = (async () => {
+    do {
+      rerunRequested.delete(key)
+      const jobs = (await readyJobsByPrinter()).get(key) ?? []
+      for (const job of jobs) await runJob(job)
+    } while (rerunRequested.has(key))
+  })().finally(() => {
+    workers.delete(key)
+    // Permintaan yang tiba tepat saat pekerja selesai jangan sampai hilang.
+    if (rerunRequested.delete(key)) void startWorker(key)
+    void scheduleNextRetry().catch(() => {})
+  })
+  workers.set(key, worker)
+  return worker
 }
 
 /** Jadwalkan putaran berikutnya tepat saat job RETRYING terdekat siap dicoba lagi. */
@@ -152,33 +196,27 @@ async function scheduleNextRetry(): Promise<void> {
 }
 
 /**
- * Memproses semua job yang siap, berurutan (satu printer fisik tak bisa dua
- * koneksi). Panggilan saat putaran masih berjalan TIDAK diabaikan: putaran yang
- * sama diulang sekali lagi sehingga job yang baru masuk langsung tercetak, dan
- * promise yang dikembalikan baru selesai setelah job itu ikut diproses.
+ * Memproses semua job yang siap: tiap printer yang punya job mendapat pekerjanya
+ * (atau pekerja yang sudah jalan diminta mengecek ulang). Promise selesai setelah
+ * job-job yang siap saat ini — di semua printer — selesai diproses.
  */
+const scans = new Set<Promise<void>>()
+
 export function processPrintQueue(): Promise<void> {
-  if (currentRun) {
-    rerunRequested = true
-    return currentRun
-  }
-  currentRun = (async () => {
-    try {
-      do {
-        rerunRequested = false
-        await runReadyJobs()
-      } while (rerunRequested)
-    } finally {
-      currentRun = null
-      await scheduleNextRetry().catch(() => {})
-    }
+  // Pemindaian dicatat SINKRON, supaya `printQueueIdle` yang dipanggil tepat
+  // sesudahnya ikut menunggu walau pekerjanya belum sempat terdaftar.
+  const scan = (async () => {
+    const byPrinter = await readyJobsByPrinter()
+    await Promise.all([...byPrinter.keys()].map((key) => startWorker(key)))
   })()
-  return currentRun
+  scans.add(scan)
+  void scan.finally(() => scans.delete(scan)).catch(() => {})
+  return scan
 }
 
-/** Menunggu antrean cetak yang sedang berjalan selesai (untuk test & tombol "Proses"). */
-export function printQueueIdle(): Promise<void> {
-  return currentRun ?? Promise.resolve()
+/** Menunggu semua pemindaian & pekerja cetak selesai (untuk test & tombol "Proses"). */
+export async function printQueueIdle(): Promise<void> {
+  while (scans.size > 0 || workers.size > 0) await Promise.allSettled([...scans, ...workers.values()])
 }
 
 export async function retryPrintJob(jobId: string, actor: { userId: string; userName: string }): Promise<void> {

@@ -133,7 +133,15 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         shiftReminder: true,
       }
     case 'cafe_resto':
-      return ALL_FEATURES
+      // Pengaman kas yang terbukti di kantin juga dipakai kafe: QRIS wajib foto,
+      // pembatalan & koreksi item dengan alasan + kode Pemilik, dan tagihan
+      // tertunda (pelanggan langganan/kantor yang bayar belakangan).
+      return {
+        ...ALL_FEATURES,
+        paymentProofMethods: ['qris'],
+        ownerPinCancel: true,
+        payLater: true,
+      }
     case 'lainnya':
     default:
       return ALL_FEATURES

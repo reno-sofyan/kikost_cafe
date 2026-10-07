@@ -339,7 +339,7 @@ export async function markOrderPayLater(
 ): Promise<Order> {
   const name = params.name.trim()
   if (!name) throw new Error('Nama penanggung tagihan tertunda wajib diisi')
-  return db.transaction('rw', [db.orders, db.orderItems, db.syncQueue, db.auditLogs], async () => {
+  return db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.auditLogs], async () => {
     const order = await db.orders.get(orderId)
     if (!order) throw new Error('Pesanan tidak ditemukan')
     if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
@@ -364,6 +364,21 @@ export async function markOrderPayLater(
     }
     await db.orders.put(updated)
     await enqueueSync('orders', orderId, updated)
+    // Kafe: tamu dine-in pergi tanpa membayar sekarang → meja dilepas untuk dibersihkan.
+    if (order.tableId) {
+      const table = await db.cafeTables.get(order.tableId)
+      if (table && table.currentOrderId === orderId) {
+        await db.cafeTables.update(order.tableId, {
+          status: 'needs_cleaning',
+          currentOrderId: null,
+          occupiedSince: null,
+          guestCount: null,
+          updatedAt: now,
+        })
+        const t = await db.cafeTables.get(order.tableId)
+        if (t) await enqueueSync('cafeTables', order.tableId, t)
+      }
+    }
     await recordAuditLog({
       userId: actor.userId,
       userName: actor.userName,

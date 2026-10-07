@@ -288,9 +288,11 @@ export async function payBill(params: {
 
         if (order.type === 'dine_in' && order.tableId) {
           const table = await db.cafeTables.get(order.tableId)
-          if (table) {
+          // Hanya bila meja masih milik pesanan ini — tagihan tertunda yang dilunasi
+          // belakangan tak boleh mengosongkan meja yang kini dipakai tamu lain.
+          if (table && (table.currentOrderId === order.id || table.currentOrderId == null)) {
             await db.cafeTables.update(order.tableId, {
-              status: 'needs_cleaning',
+              status: table.currentOrderId === order.id ? 'needs_cleaning' : table.status,
               currentOrderId: null,
               occupiedSince: null,
               guestCount: null,

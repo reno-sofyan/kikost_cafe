@@ -300,7 +300,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
         </div>
     </Modal>
 
-      {showPrint && receipt && <PrintPreviewModal data={receipt} onClose={() => setShowPrint(false)} />}
+      {showPrint && receipt && <PrintPreviewModal data={receipt} orderId={order.id} onClose={() => setShowPrint(false)} />}
       {viewProof && (
         <Modal onClose={() => setViewProof(null)} className="max-h-[90vh] max-w-[90vw] rounded-2xl bg-ink-900 p-3">
           <img src={viewProof} alt="Bukti pembayaran" className="max-h-[80vh] max-w-full rounded-lg object-contain" />

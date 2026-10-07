@@ -44,7 +44,7 @@ describe('featuresForBusinessType', () => {
     expect(f.shiftReminder).toBe(true)
   })
 
-  it('cafe_resto: semua fitur aktif', () => {
+  it('cafe_resto: semua fitur aktif + pengaman kas (QRIS wajib foto, kode Pemilik, tagihan tertunda)', () => {
     expect(featuresForBusinessType('cafe_resto')).toEqual({
       tables: true,
       kitchen: true,
@@ -60,9 +60,9 @@ describe('featuresForBusinessType', () => {
       serviceCharge: true,
       // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
       paymentMethods: ['cash', 'qris', 'transfer', 'card'],
-      paymentProofMethods: [],
-      ownerPinCancel: false,
-      payLater: false,
+      paymentProofMethods: ['qris'],
+      ownerPinCancel: true,
+      payLater: true,
       shiftReminder: false,
     })
   })

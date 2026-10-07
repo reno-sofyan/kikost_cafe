@@ -223,3 +223,26 @@ describe('Antrean cetak tidak menahan kasir', () => {
     }
   })
 })
+
+describe('Antrean per printer', () => {
+  it('printer dapur yang macet tidak menahan struk di printer kasir', async () => {
+    await seedPrinters()
+    await seedProduct('nasi', 'cat-food')
+    let releaseKitchen: () => void = () => {}
+    const kitchenStuck = new Promise<void>((r) => (releaseKitchen = r))
+    setEscPosSender(async (target, bytes) => {
+      if (target.networkHost === '10.0.0.1') await kitchenStuck // printer dapur menggantung
+      sent.push({ host: target.networkHost, bytes: bytes.length })
+    })
+    const order = await newOrder()
+    await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+    await sendOrderToKitchen(order.id, actor)
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: 20000 }], confirmedByUserId: 'u1' })
+
+    await vi.waitFor(() => expect(sent.map((s) => s.host)).toContain('10.0.0.3'))
+    expect(sent.map((s) => s.host)).not.toContain('10.0.0.1')
+    releaseKitchen()
+    await printQueueIdle()
+    expect(sent.map((s) => s.host)).toContain('10.0.0.1')
+  })
+})
