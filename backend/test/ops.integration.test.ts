@@ -147,7 +147,7 @@ suite('konsol operator /ops (integrasi)', () => {
       ownerCodeCount: 1,
       emptiedFirstCount: 1,
       emptiedFirstValue: 42000,
-      neverHadItemsCount: 3,
+      neverHadItemsCount: 1,
     })
     const v4 = body.rows.find((x: { orderId: string }) => x.orderId === 'v4')
     expect(v4).toMatchObject({ emptiedFirst: true, value: 42000, requestedBy: 'Andi' })
@@ -208,6 +208,37 @@ suite('konsol operator /ops (integrasi)', () => {
     expect(detail.statusCode).toBe(200)
     const cancels = await app.inject({ method: 'GET', url: '/ops/api/tenant/cafe/cancellations', headers: opsAuth })
     expect(cancels.statusCode).toBe(200)
+  })
+
+  it('export PDF transaksi & pembatalan: butuh token, validasi tanggal, hasil application/pdf', async () => {
+    const now = Date.now()
+    const pool = getPool()
+    for (const [entity, id, payload] of [
+      ['settings', 'singleton', { id: 'singleton', businessName: 'Kantin Sehat', businessType: 'kantin' }],
+      ['orders', 'p1', { id: 'p1', orderNumber: 'TRX-1', status: 'paid', grandTotal: 25000, createdAt: now, paidAt: now, cashierName: 'Rina' }],
+      ['payments', 'pay1', { id: 'pay1', orderId: 'p1', method: 'qris', amount: 25000, createdAt: now }],
+      ['orders', 'v1', { id: 'v1', orderNumber: 'TRX-2', status: 'void', grandTotal: 12000, createdAt: now, voidedAt: now, voidReason: 'Salah input' }],
+      ['orders', 'g1', { id: 'g1', orderNumber: 'TRX-3', status: 'open', grandTotal: 9000, createdAt: now, payLater: { name: 'Pak Budi', markedAt: now } }],
+    ] as [string, string, Record<string, unknown>][]) {
+      await pool.query(
+        `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at) VALUES ('kantin',$1,$2,$3,$4)`,
+        [entity, id, JSON.stringify(payload), now],
+      )
+    }
+    const today = new Date(now + 7 * 3_600_000).toISOString().slice(0, 10)
+    for (const kind of ['transactions.pdf', 'cancellations.pdf']) {
+      const r = await app.inject({ method: 'GET', url: `/ops/api/tenant/kantin/export/${kind}?from=${today}&to=${today}`, headers: opsAuth })
+      expect(r.statusCode).toBe(200)
+      expect(r.headers['content-type']).toBe('application/pdf')
+      expect(String(r.headers['content-disposition'])).toContain(`-kantin-${today}.pdf`)
+      expect(r.rawPayload.subarray(0, 5).toString()).toBe('%PDF-')
+    }
+    const noAuth = await app.inject({ method: 'GET', url: '/ops/api/tenant/kantin/export/transactions.pdf' })
+    expect(noAuth.statusCode).toBe(401)
+    const bad = await app.inject({ method: 'GET', url: '/ops/api/tenant/kantin/export/transactions.pdf?from=2026-13-40', headers: opsAuth })
+    expect(bad.statusCode).toBe(400)
+    const unknown = await app.inject({ method: 'GET', url: '/ops/api/tenant/kantin/export/x.pdf', headers: opsAuth })
+    expect(unknown.statusCode).toBe(404)
   })
 
   it('menolak tenantId tidak valid', async () => {

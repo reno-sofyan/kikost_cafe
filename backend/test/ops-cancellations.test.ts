@@ -59,7 +59,7 @@ describe('buildCancellationReport', () => {
       ownerCodeCount: 1,
       emptiedFirstCount: 1,
       emptiedFirstValue: 35000,
-      neverHadItemsCount: 2,
+      neverHadItemsCount: 1,
     })
     const c = report.rows.find((r) => r.orderId === 'c')!
     expect(c).toMatchObject({ emptiedFirst: true, neverHadItems: false, value: 35000, requestedBy: 'Kasir B', approval: 'self' })

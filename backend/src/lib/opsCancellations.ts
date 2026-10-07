@@ -146,7 +146,8 @@ export function describeCancellation(order: Payload, audits: Payload[], items: P
     grandTotal,
     value: grandTotal > 0 ? grandTotal : correctedValue,
     emptiedFirst: grandTotal <= 0 && corrections.some((c) => c.kind !== 'reduced'),
-    neverHadItems: items.length === 0,
+    // Hanya pesanan Rp0 tanpa jejak item — pesanan bernilai yang itemnya belum tersinkron bukan "tanpa item".
+    neverHadItems: items.length === 0 && grandTotal <= 0,
     corrections,
     stage: stageOf(order),
     reason: str(order.voidReason),

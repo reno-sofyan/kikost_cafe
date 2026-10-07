@@ -2,7 +2,9 @@ import { timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { getPool } from '../db/pool.js'
 import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
-import { buildCancellationReport } from '../lib/opsCancellations.js'
+import type { Pool } from 'pg'
+import { buildCancellationReport, type CancellationReport } from '../lib/opsCancellations.js'
+import { buildCancellationsPdf, buildTransactionsPdf, type TransactionReport, type TransactionRow } from '../lib/opsPdf.js'
 
 /**
  * Konsol operator lintas-tenant untuk pemilik backend (bukan untuk kasir/pemilik
@@ -332,45 +334,205 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
         return { error: 'tenantId tidak valid' }
       }
       const days = Math.min(90, Math.max(1, Math.trunc(num(request.query.days) || 30)))
-      const since = Date.now() - days * 86_400_000
-      const pool = getPool()
-
-      const orders = await pool.query<{ payload: Record<string, unknown> }>(
-        `SELECT payload FROM sync_entity_state
-          WHERE tenant_id = $1 AND ${COUNTED_CANCEL_SQL}
-            AND ${VOIDED_AT_SQL} > $2
-          ORDER BY ${VOIDED_AT_SQL} DESC
-          LIMIT 500`,
-        [tenantId, since],
-      )
-      const orderIds = orders.rows.map((r) => String(r.payload.id ?? ''))
-      const [audits, items] = orderIds.length
-        ? await Promise.all([
-            pool.query<{ payload: Record<string, unknown> }>(
-              `SELECT payload FROM sync_entity_state
-                WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
-                  AND payload->>'action' IN ('order.cancel', 'order.cancelEmpty', 'order.void')
-                  AND payload->>'entityId' = ANY($2::text[])`,
-              [tenantId, orderIds],
-            ),
-            pool.query<{ payload: Record<string, unknown> }>(
-              `SELECT payload FROM sync_entity_state
-                WHERE tenant_id = $1 AND entity = 'orderItems' AND deleted = FALSE
-                  AND payload->>'orderId' = ANY($2::text[])`,
-              [tenantId, orderIds],
-            ),
-          ])
-        : [{ rows: [] }, { rows: [] }]
-
-      return {
-        tenantId,
-        ...buildCancellationReport(
-          days,
-          orders.rows.map((r) => r.payload),
-          audits.rows.map((r) => r.payload),
-          items.rows.map((r) => r.payload),
-        ),
-      }
+      const now = Date.now()
+      const report = await loadCancellationReport(getPool(), tenantId, now - days * 86_400_000, now + 86_400_000, days)
+      return { tenantId, ...report }
     },
   )
+
+  // ---- Export PDF: transaksi & pembatalan untuk satu periode (WIB) ----
+  app.get<{ Params: { tenantId: string; kind: string }; Querystring: { from?: string; to?: string } }>(
+    '/api/tenant/:tenantId/export/:kind',
+    async (request, reply) => {
+      const { tenantId, kind } = request.params
+      if (!TENANT_ID_RE.test(tenantId)) {
+        reply.code(400)
+        return { error: 'tenantId tidak valid' }
+      }
+      if (kind !== 'transactions.pdf' && kind !== 'cancellations.pdf') {
+        reply.code(404)
+        return { error: 'Jenis export tidak dikenal' }
+      }
+      const range = parseWibRange(request.query.from, request.query.to)
+      if ('error' in range) {
+        reply.code(400)
+        return { error: range.error }
+      }
+      const pool = getPool()
+      const settings = await pool.query<{ name: string | null }>(
+        `SELECT payload->>'businessName' AS name FROM sync_entity_state
+          WHERE tenant_id = $1 AND entity = 'settings' AND entity_id = 'singleton' AND deleted = FALSE`,
+        [tenantId],
+      )
+      const meta = {
+        businessName: settings.rows[0]?.name?.trim() || tenantId,
+        tenantId,
+        periodLabel: range.label,
+        generatedAt: Date.now(),
+      }
+      const days = Math.round((range.untilMs - range.sinceMs) / 86_400_000)
+      const pdf =
+        kind === 'transactions.pdf'
+          ? buildTransactionsPdf(meta, await loadTransactionReport(pool, tenantId, range.sinceMs, range.untilMs))
+          : buildCancellationsPdf(meta, await loadCancellationReport(pool, tenantId, range.sinceMs, range.untilMs, days))
+      const filename = `${kind === 'transactions.pdf' ? 'transaksi' : 'pembatalan'}-${tenantId}-${range.fileLabel}.pdf`
+      reply.header('content-type', 'application/pdf')
+      reply.header('content-disposition', `attachment; filename="${filename}"`)
+      reply.header('cache-control', 'no-store')
+      return reply.send(pdf)
+    },
+  )
+}
+
+const WIB_OFFSET_MS = 7 * 3_600_000
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/**
+ * Rentang tanggal kalender WIB (inklusif) → epoch ms [since, until). Default: hari ini.
+ * Maksimal 92 hari supaya PDF tetap wajar ukurannya.
+ */
+export function parseWibRange(
+  from: string | undefined,
+  to: string | undefined,
+  now = Date.now(),
+): { sinceMs: number; untilMs: number; label: string; fileLabel: string } | { error: string } {
+  const today = new Date(now + WIB_OFFSET_MS).toISOString().slice(0, 10)
+  const f = from || today
+  const t = to || f
+  const mf = DATE_RE.exec(f)
+  const mt = DATE_RE.exec(t)
+  // Date.UTC menggeser tanggal tak sah (mis. 2026-13-40) diam-diam — tolak bila tak kembali utuh.
+  const real = (m: RegExpExecArray) => new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toISOString().slice(0, 10) === m[0]
+  if (!mf || !mt || !real(mf) || !real(mt)) return { error: 'Format tanggal harus YYYY-MM-DD yang valid' }
+  const sinceMs = Date.UTC(+mf[1], +mf[2] - 1, +mf[3]) - WIB_OFFSET_MS
+  const untilMs = Date.UTC(+mt[1], +mt[2] - 1, +mt[3] + 1) - WIB_OFFSET_MS
+  if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs) || untilMs <= sinceMs) {
+    return { error: 'Tanggal akhir harus sama atau setelah tanggal awal' }
+  }
+  if (untilMs - sinceMs > 92 * 86_400_000) return { error: 'Rentang maksimal 92 hari' }
+  const fmt = (ms: number) =>
+    new Date(ms).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' })
+  const label = f === t ? fmt(sinceMs) : `${fmt(sinceMs)} - ${fmt(untilMs - 1)}`
+  return { sinceMs, untilMs, label, fileLabel: f === t ? f : `${f}_${t}` }
+}
+
+async function loadCancellationReport(
+  pool: Pool,
+  tenantId: string,
+  sinceMs: number,
+  untilMs: number,
+  days: number,
+): Promise<CancellationReport> {
+  const orders = await pool.query<{ payload: Record<string, unknown> }>(
+    `SELECT payload FROM sync_entity_state
+      WHERE tenant_id = $1 AND ${COUNTED_CANCEL_SQL}
+        AND ${VOIDED_AT_SQL} >= $2 AND ${VOIDED_AT_SQL} < $3
+      ORDER BY ${VOIDED_AT_SQL} DESC
+      LIMIT 2000`,
+    [tenantId, sinceMs, untilMs],
+  )
+  const orderIds = orders.rows.map((r) => String(r.payload.id ?? ''))
+  const [audits, items] = orderIds.length
+    ? await Promise.all([
+        pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state
+            WHERE tenant_id = $1 AND entity = 'auditLogs' AND deleted = FALSE
+              AND payload->>'action' IN ('order.cancel', 'order.cancelEmpty', 'order.void')
+              AND payload->>'entityId' = ANY($2::text[])`,
+          [tenantId, orderIds],
+        ),
+        pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state
+            WHERE tenant_id = $1 AND entity = 'orderItems' AND deleted = FALSE
+              AND payload->>'orderId' = ANY($2::text[])`,
+          [tenantId, orderIds],
+        ),
+      ])
+    : [{ rows: [] }, { rows: [] }]
+  return buildCancellationReport(
+    days,
+    orders.rows.map((r) => r.payload),
+    audits.rows.map((r) => r.payload),
+    items.rows.map((r) => r.payload),
+  )
+}
+
+/**
+ * Transaksi satu periode: pesanan lunas (berdasarkan waktu bayar) & batal (waktu
+ * batal) di periode itu, plus SEMUA bill gantung yang masih belum lunas.
+ */
+async function loadTransactionReport(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<TransactionReport> {
+  const orders = await pool.query<{ payload: Record<string, unknown> }>(
+    `SELECT payload FROM sync_entity_state
+      WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE AND (
+            (payload->>'status' IN ('paid', 'completed') AND ${PAID_OR_CREATED_MS} >= $2 AND ${PAID_OR_CREATED_MS} < $3)
+         OR (payload->>'status' = 'void' AND ${VOIDED_AT_SQL} >= $2 AND ${VOIDED_AT_SQL} < $3)
+         OR (payload->>'status' = 'open' AND payload->'payLater' IS NOT NULL AND jsonb_typeof(payload->'payLater') = 'object'))
+      LIMIT 5000`,
+    [tenantId, sinceMs, untilMs],
+  )
+  const ids = orders.rows.map((r) => String(r.payload.id ?? ''))
+  const payments = ids.length
+    ? await pool.query<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM sync_entity_state
+          WHERE tenant_id = $1 AND entity = 'payments' AND deleted = FALSE
+            AND payload->>'orderId' = ANY($2::text[])`,
+        [tenantId, ids],
+      )
+    : { rows: [] }
+
+  const methodsByOrder = new Map<string, Set<string>>()
+  const byMethod = new Map<string, { method: string; amount: number; count: number }>()
+  const statusById = new Map(orders.rows.map((r) => [String(r.payload.id ?? ''), String(r.payload.status ?? '')]))
+  for (const { payload: p } of payments.rows) {
+    const amount = num(p.amount)
+    if (amount <= 0 || p.reversalOfPaymentId) continue
+    const orderId = String(p.orderId ?? '')
+    const method = String(p.method ?? 'lainnya')
+    const set = methodsByOrder.get(orderId) ?? new Set<string>()
+    set.add(method)
+    methodsByOrder.set(orderId, set)
+    const st = statusById.get(orderId)
+    if (st === 'paid' || st === 'completed') {
+      const m = byMethod.get(method) ?? { method, amount: 0, count: 0 }
+      m.amount += amount
+      m.count += 1
+      byMethod.set(method, m)
+    }
+  }
+
+  const rows: TransactionRow[] = orders.rows.map(({ payload: o }) => {
+    const st = String(o.status ?? '')
+    const status: TransactionRow['status'] = st === 'paid' || st === 'completed' ? 'paid' : st === 'void' ? 'void' : 'open'
+    const payLater = (o.payLater ?? null) as Record<string, unknown> | null
+    const at =
+      status === 'paid'
+        ? num(o.paidAt) || num(o.createdAt)
+        : status === 'void'
+          ? num(o.voidedAt) || num(o.updatedAt)
+          : num(payLater?.markedAt) || num(o.createdAt)
+    return {
+      orderNumber: typeof o.orderNumber === 'string' ? o.orderNumber : null,
+      queueNumber: o.queueNumber == null ? null : num(o.queueNumber) || null,
+      buyer: typeof o.notes === 'string' && o.notes.trim() ? o.notes.trim() : typeof payLater?.name === 'string' ? payLater.name : null,
+      cashierName: typeof o.cashierName === 'string' ? o.cashierName : null,
+      methods: [...(methodsByOrder.get(String(o.id ?? '')) ?? [])],
+      status,
+      payLater: !!payLater,
+      grandTotal: num(o.grandTotal),
+      at: at || null,
+    }
+  })
+  rows.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
+  const paid = rows.filter((r) => r.status === 'paid')
+  const openPayLater = rows.filter((r) => r.status === 'open')
+  return {
+    rows,
+    byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount),
+    paidCount: paid.length,
+    paidValue: paid.reduce((s, r) => s + r.grandTotal, 0),
+    voidCount: rows.filter((r) => r.status === 'void').length,
+    openPayLaterCount: openPayLater.length,
+    openPayLaterValue: openPayLater.reduce((s, r) => s + r.grandTotal, 0),
+  }
 }

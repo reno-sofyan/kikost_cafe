@@ -125,6 +125,16 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   .tag.stage-paid { color: #fca5a5; border-color: #b91c1c; background: rgba(185,28,28,.15); }
   .tag.stage-kitchen { color: #fcd34d; border-color: #b45309; }
   .tag.stage-unprocessed { color: var(--ink-200); }
+  /* Export PDF */
+  .exportbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .exportbar .t { font-size: .8rem; color: var(--ink-200); font-weight: 600; margin-right: auto; }
+  .exportbar select, .exportbar input[type=date] { font: inherit; font-size: .85rem; width: auto; padding: 7px 10px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--ink-50); color-scheme: dark; }
+  .exportbar button.primary { padding: 7px 14px; }
+  .exportbar .msg { flex-basis: 100%; font-size: .78rem; color: var(--ink-400); min-height: 0; }
+  .exportbar .msg.err { color: var(--bad); }
+
   /* ---- HP (≤640px) ---- */
   @media (max-width: 640px) {
     .wrap { padding: calc(14px + env(safe-area-inset-top)) 14px calc(40px + env(safe-area-inset-bottom)); }
@@ -147,6 +157,10 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     .tabs button { flex: 1 1 auto; white-space: nowrap; padding: 8px 10px; font-size: .85rem; }
     .toolbar .muted { flex-basis: 100%; }
     .groups { grid-template-columns: 1fr; }
+    .exportbar .t { flex-basis: 100%; }
+    .exportbar select { flex: 1 1 100%; }
+    .exportbar input[type=date] { flex: 1 1 40%; min-width: 0; }
+    .exportbar button.primary { flex: 1 1 100%; padding: 10px; }
     /* Tabel → kartu bertumpuk */
     table.stack thead { display: none; }
     table.stack, table.stack tbody { display: block; }
@@ -206,6 +220,22 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
         <button id="tabActivity" class="active" onclick="showTab('activity')">Log Aktivitas</button>
         <button id="tabOrders" onclick="showTab('orders')">Transaksi</button>
         <button id="tabCancels" onclick="showTab('cancels')">Pembatalan</button>
+      </div>
+      <div id="exportBar" class="exportbar hide">
+        <span class="t" id="expTitle">Export PDF</span>
+        <select id="expPreset" onchange="onPresetChange()" aria-label="Periode">
+          <option value="today">Hari ini</option>
+          <option value="yesterday">Kemarin</option>
+          <option value="7d">7 hari terakhir</option>
+          <option value="30d">30 hari terakhir</option>
+          <option value="month">Bulan ini</option>
+          <option value="lastmonth">Bulan lalu</option>
+          <option value="custom">Pilih tanggal…</option>
+        </select>
+        <input type="date" id="expFrom" class="hide" aria-label="Dari tanggal" />
+        <input type="date" id="expTo" class="hide" aria-label="Sampai tanggal" />
+        <button class="primary" id="expBtn" onclick="exportPdf()">Unduh PDF</button>
+        <div class="msg" id="expMsg"></div>
       </div>
       <div id="paneActivity"></div>
       <div id="paneOrders" class="hide"></div>
@@ -402,10 +432,72 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     document.getElementById('overlay').classList.remove('open');
     document.getElementById('drawer').classList.remove('open');
   }
+  let currentTab = 'activity';
   function showTab(which) {
+    currentTab = which;
     for (const [tab, pane, key] of [['tabActivity', 'paneActivity', 'activity'], ['tabOrders', 'paneOrders', 'orders'], ['tabCancels', 'paneCancels', 'cancels']]) {
       document.getElementById(tab).classList.toggle('active', which === key);
       document.getElementById(pane).classList.toggle('hide', which !== key);
+    }
+    document.getElementById('exportBar').classList.toggle('hide', which === 'activity');
+    document.getElementById('expTitle').textContent = which === 'cancels' ? 'Export PDF Pembatalan' : 'Export PDF Transaksi';
+    setExpMsg('');
+  }
+
+  // ---- Export PDF (tanggal kalender WIB) ----
+  const wibDay = (offsetDays) => new Date(Date.now() + 7 * 3600000 + (offsetDays || 0) * 86400000).toISOString().slice(0, 10);
+  function presetRange(p) {
+    const today = wibDay(0);
+    const [y, m] = today.split('-').map(Number);
+    const ymd = (yy, mm, dd) => new Date(Date.UTC(yy, mm - 1, dd)).toISOString().slice(0, 10);
+    switch (p) {
+      case 'yesterday': return [wibDay(-1), wibDay(-1)];
+      case '7d': return [wibDay(-6), today];
+      case '30d': return [wibDay(-29), today];
+      case 'month': return [ymd(y, m, 1), today];
+      case 'lastmonth': return [ymd(y, m - 1, 1), ymd(y, m, 0)];
+      case 'custom': return [document.getElementById('expFrom').value || today, document.getElementById('expTo').value || today];
+      default: return [today, today];
+    }
+  }
+  function onPresetChange() {
+    const custom = document.getElementById('expPreset').value === 'custom';
+    const f = document.getElementById('expFrom'), t = document.getElementById('expTo');
+    f.classList.toggle('hide', !custom); t.classList.toggle('hide', !custom);
+    if (custom && !f.value) { f.value = wibDay(-6); t.value = wibDay(0); }
+    setExpMsg('');
+  }
+  function setExpMsg(text, isErr) {
+    const el = document.getElementById('expMsg');
+    el.textContent = text || ''; el.classList.toggle('err', !!isErr);
+  }
+  async function exportPdf() {
+    const kind = currentTab === 'cancels' ? 'cancellations' : 'transactions';
+    const [from, to] = presetRange(document.getElementById('expPreset').value);
+    const btn = document.getElementById('expBtn');
+    btn.disabled = true; btn.textContent = 'Membuat PDF…'; setExpMsg('');
+    try {
+      const res = await fetch('/ops/api/tenant/' + encodeURIComponent(currentTenantId) + '/export/' + kind + '.pdf?from=' + from + '&to=' + to, {
+        headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store',
+      });
+      if (res.status === 401) { setToken(''); showGate('Token ditolak — tidak sama dengan OPS_TOKEN di server.'); return; }
+      if (!res.ok) {
+        let msg = 'Gagal membuat PDF (HTTP ' + res.status + ').';
+        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
+        setExpMsg(msg, true); return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') || '';
+      const name = (/filename="([^"]+)"/.exec(cd) || [])[1] || (kind + '.pdf');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setExpMsg('Terunduh: ' + name);
+    } catch {
+      setExpMsg('Tidak bisa menghubungi server. Periksa koneksi internet.', true);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Unduh PDF';
     }
   }
 
