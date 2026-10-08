@@ -26,6 +26,7 @@ import { SplitBillModal } from '@/features/payments/SplitBillModal'
 import { PaymentProofCapture } from '@/features/payments/PaymentProofCapture'
 import { EMPTY_PROOF, isProofComplete, type PaymentProofDraft } from '@/features/payments/paymentProofDraft'
 import { warmUpStationPrinters } from '@/db/repositories/printQueue'
+import { openCashDrawerForPayment } from '@/features/printing/cashDrawer'
 import { featuresForBusinessType, requiresPaymentProof } from '@/lib/businessType'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
@@ -201,6 +202,7 @@ function SingleBillPayment({
         allowNegativeStock,
         proof: isProofComplete(proof) ? { photoDataUrls: proof.photos, takenByUserId: user.id, takenByName: user.name } : undefined,
       })
+      openCashDrawerForPayment(lines.map((l) => l.method))
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()
       else onPartial()
     } catch (e) {
@@ -332,6 +334,7 @@ function BillPayCard({
         allowNegativeStock,
         proof: isProofComplete(proof) ? { photoDataUrls: proof.photos, takenByUserId: user.id, takenByName: user.name } : undefined,
       })
+      openCashDrawerForPayment(lines.map((l) => l.method))
       setLines([])
       setProof(EMPTY_PROOF)
       if (res.order.lifecycleStatus === 'COMPLETED') onCompleted()

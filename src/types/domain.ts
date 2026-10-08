@@ -150,6 +150,9 @@ export interface PrinterConfig extends PrinterConnectionSettings {
   bluetoothName: string | null
   autoPrintOnPayment: boolean
   autoPrintKitchenOrder: boolean
+  /** Buka laci kasir (lewat printer kasir) tiap pembayaran tunai. `undefined`
+   *  (pengaturan lama) = aktif. */
+  openDrawerOnCash?: boolean
 }
 
 // ---- Integrasi pager restoran (Wireless Calling System) ----

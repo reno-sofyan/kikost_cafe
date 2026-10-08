@@ -141,7 +141,12 @@ async function physicalPrinterKey(job: PrintJob): Promise<string> {
 }
 
 async function readyJobsByPrinter(): Promise<Map<string, PrintJob[]>> {
-  const candidates = (await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt')).filter(backoffReady)
+  // Job baru (QUEUED) didahulukan dari job yang sedang dicoba ulang: struk yang
+  // baru dibayar tak boleh menunggu job lama yang terus gagal (tiap percobaan bisa
+  // memakan puluhan detik saat printer bermasalah).
+  const candidates = (await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt'))
+    .filter(backoffReady)
+    .sort((a, b) => Number(a.status === 'RETRYING') - Number(b.status === 'RETRYING'))
   const byPrinter = new Map<string, PrintJob[]>()
   for (const job of candidates) {
     const key = await physicalPrinterKey(job)

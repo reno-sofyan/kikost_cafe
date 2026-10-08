@@ -48,7 +48,18 @@ describe('NativeEscPosDriver — cetak lewat satu panggilan native', () => {
     await assertion
   })
 
-  it('gagal dengan PrinterTimeoutError setelah 20 detik bila printer tak merespons sama sekali (mis. mati)', async () => {
+  it('tak menyerah sebelum native selesai menyambung ulang (≈32 dtk) — menyerah duluan = struk dobel saat dicoba ulang', async () => {
+    vi.useFakeTimers()
+    let finish: (v: { success: boolean }) => void = () => {}
+    print.mockReturnValue(new Promise((r) => (finish = r)))
+    const { NativeEscPosDriver } = await import('./printerDrivers')
+    const assertion = expect(new NativeEscPosDriver(btConfig).print(sample)).resolves.toBeUndefined()
+    await vi.advanceTimersByTimeAsync(32_000)
+    finish({ success: true })
+    await assertion
+  })
+
+  it('gagal dengan PrinterTimeoutError setelah 40 detik bila printer tak merespons sama sekali (mis. mati)', async () => {
     vi.useFakeTimers()
     print.mockReturnValue(new Promise(() => {}))
     const { NativeEscPosDriver, PrinterTimeoutError } = await import('./printerDrivers')
@@ -57,7 +68,7 @@ describe('NativeEscPosDriver — cetak lewat satu panggilan native', () => {
     // vitest tidak melaporkan "Unhandled Rejection" saat timer menembak lebih dulu.
     const assertion = expect(new NativeEscPosDriver(btConfig).print(sample)).rejects.toThrow(PrinterTimeoutError)
     await Promise.resolve()
-    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(40_000)
     await assertion
   })
 })
@@ -73,7 +84,7 @@ describe('sendEscPosBytes (antrean cetak)', () => {
     expect(print).toHaveBeenCalledWith({ type: 'network', host: '192.168.1.50', port: 9100, base64: 'G0A=' })
   })
 
-  it('koneksi yang menggantung ditolak setelah 20 detik', async () => {
+  it('koneksi yang menggantung ditolak setelah 40 detik', async () => {
     vi.useFakeTimers()
     print.mockReturnValue(new Promise(() => {}))
     const { sendEscPosBytes, PrinterTimeoutError } = await import('./printerDrivers')
@@ -84,7 +95,7 @@ describe('sendEscPosBytes (antrean cetak)', () => {
       ),
     ).rejects.toThrow(PrinterTimeoutError)
     await Promise.resolve()
-    await vi.advanceTimersByTimeAsync(20_000)
+    await vi.advanceTimersByTimeAsync(40_000)
     await assertion
   })
 })

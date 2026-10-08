@@ -3,7 +3,9 @@ import { db } from '@/db/schema'
 import { resetLocalDb } from '@/test/db'
 import { setEscPosSender, resetEscPosSender } from '@/features/printing/printerDrivers'
 import { savePrinter, setPrintRoute } from './printers'
-import { listPrintJobs, printQueueIdle, processPrintQueue, retryPrintJob } from './printQueue'
+import { enqueuePrintJob, listPrintJobs, printQueueIdle, processPrintQueue, retryPrintJob } from './printQueue'
+import { buildSampleReceiptData } from '@/features/printing/receiptData'
+import { DEFAULT_SETTINGS } from './settings'
 import { sendOrderToKitchen } from './kitchenDispatch'
 import { finalizePayment } from './checkout'
 import { addOrderItem, startOrder } from './orders'
@@ -244,5 +246,32 @@ describe('Antrean per printer', () => {
     releaseKitchen()
     await printQueueIdle()
     expect(sent.map((s) => s.host)).toContain('10.0.0.1')
+  })
+
+  it('struk baru didahulukan dari job lama yang sedang dicoba ulang', async () => {
+    await seedPrinters()
+    const order: string[] = []
+    setEscPosSender(async (_target, bytes) => {
+      const text = new TextDecoder().decode(bytes)
+      order.push(text.includes('LAMA') ? 'lama' : 'baru')
+    })
+    const enqueue = (name: string, key: string) =>
+      enqueuePrintJob({
+        kind: 'receipt',
+        station: 'cashier',
+        payload: { ...buildSampleReceiptData(DEFAULT_SETTINGS), businessName: name },
+        title: name,
+        idempotencyKey: key,
+        requestedBy: 'u1',
+        requestedByName: 'Admin',
+      })
+    await enqueue('LAMA', 'old')
+    // Job lama sudah gagal sekali & masa tunggunya lewat — siap dicoba ulang.
+    await db.printJobs.update('old', { status: 'RETRYING', attempts: 1, createdAt: 1, updatedAt: 1 })
+    await enqueue('BARU', 'new')
+
+    await processPrintQueue()
+    await printQueueIdle()
+    expect(order).toEqual(['baru', 'lama'])
   })
 })

@@ -34,8 +34,12 @@ export class PrinterTimeoutError extends Error {
  *  menggantung tanpa batas saat printer mati/di luar jangkauan (mis. Bluetooth SPP
  *  menunggu ACK yang tak pernah datang); tanpa ini kasir terjebak di layar "Mencetak…".
  *  Dulu 3 detik: terlalu pendek untuk menyambung Bluetooth (sering 2-5 detik, plus
- *  satu cara cadangan), sehingga cetak dianggap gagal lalu diulang dari awal. */
-const PRINTER_OP_TIMEOUT_MS = 20_000
+ *  satu cara cadangan), sehingga cetak dianggap gagal lalu diulang dari awal.
+ *  Harus LEBIH PANJANG dari kasus terburuk di native (pemanasan yang sedang
+ *  berjalan ≤16 dtk + sambung ulang 2 cara × 8 dtk, lihat BT_CONNECT_TIMEOUT_MS
+ *  di EscPosPrinterPlugin.java): bila JS menyerah lebih dulu sementara native
+ *  akhirnya berhasil, job dicoba ulang dan struk tercetak dobel. */
+const PRINTER_OP_TIMEOUT_MS = 40_000
 
 function withPrinterTimeout<T>(op: Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {

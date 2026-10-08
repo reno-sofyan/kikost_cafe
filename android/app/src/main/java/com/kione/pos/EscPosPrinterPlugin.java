@@ -4,6 +4,10 @@ import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Build;
 import android.util.Base64;
 
@@ -15,6 +19,8 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONArray;
 
@@ -31,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Plugin ESC/POS untuk Kione POS.
@@ -49,7 +56,14 @@ import java.util.concurrent.TimeUnit;
  *   tak bisa dua koneksi) — printer dapur yang mati/menyambung lama tak menahan
  *   struk di printer kasir. Bukan di thread plugin Capacitor — kalau tidak,
  *   connect() yang memblokir ikut menahan plugin lain (Preferences, Network, dst.).
- * - Koneksi basi disambung ulang otomatis sekali saat penulisan gagal.
+ * - Koneksi basi disambung ulang otomatis sekali saat penulisan gagal. Putusnya
+ *   link Bluetooth (printer dimatikan/keluar jangkauan) dideteksi lewat siaran
+ *   ACL_DISCONNECTED — tanpa itu socket tetap "isConnected" dan struk berikutnya
+ *   dikirim ke koneksi mati dulu sebelum disambung ulang.
+ * - Anti-macet: menyambung Bluetooth dibatasi BT_CONNECT_TIMEOUT_MS per cara
+ *   (connect() bawaan bisa menggantung puluhan detik), dan pemanasan (base64
+ *   kosong) dilewati bila printer sedang punya pekerjaan atau ada cetakan yang
+ *   menunggu — pemanasan tak boleh menumpuk di depan struk sungguhan.
  */
 @CapacitorPlugin(
     name = "EscPosPrinter",
@@ -69,6 +83,18 @@ public class EscPosPrinterPlugin extends Plugin {
     private static final long IDLE_DISCONNECT_MS = 30 * 60_000;
     private static final long KEEPALIVE_MS = 20_000;
     private static final byte[] KEEPALIVE_BYTE = new byte[] { 0x00 };
+    /** Batas satu percobaan menyambung Bluetooth (normalnya 2-5 detik). Dua cara
+     *  dicoba → paling lama ±2x ini; batas di sisi JS (printerDrivers.ts) harus
+     *  lebih panjang dari total terburuk supaya cetakan yang telat tak diulang (dobel). */
+    private static final long BT_CONNECT_TIMEOUT_MS = 8000;
+
+    /** Penutup socket yang connect()-nya melewati batas waktu. */
+    private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
+    /** Jumlah pekerjaan (cetak/pemanasan) yang antre atau berjalan per printer. */
+    private final Map<String, AtomicInteger> busy = new ConcurrentHashMap<>();
+    /** Jumlah cetakan SUNGGUHAN yang antre/berjalan per printer. */
+    private final Map<String, AtomicInteger> realPrints = new ConcurrentHashMap<>();
+    private BroadcastReceiver aclReceiver;
 
     /** Satu thread per printer (kunci = Target.key()). */
     private final Map<String, ScheduledExecutorService> threads = new ConcurrentHashMap<>();
@@ -134,8 +160,14 @@ public class EscPosPrinterPlugin extends Plugin {
         return threads.computeIfAbsent(target.key(), k -> Executors.newSingleThreadScheduledExecutor());
     }
 
+    private static AtomicInteger counter(Map<String, AtomicInteger> map, Target target) {
+        return map.computeIfAbsent(target.key(), k -> new AtomicInteger());
+    }
+
     /** Jalankan di thread milik printer ini; tolak call dengan pesan yang ramah bila gagal. */
     private void onPrinterThread(Target target, PluginCall call, String failPrefix, PrinterTask task) {
+        AtomicInteger pending = counter(busy, target);
+        pending.incrementAndGet();
         threadFor(target).execute(() -> {
             try {
                 task.run();
@@ -143,8 +175,40 @@ public class EscPosPrinterPlugin extends Plugin {
                 call.reject("Izin Bluetooth tidak tersedia: " + e.getMessage());
             } catch (Exception e) {
                 call.reject(failPrefix + e.getMessage());
+            } finally {
+                pending.decrementAndGet();
             }
         });
+    }
+
+    @Override
+    public void load() {
+        // Link Bluetooth putus → buang koneksinya SEKARANG (isConnected() tetap true
+        // pada socket mati), lalu coba sambung lagi di latar sekali.
+        aclReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                if (device == null) return;
+                Target target = new Target(true, device.getAddress(), null, 0);
+                if (!connections.containsKey(target.key())) return;
+                threadFor(target).execute(() -> {
+                    Connection dropped = connections.get(target.key());
+                    if (dropped == null) return;
+                    long lastUsedAt = dropped.lastUsedAt;
+                    closeConnection(target);
+                    if (counter(realPrints, target).get() > 0) return; // cetakan berikutnya menyambung sendiri
+                    try {
+                        Connection fresh = ensureConnected(target, false);
+                        fresh.lastUsedAt = lastUsedAt;
+                    } catch (Exception stillDown) {
+                        // Printer mati — cetakan berikutnya mencoba lagi.
+                    }
+                });
+            }
+        };
+        ContextCompat.registerReceiver(
+            getContext(), aclReceiver, new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED), ContextCompat.RECEIVER_EXPORTED);
     }
 
     /** Tandai printer ini baru dipakai (cetak/pemanasan) — memperpanjang masa jaga-hidup. */
@@ -264,11 +328,31 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         byte[] payload = Base64.decode(base64, Base64.DEFAULT);
+        JSObject ok = new JSObject();
+        ok.put("success", true);
+        if (payload.length == 0) {
+            // Pemanasan: tak perlu antre bila printer sudah sibuk (koneksi toh sedang
+            // dibuat/dipakai) — dulu pemanasan yang menumpuk saat printer tak terjangkau
+            // menahan struk sungguhan belasan detik per pemanasan.
+            if (counter(busy, target).get() > 0) {
+                call.resolve(ok);
+                return;
+            }
+            onPrinterThread(target, call, "Gagal menyambung printer: ", () -> {
+                if (counter(realPrints, target).get() == 0) ensureConnected(target, false);
+                call.resolve(ok);
+            });
+            return;
+        }
+        AtomicInteger real = counter(realPrints, target);
+        real.incrementAndGet();
         onPrinterThread(target, call, "Gagal mencetak: ", () -> {
-            writeWithReconnect(target, payload);
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
+            try {
+                writeWithReconnect(target, payload);
+            } finally {
+                real.decrementAndGet();
+            }
+            call.resolve(ok);
         });
     }
 
@@ -357,10 +441,14 @@ public class EscPosPrinterPlugin extends Plugin {
 
     /** Kirim ke printer; bila koneksi lama ternyata basi, sambung ulang sekali lalu kirim lagi. */
     private void writeWithReconnect(Target target, byte[] payload) throws Exception {
+        Connection before = connections.get(target.key());
         Connection conn = ensureConnected(target, false);
         try {
             write(conn, payload);
         } catch (IOException staleConnection) {
+            // Koneksi yang BARU saja dibuat lalu gagal = printer bermasalah, bukan
+            // koneksi basi — jangan menyambung ulang lagi (menggandakan waktu tunggu).
+            if (conn != before) throw staleConnection;
             conn = ensureConnected(target, true);
             write(conn, payload);
         }
@@ -410,7 +498,17 @@ public class EscPosPrinterPlugin extends Plugin {
             BluetoothSocket socket = null;
             try {
                 socket = strategy == 0 ? channelOneSocket(device) : device.createInsecureRfcommSocketToServiceRecord(SPP_UUID);
-                socket.connect();
+                final BluetoothSocket connecting = socket;
+                // connect() tak punya batas waktu sendiri; menutup socket dari thread
+                // lain membuatnya gagal segera dengan IOException.
+                ScheduledFuture<?> timeout = watchdog.schedule(() -> {
+                    try { connecting.close(); } catch (Exception ignored) {}
+                }, BT_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                try {
+                    socket.connect();
+                } finally {
+                    timeout.cancel(false);
+                }
                 return socket;
             } catch (SecurityException e) {
                 throw e;
@@ -458,6 +556,11 @@ public class EscPosPrinterPlugin extends Plugin {
     protected void handleOnDestroy() {
         closeAll();
         for (ScheduledExecutorService t : threads.values()) t.shutdown();
+        watchdog.shutdown();
+        if (aclReceiver != null) {
+            try { getContext().unregisterReceiver(aclReceiver); } catch (Exception ignored) {}
+            aclReceiver = null;
+        }
         super.handleOnDestroy();
     }
 }

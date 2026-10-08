@@ -120,6 +120,16 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   return b.toBytes()
 }
 
+/**
+ * Pulsa pembuka laci kasir (cash drawer RJ11 yang dicolok ke printer struk):
+ * `ESC p m t1 t2` — t1=25 (50 ms nyala), t2=250 (500 ms jeda). Dikirim ke pin 2
+ * lalu pin 5, karena laci berbeda merek memakai pin berbeda; pulsa ke pin yang
+ * tak tersambung diabaikan printer. Tidak mencetak/menggulung kertas.
+ */
+export function buildEscPosDrawerKick(): Uint8Array {
+  return new EscPosBuilder().raw(ESC, 0x70, 0x00, 25, 250).raw(ESC, 0x70, 0x01, 25, 250).toBytes()
+}
+
 /** Tiket dapur/bar ESC/POS — hanya item pada tiket ini (tak mencetak ulang pesanan lama). */
 export function buildEscPosKitchenTicket(p: KitchenTicketPayload): Uint8Array {
   const width = CHARS_PER_LINE[p.paperSize]

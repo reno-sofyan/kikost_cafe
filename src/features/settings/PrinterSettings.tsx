@@ -13,6 +13,8 @@ import {
 } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
 import { buildSampleReceiptData } from '@/features/printing/receiptData'
+import { openCashDrawer } from '@/features/printing/cashDrawer'
+import { getSettings, updateSettings } from '@/db/repositories/settings'
 import { Modal } from '@/components/ui/Modal'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { EscPosPrinter, type BluetoothPrinterDevice } from '@/native/escPosPrinterPlugin'
@@ -112,6 +114,7 @@ export function PrinterSettings() {
             ))}
             {printers.length === 0 && <p className="text-sm text-ink-500">Belum ada printer.</p>}
           </div>
+          <CashDrawerCard />
         </>
       )}
 
@@ -151,6 +154,53 @@ export function PrinterSettings() {
           }
         />
       )}
+    </div>
+  )
+}
+
+/** Laci kasir elektrik dicolok (RJ11) ke printer kasir — dibuka lewat printer itu. */
+function CashDrawerCard() {
+  const enabled = useLiveQuery(async () => (await getSettings()).printerConfig.openDrawerOnCash !== false, [])
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  async function toggle(next: boolean) {
+    const current = await getSettings()
+    await updateSettings({ printerConfig: { ...current.printerConfig, openDrawerOnCash: next } })
+  }
+
+  async function test() {
+    setStatus(null)
+    setTesting(true)
+    try {
+      await openCashDrawer()
+      setStatus({ ok: true, text: 'Perintah buka laci terkirim ke printer kasir.' })
+    } catch (e) {
+      setStatus({ ok: false, text: e instanceof Error ? e.message : 'Gagal membuka laci' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div className="card space-y-3 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-ink-50">Laci Kasir (Cash Drawer)</p>
+          <p className="text-xs text-ink-500">
+            Laci elektrik yang kabelnya dicolok ke printer kasir (Bluetooth/LAN). Pembayaran via QRIS/transfer/kartu tidak
+            membuka laci.
+          </p>
+        </div>
+        <button className="btn-secondary !min-h-[2.75rem] flex-none !px-3 !py-1 text-xs" disabled={testing} onClick={() => void test()}>
+          {testing ? 'Membuka…' : 'Tes Buka Laci'}
+        </button>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-ink-300">
+        <input type="checkbox" checked={enabled ?? true} onChange={(e) => void toggle(e.target.checked)} /> Buka laci otomatis
+        saat bayar tunai
+      </label>
+      {status && <p className={`text-sm ${status.ok ? 'text-success-500' : 'text-red-400'}`}>{status.text}</p>}
     </div>
   )
 }
