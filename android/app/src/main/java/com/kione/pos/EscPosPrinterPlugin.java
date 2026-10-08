@@ -109,6 +109,8 @@ public class EscPosPrinterPlugin extends Plugin {
         OutputStream output;
         ScheduledFuture<?> keepAlive;
         long lastUsedAt = System.currentTimeMillis();
+        /** Kapan koneksi ini dibuat — untuk mengabaikan siaran "putus" milik link lama. */
+        final long connectedAt = System.currentTimeMillis();
 
         boolean isAlive() {
             if (output == null) return false;
@@ -188,13 +190,16 @@ public class EscPosPrinterPlugin extends Plugin {
         aclReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
+                long receivedAt = System.currentTimeMillis();
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 if (device == null) return;
                 Target target = new Target(true, device.getAddress(), null, 0);
                 if (!connections.containsKey(target.key())) return;
                 threadFor(target).execute(() -> {
                     Connection dropped = connections.get(target.key());
-                    if (dropped == null) return;
+                    // Koneksi yang dibuat SETELAH link putus (mis. baru saja disambung
+                    // ulang oleh cetakan/jaga-hidup) masih sehat — siaran ini milik link lama.
+                    if (dropped == null || dropped.connectedAt >= receivedAt) return;
                     long lastUsedAt = dropped.lastUsedAt;
                     closeConnection(target);
                     if (counter(realPrints, target).get() > 0) return; // cetakan berikutnya menyambung sendiri
@@ -507,7 +512,12 @@ public class EscPosPrinterPlugin extends Plugin {
                 try {
                     socket.connect();
                 } finally {
-                    timeout.cancel(false);
+                    // cancel() gagal = penutup sudah jalan: socket mungkin sudah ditutup
+                    // tepat saat connect() selesai — anggap gagal, jangan kembalikan socket mati.
+                    if (!timeout.cancel(false)) {
+                        try { socket.close(); } catch (Exception ignored) {}
+                        throw new IOException("Printer Bluetooth tidak merespons");
+                    }
                 }
                 return socket;
             } catch (SecurityException e) {

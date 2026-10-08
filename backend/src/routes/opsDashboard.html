@@ -127,6 +127,16 @@
   .exportbar button.primary { padding: 7px 14px; }
   .exportbar .msg { flex-basis: 100%; font-size: .78rem; color: var(--ink-400); min-height: 0; }
   .exportbar .msg.err { color: var(--bad); }
+  .ocode { margin: 0 0 14px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .ocode .row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ocode .t { font-size: .85rem; font-weight: 600; margin-right: auto; }
+  .ocode .st { font-size: .78rem; color: var(--ink-400); margin-top: 6px; }
+  .ocode .big { margin-top: 10px; padding: 12px; text-align: center; border-radius: 10px; background: var(--surface-2);
+    border: 1px dashed var(--brand); }
+  .ocode .big b { display: block; font-size: 2.2rem; letter-spacing: .35em; font-variant-numeric: tabular-nums; padding-left: .35em; }
+  .ocode .big span { font-size: .75rem; color: var(--warn); }
+  .ocode .err { color: var(--bad); font-size: .78rem; margin-top: 6px; }
+  @media (max-width: 640px) { .ocode .row1 button { flex: 1 1 auto; padding: 10px; } }
 
   /* ---- HP (≤640px) ---- */
   @media (max-width: 640px) {
@@ -209,6 +219,16 @@
     </div>
     <div class="body">
       <div class="kpis" id="dKpis" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div class="ocode" id="ocode">
+        <div class="row1">
+          <span class="t">Kode Pembatalan Pemilik</span>
+          <button class="primary" id="ocGen" onclick="genOwnerCode()">Buat Kode</button>
+          <button id="ocDel" class="hide" onclick="delOwnerCode()">Hapus</button>
+        </div>
+        <div class="st" id="ocStatus">Memuat…</div>
+        <div class="big hide" id="ocShow"><b id="ocCode"></b><span>Sebutkan ke kasir. Kode tampil sekali, berlaku untuk satu pembatalan, butuh internet di tablet.</span></div>
+        <div class="err" id="ocErr"></div>
+      </div>
       <div class="tabs">
         <button id="tabActivity" class="active" onclick="showTab('activity')">Log Aktivitas</button>
         <button id="tabOrders" onclick="showTab('orders')">Transaksi</button>
@@ -269,10 +289,10 @@
     return Math.round(s / 86400) + ' hr lalu';
   }
 
-  async function api(path) {
+  async function api(path, method) {
     let res;
     try {
-      res = await fetch('/ops/api' + path, { headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+      res = await fetch('/ops/api' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
     } catch {
       throw new Error('Tidak bisa menghubungi server. Periksa koneksi internet.');
     }
@@ -402,6 +422,8 @@
     document.getElementById('paneActivity').innerHTML = '<div class="loading">Memuat…</div>';
     document.getElementById('paneOrders').innerHTML = '';
     document.getElementById('paneCancels').innerHTML = '';
+    resetOwnerCode();
+    loadOwnerCode();
     document.getElementById('overlay').classList.add('open');
     document.getElementById('drawer').classList.add('open');
     showTab('activity');
@@ -421,7 +443,66 @@
         document.getElementById('paneActivity').innerHTML = '<div class="empty">Gagal memuat detail.</div>';
     }
   }
+  // ---- Kode pembatalan Pemilik (dicocokkan tablet ke server, sekali pakai) ----
+  function resetOwnerCode() {
+    document.getElementById('ocShow').classList.add('hide');
+    document.getElementById('ocCode').textContent = '';
+    document.getElementById('ocErr').textContent = '';
+    document.getElementById('ocDel').classList.add('hide');
+    document.getElementById('ocStatus').textContent = 'Memuat…';
+  }
+  function renderOwnerCode(st) {
+    const del = document.getElementById('ocDel');
+    del.classList.toggle('hide', !st.active);
+    document.getElementById('ocGen').textContent = st.active ? 'Buat Kode Baru' : 'Buat Kode';
+    let text;
+    if (st.active) text = 'Ada 1 kode aktif, dibuat ' + fmtTime(st.active.createdAt) + '. Belum terpakai.';
+    else if (st.lastUsed) text = 'Tidak ada kode aktif. Terakhir dipakai ' + fmtTime(st.lastUsed.usedAt) + (st.lastUsed.deviceLabel ? ' di ' + st.lastUsed.deviceLabel : '') + '.';
+    else text = 'Belum ada kode dari konsol ini.';
+    document.getElementById('ocStatus').textContent = text;
+  }
+  async function loadOwnerCode() {
+    const id = currentTenantId;
+    try {
+      const st = await api('/tenant/' + encodeURIComponent(id) + '/owner-code');
+      if (id === currentTenantId) renderOwnerCode(st);
+    } catch (e) {
+      if (String(e.message) !== '401' && id === currentTenantId) document.getElementById('ocStatus').textContent = 'Gagal memuat status kode.';
+    }
+  }
+  async function genOwnerCode() {
+    const id = currentTenantId;
+    const btn = document.getElementById('ocGen');
+    document.getElementById('ocErr').textContent = '';
+    btn.disabled = true;
+    try {
+      const r = await api('/tenant/' + encodeURIComponent(id) + '/owner-code', 'POST');
+      if (id !== currentTenantId) return;
+      document.getElementById('ocCode').textContent = r.code;
+      document.getElementById('ocShow').classList.remove('hide');
+      renderOwnerCode({ active: { createdAt: r.createdAt }, lastUsed: null });
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function delOwnerCode() {
+    const id = currentTenantId;
+    document.getElementById('ocErr').textContent = '';
+    try {
+      await api('/tenant/' + encodeURIComponent(id) + '/owner-code', 'DELETE');
+      if (id !== currentTenantId) return;
+      document.getElementById('ocShow').classList.add('hide');
+      document.getElementById('ocCode').textContent = '';
+      loadOwnerCode();
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
+    }
+  }
   function closeDrawer() {
+    document.getElementById('ocShow').classList.add('hide');
+    document.getElementById('ocCode').textContent = '';
     document.getElementById('overlay').classList.remove('open');
     document.getElementById('drawer').classList.remove('open');
   }

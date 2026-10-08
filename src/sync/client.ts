@@ -184,3 +184,31 @@ export function getMidtransCharge(chargeId: string): Promise<MidtransChargeState
 export function cancelMidtransCharge(chargeId: string): Promise<MidtransChargeState> {
   return midtransCall(`/api/sync/midtrans/charges/${encodeURIComponent(chargeId)}/cancel`, { method: 'POST' }, 'Batal QRIS gagal')
 }
+
+// ---- Kode pembatalan Pemilik dari konsol /ops (lihat backend/src/routes/ownerCode.ts) ----
+
+export type ServerOwnerCodeResult =
+  | { ok: true; createdAt: number }
+  | { ok: false; reason: 'no_code' | 'invalid' }
+  | { ok: false; reason: 'locked'; retryInMs: number }
+
+/** Batas tunggu: kasir sedang menunggu di layar; jaringan macet dianggap offline. */
+const OWNER_CODE_TIMEOUT_MS = 10_000
+
+/** Mencocokkan kode ke server; bila cocok, server langsung menghanguskannya. */
+export async function consumeServerOwnerCode(code: string): Promise<ServerOwnerCodeResult> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OWNER_CODE_TIMEOUT_MS)
+  try {
+    const response = await authorizedFetch('/api/sync/owner-code/consume', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+      signal: controller.signal,
+    })
+    const data = await parseJsonOrThrow<ServerOwnerCodeResult & { error?: string }>(response, 'Cek kode gagal')
+    if (!response.ok) throw new Error(data.error || `Cek kode gagal (HTTP ${response.status})`)
+    return data
+  } finally {
+    clearTimeout(timer)
+  }
+}

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { CANCEL_CODE_LENGTH, getActiveCancelCode, hasActiveOwner, verifyCancelCode, type OwnerApproval } from '@/db/repositories/cancelCodes'
 import { PinPad } from '@/components/ui/PinPad'
 import { Modal } from '@/components/ui/Modal'
+import { isBackendConfigured } from '@/sync/client'
 
 interface Props {
   title: string
@@ -17,7 +18,9 @@ interface Props {
  * dibuat Pemilik di Pengaturan → Kode Pembatalan. Berbeda dengan
  * `SupervisorPinModal`, tak pernah menyetujui otomatis atas nama pengguna yang
  * sedang login — Pemilik pun harus membuat kode, supaya PIN-nya tak perlu
- * diketik di depan kasir.
+ * diketik di depan kasir. Kode juga bisa dibuat Pemilik dari konsol online
+ * (/ops) — dicocokkan ke server, jadi tetap bisa dimasukkan walau tablet ini
+ * tak punya kode lokal aktif.
  */
 export function OwnerCancelCodeModal({ title, description, onCancel, onApproved }: Props) {
   const ownerExists = useLiveQuery(() => hasActiveOwner(), [])
@@ -36,6 +39,8 @@ export function OwnerCancelCodeModal({ title, description, onCancel, onApproved 
       if (res.reason === 'locked') setError(`Terlalu banyak percobaan salah. Coba lagi dalam ${Math.ceil(res.retryInMs / 1000)} detik.`)
       else if (res.reason === 'no_code') setError('Kode sudah terpakai. Minta kode baru ke Pemilik.')
       else if (res.reason === 'owner_inactive') setError('Akun Pemilik pembuat kode sudah nonaktif. Minta Pemilik membuat kode baru.')
+      else if (res.reason === 'offline')
+        setError('Kode tidak cocok dengan kode di tablet, dan server tak terjangkau untuk mengecek kode online. Periksa internet lalu coba lagi.')
       else setError('Kode pembatalan salah.')
     } finally {
       setBusy(false)
@@ -47,7 +52,7 @@ export function OwnerCancelCodeModal({ title, description, onCancel, onApproved 
     ? null
     : !ownerExists
       ? 'Belum ada akun berperan Pemilik. Administrator perlu menambahkannya di Pengaturan → Pengguna.'
-      : !activeCode
+      : !activeCode && !isBackendConfigured()
         ? 'Belum ada kode pembatalan aktif. Minta Pemilik membuat kode di Pengaturan → Kode Pembatalan.'
         : null
 

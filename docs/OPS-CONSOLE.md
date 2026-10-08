@@ -11,7 +11,8 @@ ada menu, tidak ada tombol). Hanya bisa dibuka lewat URL langsung + token.
 
 - **Hanya membaca** data yang memang **sudah disinkronkan** tiap tenant ke server
   (`sync_entity_state`, `sync_devices`, `sync_push_log`). Konsol ini **tidak** menambah
-  pengumpulan data baru dari perangkat, tidak mengubah apa pun (read-only).
+  pengumpulan data baru dari perangkat dan tidak mengubah data usaha. Satu-satunya yang
+  ditulis konsol: **kode pembatalan Pemilik** (lihat di bawah).
 - Business type & nama usaha diambil dari entity `settings` tiap tenant.
 
 ## Kepatuhan / privasi
@@ -44,6 +45,10 @@ Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/
 | GET | `/ops/api/tenant/:tenantId/cancellations?days=30` | Bearer | Rekap pembatalan pesanan (1–90 hari): jumlah & nilai, yang batal setelah lunas, rekap per peminta / penyetuju / alasan, dan daftar per pesanan |
 | GET | `/ops/api/tenant/:tenantId/export/transactions.pdf?from=YYYY-MM-DD&to=YYYY-MM-DD` | Bearer | PDF transaksi periode (WIB, inklusif, maks 92 hari): lunas per waktu bayar, batal, rekap per metode, tagihan tertunda yang belum lunas |
 | GET | `/ops/api/tenant/:tenantId/export/cancellations.pdf?from=…&to=…` | Bearer | PDF pembatalan periode: ringkasan, rekap peminta/penyetuju/alasan, daftar + item yang dihapus |
+| GET | `/ops/api/tenant/:tenantId/owner-code` | Bearer | Status kode pembatalan Pemilik: aktif sejak kapan / terakhir dipakai di perangkat mana |
+| POST | `/ops/api/tenant/:tenantId/owner-code` | Bearer | Buat kode 6 digit baru (menggantikan yang lama). Kode polos hanya ada di respons ini |
+| DELETE | `/ops/api/tenant/:tenantId/owner-code` | Bearer | Hapus kode aktif yang belum terpakai |
+| POST | `/api/sync/owner-code/consume` | Kunci perangkat | Tablet mencocokkan kode; cocok → langsung hangus |
 
 ### Pelacakan pembatalan
 
@@ -84,3 +89,21 @@ dipakai dari HP. Tanggal kosong = hari ini (WIB).
   PDF Transaksi punya ringkasan & tabel *Diskon diberikan*.
 - **Retur** (pengembalian uang sebagian): wajib kode Pemilik. Dibaca dari entitas `refunds` (reason `return`)
   → KPI & daftar *Retur* di tab Pembatalan dan PDF Pembatalan.
+
+### Kode pembatalan Pemilik (kantin, sejak app v1.0.22)
+
+Pemilik bisa membuat kode pembatalan dari HP lewat `/ops` (panel usaha → **Kode Pembatalan
+Pemilik → Buat Kode**), tanpa harus ke tablet. Kasir mengetik kode itu di jendela kode
+pembatalan seperti biasa:
+
+- Tablet mencocokkan dulu dengan kode lokal (Pengaturan → Kode Pembatalan, tetap jalan
+  offline). Bila tak cocok, tablet bertanya ke server — **butuh internet saat itu**.
+- Kode server **sekali pakai** dan langsung hangus saat cocok (atomik — dua tablet tak bisa
+  memakainya bersamaan). Satu kode aktif per usaha; membuat kode baru menggantikan yang lama.
+  Kode lokal & kode server saling bebas.
+- Pembatalan tercatat atas nama **akun Pemilik di tablet itu** (tablet tanpa akun Pemilik
+  menolak sebelum bertanya ke server, jadi kode tak terbuang).
+- Hanya hash (scrypt + salt) yang disimpan di tabel `owner_cancel_codes`. 5× salah → kode
+  usaha itu terkunci 30 detik.
+- Kode juga berlaku untuk persetujuan lain yang memakai kode Pemilik (diskon di atas batas,
+  retur).

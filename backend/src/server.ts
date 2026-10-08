@@ -14,6 +14,7 @@ import { registerEventRoutes } from './routes/events.js'
 import { registerPaymentWebhook } from './routes/paymentWebhook.js'
 import { registerMidtransRoutes } from './routes/midtransPay.js'
 import { registerMidtransCashierRoutes } from './routes/midtransCashier.js'
+import { registerOwnerCodeRoutes } from './routes/ownerCode.js'
 import { registerOpsRoutes } from './routes/ops.js'
 
 declare module 'fastify' {
@@ -183,6 +184,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerDeviceRoutes(app)
   // ---- QRIS dinamis Midtrans dari kasir (di bawah /api/sync → butuh kunci perangkat) ----
   await registerMidtransCashierRoutes(app)
+  // ---- Kode pembatalan Pemilik dari /ops (di bawah /api/sync → butuh kunci perangkat) ----
+  await registerOwnerCodeRoutes(app)
 
   // ---- Sync push ----
   app.post('/api/sync/push', async (request, reply) => {

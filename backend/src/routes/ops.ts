@@ -5,6 +5,7 @@ import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
 import type { Pool } from 'pg'
 import { buildCancellationReport, buildReturnRows, type CancellationReport } from '../lib/opsCancellations.js'
 import { buildCancellationsPdf, buildTransactionsPdf, type TransactionReport, type TransactionRow } from '../lib/opsPdf.js'
+import { generateOwnerCode, getOwnerCodeStatus, revokeOwnerCode } from '../lib/ownerCancelCodes.js'
 
 /**
  * Konsol operator lintas-tenant untuk pemilik backend (bukan untuk kasir/pemilik
@@ -254,6 +255,43 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
   })
 
   // ---- Detail satu tenant: log aktivitas + transaksi terbaru + total ----
+  // ---- Kode pembatalan Pemilik (dibuat di sini, dicocokkan tablet lewat /api/sync/owner-code) ----
+  app.get<{ Params: { tenantId: string } }>('/api/tenant/:tenantId/owner-code', async (request, reply) => {
+    const { tenantId } = request.params
+    if (!TENANT_ID_RE.test(tenantId)) {
+      reply.code(400)
+      return { error: 'tenantId tidak valid' }
+    }
+    return getOwnerCodeStatus(getPool(), tenantId)
+  })
+
+  app.post<{ Params: { tenantId: string } }>(
+    '/api/tenant/:tenantId/owner-code',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { tenantId } = request.params
+      if (!TENANT_ID_RE.test(tenantId)) {
+        reply.code(400)
+        return { error: 'tenantId tidak valid' }
+      }
+      const result = await generateOwnerCode(getPool(), tenantId)
+      request.log.info({ tenantId }, 'ops: kode pembatalan pemilik dibuat')
+      reply.header('cache-control', 'no-store')
+      return result
+    },
+  )
+
+  app.delete<{ Params: { tenantId: string } }>('/api/tenant/:tenantId/owner-code', async (request, reply) => {
+    const { tenantId } = request.params
+    if (!TENANT_ID_RE.test(tenantId)) {
+      reply.code(400)
+      return { error: 'tenantId tidak valid' }
+    }
+    await revokeOwnerCode(getPool(), tenantId)
+    request.log.info({ tenantId }, 'ops: kode pembatalan pemilik dihapus')
+    return { ok: true }
+  })
+
   app.get<{ Params: { tenantId: string } }>('/api/tenant/:tenantId', async (request, reply) => {
     const tenantId = request.params.tenantId
     if (!TENANT_ID_RE.test(tenantId)) {
