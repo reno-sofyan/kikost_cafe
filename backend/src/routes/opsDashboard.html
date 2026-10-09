@@ -137,6 +137,16 @@
   .ocode .big span { font-size: .75rem; color: var(--warn); }
   .ocode .err { color: var(--bad); font-size: .78rem; margin-top: 6px; }
   @media (max-width: 640px) { .ocode .row1 button { flex: 1 1 auto; padding: 10px; } }
+  .oacc .new { display: flex; gap: 8px; margin-top: 10px; }
+  .oacc .new input { padding: 8px 11px; font-size: .85rem; }
+  .oacc .new button { white-space: nowrap; }
+  .oacc .link { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px dashed var(--brand); }
+  .oacc .link code { display: block; font-size: .76rem; word-break: break-all; color: var(--ink-50); margin-bottom: 8px; }
+  .oacc .link span { display: block; font-size: .74rem; color: var(--warn); margin-top: 6px; }
+  .oacc .tok { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); font-size: .8rem; }
+  .oacc .tok:first-child { border-top: 0; }
+  .oacc .tok button { padding: 5px 10px; font-size: .76rem; }
+  .oacc .toks { margin-top: 8px; }
 
   /* ---- HP (≤640px) ---- */
   @media (max-width: 640px) {
@@ -229,6 +239,21 @@
         <div class="big hide" id="ocShow"><b id="ocCode"></b><span>Sebutkan ke kasir. Kode tampil sekali, berlaku untuk satu pembatalan, butuh internet di tablet.</span></div>
         <div class="err" id="ocErr"></div>
       </div>
+      <div class="ocode oacc" id="oacc">
+        <div class="row1"><span class="t">Akses Konsol Pemilik</span></div>
+        <div class="st">Tautan ke /owner untuk pemilik usaha ini: omzet, transaksi, pembatalan, PDF & kode pembatalan — hanya usaha ini.</div>
+        <div class="new">
+          <input id="oaLabel" placeholder="Label, mis. HP Bu Sari" maxlength="60" autocomplete="off" />
+          <button class="primary" id="oaGen" onclick="genOwnerAccess()">Buat Tautan</button>
+        </div>
+        <div class="link hide" id="oaShow">
+          <code id="oaLink"></code>
+          <button onclick="copyOwnerLink()" id="oaCopy">Salin tautan</button>
+          <span>Tautan tampil sekali. Kirim langsung ke Pemilik; siapa pun yang memegangnya bisa melihat data usaha ini.</span>
+        </div>
+        <div class="toks" id="oaList"></div>
+        <div class="err" id="oaErr"></div>
+      </div>
       <div class="tabs">
         <button id="tabActivity" class="active" onclick="showTab('activity')">Log Aktivitas</button>
         <button id="tabOrders" onclick="showTab('orders')">Transaksi</button>
@@ -289,10 +314,12 @@
     return Math.round(s / 86400) + ' hr lalu';
   }
 
-  async function api(path, method) {
+  async function api(path, method, body) {
     let res;
+    const headers = { Authorization: 'Bearer ' + token() };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
     try {
-      res = await fetch('/ops/api' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+      res = await fetch('/ops/api' + path, { method: method || 'GET', headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
     } catch {
       throw new Error('Tidak bisa menghubungi server. Periksa koneksi internet.');
     }
@@ -424,6 +451,8 @@
     document.getElementById('paneCancels').innerHTML = '';
     resetOwnerCode();
     loadOwnerCode();
+    resetOwnerAccess();
+    loadOwnerAccess();
     document.getElementById('overlay').classList.add('open');
     document.getElementById('drawer').classList.add('open');
     showTab('activity');
@@ -500,7 +529,70 @@
       if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
     }
   }
+  // ---- Akses konsol Pemilik (/owner#k=<token>) ----
+  function resetOwnerAccess() {
+    document.getElementById('oaShow').classList.add('hide');
+    document.getElementById('oaLink').textContent = '';
+    document.getElementById('oaErr').textContent = '';
+    document.getElementById('oaLabel').value = '';
+    document.getElementById('oaList').innerHTML = '<div class="muted">Memuat…</div>';
+  }
+  function renderOwnerAccess(tokens) {
+    document.getElementById('oaList').innerHTML = tokens.length
+      ? tokens.map((t) =>
+          '<div class="tok"><div><b>' + esc(t.label) + '</b><div class="muted">Dibuat ' + esc(fmtTime(t.createdAt)) +
+          ' · dipakai ' + esc(t.lastUsedAt ? ago(t.lastUsedAt) : 'belum pernah') + '</div></div>' +
+          '<button onclick="revokeOwnerAccess(\'' + esc(t.id) + '\',\'' + esc(t.label).replace(/'/g, '') + '\')">Cabut</button></div>').join('')
+      : '<div class="muted">Belum ada tautan aktif.</div>';
+  }
+  async function loadOwnerAccess() {
+    const id = currentTenantId;
+    try {
+      const r = await api('/tenant/' + encodeURIComponent(id) + '/owner-access');
+      if (id === currentTenantId) renderOwnerAccess(r.tokens);
+    } catch (e) {
+      if (String(e.message) !== '401' && id === currentTenantId) document.getElementById('oaList').innerHTML = '<div class="muted">Gagal memuat daftar akses.</div>';
+    }
+  }
+  async function genOwnerAccess() {
+    const id = currentTenantId;
+    const btn = document.getElementById('oaGen');
+    document.getElementById('oaErr').textContent = '';
+    btn.disabled = true;
+    try {
+      const r = await api('/tenant/' + encodeURIComponent(id) + '/owner-access', 'POST', { label: document.getElementById('oaLabel').value });
+      if (id !== currentTenantId) return;
+      document.getElementById('oaLink').textContent = location.origin + '/owner#k=' + r.token;
+      document.getElementById('oaCopy').textContent = 'Salin tautan';
+      document.getElementById('oaShow').classList.remove('hide');
+      document.getElementById('oaLabel').value = '';
+      loadOwnerAccess();
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('oaErr').textContent = e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function copyOwnerLink() {
+    const text = document.getElementById('oaLink').textContent;
+    const btn = document.getElementById('oaCopy');
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'Tersalin ✓'; }
+    catch { getSelection().selectAllChildren(document.getElementById('oaLink')); btn.textContent = 'Teks sudah dipilih — salin manual'; }
+  }
+  async function revokeOwnerAccess(accessId, label) {
+    if (!confirm('Cabut akses "' + label + '"? Tautan itu langsung tidak bisa dipakai lagi.')) return;
+    const id = currentTenantId;
+    document.getElementById('oaErr').textContent = '';
+    try {
+      await api('/tenant/' + encodeURIComponent(id) + '/owner-access/' + encodeURIComponent(accessId), 'DELETE');
+      if (id === currentTenantId) loadOwnerAccess();
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('oaErr').textContent = e.message;
+    }
+  }
   function closeDrawer() {
+    document.getElementById('oaShow').classList.add('hide');
+    document.getElementById('oaLink').textContent = '';
     document.getElementById('ocShow').classList.add('hide');
     document.getElementById('ocCode').textContent = '';
     document.getElementById('overlay').classList.remove('open');

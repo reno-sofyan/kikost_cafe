@@ -35,10 +35,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: '/index.html',
-        // Halaman pesan-mandiri pelanggan (/order/*), API, & konsol operator
-        // (/ops, disajikan backend) selalu lewat jaringan — jangan disajikan dari
-        // index.html yang ter-cache.
-        navigateFallbackDenylist: [/^\/order\//, /^\/api\//, /^\/ops(\/|$)/],
+        // Halaman pesan-mandiri pelanggan (/order/*), API, konsol operator (/ops)
+        // & konsol Pemilik (/owner) — keduanya disajikan backend — selalu lewat
+        // jaringan; jangan disajikan dari index.html yang ter-cache.
+        navigateFallbackDenylist: [/^\/order\//, /^\/api\//, /^\/ops(\/|$)/, /^\/owner(\/|$)/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),

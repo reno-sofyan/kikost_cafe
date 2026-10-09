@@ -1,0 +1,616 @@
+/**
+ * HTML shell konsol Pemilik (lihat owner.ts). Statis & tanpa data; seluruh data
+ * diambil lewat fetch ber-Bearer-token ke /owner/api/*.
+ *
+ * JANGAN diedit langsung — sumbernya backend/src/routes/ownerDashboard.html,
+ * bangkitkan ulang dengan: node scripts/embed-dashboards.mjs
+ */
+export const OWNER_DASHBOARD_HTML = `<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#4338ca" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="referrer" content="no-referrer" />
+<title>Kione Pemilik</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --surface: #ffffff; --surface-2: #eef1f7; --border: #e1e6ef;
+    --ink: #111827; --ink-2: #374151; --ink-3: #6b7280; --ink-4: #9ca3af;
+    --brand: #4338ca; --brand-2: #4f46e5; --brand-soft: #eef2ff;
+    --ok: #15803d; --ok-soft: #dcfce7; --warn: #b45309; --warn-soft: #fef3c7; --bad: #b91c1c; --bad-soft: #fee2e2;
+    --radius: 16px; --shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --surface: #161b24; --surface-2: #1f2633; --border: #2a3342;
+      --ink: #f3f4f6; --ink-2: #d1d5db; --ink-3: #9ca3af; --ink-4: #6b7280;
+      --brand: #818cf8; --brand-2: #6366f1; --brand-soft: rgba(99,102,241,.16);
+      --ok: #4ade80; --ok-soft: rgba(34,197,94,.14); --warn: #fbbf24; --warn-soft: rgba(245,158,11,.14);
+      --bad: #f87171; --bad-soft: rgba(239,68,68,.14); --shadow: none;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { min-height: 100vh; -webkit-text-size-adjust: 100%; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) 16px calc(48px + env(safe-area-inset-bottom)); }
+  .muted { color: var(--ink-3); font-size: .8rem; }
+  .hide { display: none !important; }
+  button { font: inherit; cursor: pointer; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink-2); padding: 9px 14px; transition: background .12s, border-color .12s; }
+  button:hover { border-color: var(--ink-4); color: var(--ink); }
+  button:disabled { opacity: .6; cursor: default; }
+  button.primary { background: var(--brand-2); border-color: var(--brand-2); color: #fff; font-weight: 600; }
+  button.primary:hover { background: var(--brand); border-color: var(--brand); }
+  input, select { font: inherit; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink); padding: 11px 13px; }
+  input:focus, select:focus { outline: 2px solid var(--brand-soft); border-color: var(--brand); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+  /* Gerbang */
+  .gate { max-width: 400px; margin: 12vh auto 0; padding: 28px 24px; }
+  .gate .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--brand-2); color: #fff;
+    display: grid; place-items: center; font-weight: 800; margin-bottom: 16px; }
+  .gate h2 { margin: 0 0 6px; font-size: 1.2rem; }
+  .gate p { margin: 0 0 18px; color: var(--ink-3); font-size: .88rem; line-height: 1.45; }
+  .gate input { width: 100%; }
+  .gate button { width: 100%; margin-top: 10px; padding: 12px; }
+  .err { color: var(--bad); font-size: .82rem; min-height: 1.1em; margin-top: 8px; }
+
+  /* Kepala */
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .biz { min-width: 0; }
+  .biz h1 { margin: 0; font-size: 1.25rem; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .biz .sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  .badge { font-size: .7rem; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--brand-soft); color: var(--brand); }
+  .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .icon-btn { padding: 9px 12px; }
+
+  /* KPI */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+  .kpi { padding: 14px 16px; }
+  .kpi .label { color: var(--ink-3); font-size: .74rem; font-weight: 500; }
+  .kpi .val { font-size: 1.45rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .kpi .note { color: var(--ink-3); font-size: .74rem; margin-top: 2px; }
+  .kpi.alert .val { color: var(--bad); }
+
+  .row2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .panel { padding: 16px; }
+  .panel h3 { margin: 0 0 2px; font-size: .95rem; }
+
+  /* Grafik 7 hari */
+  .panel.week { display: flex; flex-direction: column; }
+  .chart { display: flex; align-items: flex-end; gap: 8px; height: 132px; flex: 1 0 132px; margin-top: 14px; }
+  .chart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; min-width: 0; }
+  .chart .barwrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+  .chart .bar { width: 100%; border-radius: 6px 6px 2px 2px; background: var(--brand-2); opacity: .35; min-height: 3px; }
+  .chart .col.today .bar { opacity: 1; }
+  .chart .d { font-size: .68rem; color: var(--ink-3); }
+  .chart .v { font-size: .66rem; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* Kode pembatalan */
+  .ocode .st { font-size: .82rem; color: var(--ink-3); margin: 6px 0 12px; line-height: 1.4; }
+  .ocode .btns { display: flex; gap: 8px; }
+  .ocode .btns button { flex: 1; }
+  .ocode .big { margin-top: 12px; padding: 14px; text-align: center; border-radius: 12px; background: var(--brand-soft); }
+  .ocode .big b { display: block; font-size: 2.3rem; letter-spacing: .32em; padding-left: .32em; font-variant-numeric: tabular-nums; color: var(--brand); }
+  .ocode .big span { display: block; margin-top: 6px; font-size: .76rem; color: var(--ink-2); line-height: 1.4; }
+
+  /* Tab */
+  .tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 14px; margin: 4px 0 12px; }
+  .tabs button { flex: 1; border: 0; background: transparent; padding: 9px 8px; border-radius: 10px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+  .tabs button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+
+  .exportbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; margin-bottom: 12px; }
+  .exportbar .t { font-size: .85rem; font-weight: 600; margin-right: auto; }
+  .exportbar select, .exportbar input[type=date] { padding: 8px 10px; font-size: .85rem; }
+  .exportbar .msg { flex-basis: 100%; font-size: .78rem; color: var(--ink-3); }
+  .exportbar .msg.err { color: var(--bad); }
+
+  /* Daftar */
+  .list { padding: 4px 16px; }
+  .item { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .item:last-child { border-bottom: 0; }
+  .item .main { flex: 1; min-width: 0; }
+  .item .t1 { font-weight: 600; font-size: .9rem; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .item .t2 { font-size: .78rem; color: var(--ink-3); margin-top: 2px; overflow-wrap: anywhere; }
+  .item .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .item .amt small { display: block; font-weight: 500; font-size: .72rem; color: var(--warn); }
+  .tag { font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+  .tag.paid { background: var(--ok-soft); color: var(--ok); }
+  .tag.void { background: var(--bad-soft); color: var(--bad); }
+  .tag.open { background: var(--warn-soft); color: var(--warn); }
+  .tag.owner { background: var(--brand-soft); color: var(--brand); }
+  .loading, .empty { color: var(--ink-3); padding: 28px 12px; text-align: center; font-size: .88rem; }
+
+  /* Pembatalan */
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .seg { display: flex; gap: 4px; padding: 3px; background: var(--surface-2); border-radius: 12px; }
+  .seg button { border: 0; background: transparent; padding: 6px 12px; font-size: .8rem; border-radius: 9px; color: var(--ink-3); font-weight: 600; }
+  .seg button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .ckpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .ckpis .kpi .val { font-size: 1.15rem; }
+  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .group { padding: 12px 14px; }
+  .group h4 { margin: 0 0 8px; font-size: .74rem; color: var(--ink-3); font-weight: 600; }
+  .group .gr { display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; padding: 3px 0; }
+  .group .gr span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group .gr span:last-child { white-space: nowrap; color: var(--ink-2); }
+  .crow { padding: 12px 14px; margin-bottom: 8px; }
+  .crow .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .crow .no { font-weight: 600; font-size: .9rem; }
+  .crow .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .crow .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .crow .reason { margin: 8px 0 6px; font-size: .88rem; }
+  .crow .who { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: .76rem; color: var(--ink-3); }
+  .crow .who b { color: var(--ink-2); font-weight: 600; }
+  .corr { margin: 6px 0; padding: 8px 10px; border-left: 3px solid var(--bad); background: var(--bad-soft); border-radius: 0 8px 8px 0; font-size: .78rem; }
+  .corr .ci { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .corr .ci span:last-child { white-space: nowrap; }
+  .corr .cm { color: var(--ink-3); font-size: .72rem; margin-bottom: 3px; }
+  .sect { margin: 18px 0 8px; font-size: .78rem; font-weight: 600; color: var(--ink-3); }
+
+  @media (max-width: 760px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .kpi { padding: 12px 14px; }
+    .kpi .val { font-size: 1.2rem; }
+    .row2 { grid-template-columns: 1fr; }
+    .groups { grid-template-columns: 1fr; }
+    .ckpis { grid-template-columns: repeat(2, 1fr); }
+    .exportbar .t { flex-basis: 100%; }
+    .exportbar select { flex: 1 1 100%; }
+    .exportbar input[type=date] { flex: 1 1 40%; min-width: 0; }
+    .exportbar button.primary { flex: 1 1 100%; padding: 11px; }
+    .toolbar .muted { flex-basis: 100%; }
+    .actions .lbl { display: none; }
+  }
+</style>
+</head>
+<body>
+  <!-- Gerbang -->
+  <div id="gate" class="gate card hide">
+    <div class="logo">K</div>
+    <h2>Konsol Pemilik</h2>
+    <p>Buka tautan akses yang diberikan admin Kione, atau tempel tautan / kode akses di bawah ini.</p>
+    <input id="token" type="password" placeholder="Tautan atau kode akses" autocomplete="off" />
+    <button class="primary" id="gateBtn" onclick="login()">Masuk</button>
+    <div id="gateErr" class="err"></div>
+  </div>
+
+  <!-- Aplikasi -->
+  <div id="app" class="wrap hide">
+    <header class="top">
+      <div class="biz">
+        <h1 id="bizName">…</h1>
+        <div class="sub"><span id="bizType" class="badge hide"></span><span id="updated" class="muted"></span></div>
+      </div>
+      <div class="actions">
+        <button class="icon-btn" onclick="refresh()" title="Muat ulang">↻<span class="lbl"> Muat ulang</span></button>
+        <button class="icon-btn" onclick="logout()" title="Keluar">Keluar</button>
+      </div>
+    </header>
+
+    <div id="kpis" class="kpis"></div>
+
+    <div class="row2">
+      <div class="card panel week">
+        <h3>Omzet 7 hari</h3>
+        <div class="muted" id="weekTotal"></div>
+        <div id="chart" class="chart"></div>
+      </div>
+      <div class="card panel ocode">
+        <h3>Kode Pembatalan</h3>
+        <div class="st" id="ocStatus">Memuat…</div>
+        <div class="btns">
+          <button class="primary" id="ocGen" onclick="genOwnerCode()">Buat Kode</button>
+          <button id="ocDel" class="hide" onclick="delOwnerCode()">Hapus</button>
+        </div>
+        <div class="big hide" id="ocShow"><b id="ocCode"></b><span>Sebutkan ke kasir. Berlaku untuk satu pembatalan/retur, tampil sekali, tablet perlu internet.</span></div>
+        <div class="err" id="ocErr"></div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button id="tabOrders" class="active" onclick="showTab('orders')">Transaksi</button>
+      <button id="tabCancels" onclick="showTab('cancels')">Pembatalan</button>
+      <button id="tabActivity" onclick="showTab('activity')">Aktivitas</button>
+    </div>
+    <div id="exportBar" class="exportbar card">
+      <span class="t" id="expTitle">Unduh laporan PDF</span>
+      <select id="expPreset" onchange="onPresetChange()" aria-label="Periode">
+        <option value="today">Hari ini</option>
+        <option value="yesterday">Kemarin</option>
+        <option value="7d">7 hari terakhir</option>
+        <option value="30d">30 hari terakhir</option>
+        <option value="month">Bulan ini</option>
+        <option value="lastmonth">Bulan lalu</option>
+        <option value="custom">Pilih tanggal…</option>
+      </select>
+      <input type="date" id="expFrom" class="hide" aria-label="Dari tanggal" />
+      <input type="date" id="expTo" class="hide" aria-label="Sampai tanggal" />
+      <button class="primary" id="expBtn" onclick="exportPdf()">Unduh PDF</button>
+      <div class="msg" id="expMsg"></div>
+    </div>
+    <div id="paneOrders"></div>
+    <div id="paneCancels" class="hide"></div>
+    <div id="paneActivity" class="hide"></div>
+  </div>
+
+<script>
+  const TK = 'kione_owner_token';
+  let cancelDays = 30;
+  let cancelsLoaded = false;
+  let currentTab = 'orders';
+
+  // Tersimpan di localStorage agar Pemilik tetap masuk di HP-nya; fallback memori bila diblokir.
+  let memToken = '';
+  function token() { try { return localStorage.getItem(TK) || memToken; } catch { return memToken; } }
+  function setToken(v) {
+    memToken = v || '';
+    try { v ? localStorage.setItem(TK, v) : localStorage.removeItem(TK); } catch {}
+  }
+  /** Ambil token dari tautan \`…/owner#k=<token>\` atau dari teks yang ditempel. */
+  function parseToken(raw) {
+    const s = String(raw || '').trim().replace(/^(['"])(.*)\\1$/, '$2').trim();
+    const m = /[#&?]k=([A-Za-z0-9_-]+)/.exec(s);
+    return m ? m[1] : s;
+  }
+
+  const rupiah = (n) => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+  const compact = (n) => {
+    n = Number(n) || 0;
+    if (n >= 1e9) return 'Rp ' + (n / 1e9).toFixed(1).replace('.', ',') + 'M';
+    if (n >= 1e6) return 'Rp ' + (n / 1e6).toFixed(1).replace('.', ',') + 'jt';
+    if (n >= 1e3) return 'Rp ' + Math.round(n / 1e3) + 'rb';
+    return rupiah(n);
+  };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const BT = { cafe_resto: 'Kafe & Resto', kantin: 'Kantin', minimarket: 'Minimarket', lainnya: 'Lainnya' };
+  function fmtTime(ms) {
+    if (!ms) return '—';
+    return new Date(Number(ms)).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+  function ago(ms) {
+    if (!ms) return 'belum pernah';
+    const s = (Date.now() - Number(ms)) / 1000;
+    if (s < 90) return 'baru saja';
+    if (s < 3600) return Math.round(s / 60) + ' mnt lalu';
+    if (s < 86400) return Math.round(s / 3600) + ' jam lalu';
+    return Math.round(s / 86400) + ' hr lalu';
+  }
+
+  const REJECTED = 'Tautan akses tidak berlaku lagi. Minta tautan baru ke admin Kione.';
+  async function api(path, method) {
+    let res;
+    try {
+      res = await fetch('/owner/api' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+    } catch {
+      throw new Error('Tidak bisa menghubungi server. Periksa koneksi internet.');
+    }
+    if (res.status === 401) { setToken(''); showGate(REJECTED); throw new Error('401'); }
+    if (res.status === 429) throw new Error('Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.');
+    if (!res.ok) throw new Error('Server bermasalah (HTTP ' + res.status + '). Coba lagi nanti.');
+    return res.json();
+  }
+
+  function showGate(msg) {
+    document.getElementById('app').classList.add('hide');
+    document.getElementById('gate').classList.remove('hide');
+    document.getElementById('gateErr').textContent = msg || '';
+    const el = document.getElementById('token'); el.value = ''; el.focus();
+  }
+  function showApp() {
+    document.getElementById('gate').classList.add('hide');
+    document.getElementById('app').classList.remove('hide');
+  }
+
+  async function login() {
+    const v = parseToken(document.getElementById('token').value);
+    if (!v) return;
+    setToken(v);
+    const btn = document.getElementById('gateBtn');
+    btn.disabled = true; btn.textContent = 'Memeriksa…';
+    document.getElementById('gateErr').textContent = '';
+    try { await start(); }
+    catch (e) { if (String(e.message) !== '401') { setToken(''); document.getElementById('gateErr').textContent = e.message; } }
+    finally { btn.disabled = false; btn.textContent = 'Masuk'; }
+  }
+  function logout() {
+    if (!confirm('Keluar dari konsol di perangkat ini? Anda perlu tautan akses lagi untuk masuk.')) return;
+    setToken(''); showGate('');
+  }
+
+  async function start() {
+    await loadOverview();
+    showApp();
+    loadOwnerCode();
+    loadDetail();
+    cancelsLoaded = false;
+    if (currentTab === 'cancels') loadCancels();
+  }
+  function refresh() {
+    start().catch((e) => { if (String(e.message) !== '401') alertMsg(e.message); });
+  }
+  function alertMsg(m) { document.getElementById('updated').textContent = m; }
+
+  // ---- Ringkasan ----
+  async function loadOverview() {
+    const d = await api('/overview');
+    const name = d.businessName || d.tenantId;
+    document.getElementById('bizName').textContent = name;
+    document.title = name + ' · Kione Pemilik';
+    const bt = document.getElementById('bizType');
+    bt.textContent = BT[d.businessType] || '';
+    bt.classList.toggle('hide', !BT[d.businessType]);
+    document.getElementById('updated').textContent = 'Diperbarui ' + fmtTime(Date.now());
+
+    const c = d.cancellations;
+    const dev = d.devices;
+    document.getElementById('kpis').innerHTML = [
+      kpi('Omzet hari ini', compact(d.today.revenue), rupiah(d.today.revenue)),
+      kpi('Transaksi hari ini', d.today.txns.toLocaleString('id-ID'), d.today.txns ? 'rata-rata ' + compact(d.today.revenue / d.today.txns) : ''),
+      kpi('Batal hari ini', c.todayCount, c.todayCount ? compact(c.todayValue) : c.last7DaysCount + ' dalam 7 hari', c.todayCount > 0),
+      kpi('Kasir online', dev.online + ' / ' + dev.total, dev.online ? 'aktif' : 'terakhir ' + ago(dev.lastSeenAt)),
+    ].join('');
+    renderChart(d.last7Days);
+  }
+  const kpi = (label, val, note, alert) =>
+    '<div class="card kpi' + (alert ? ' alert' : '') + '"><div class="label">' + esc(label) + '</div><div class="val">' + esc(val) + '</div>' +
+    (note ? '<div class="note">' + esc(note) + '</div>' : '') + '</div>';
+
+  function renderChart(days) {
+    const slots = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 86400000);
+      const key = date.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+      const hit = (days || []).find((x) => x.date === key);
+      slots.push({ v: hit ? hit.revenue : 0, label: i === 0 ? 'Hari ini' : date.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'short' }), today: i === 0 });
+    }
+    const max = Math.max(1, ...slots.map((s) => s.v));
+    const total = slots.reduce((a, s) => a + s.v, 0);
+    document.getElementById('weekTotal').textContent = 'Total ' + rupiah(total);
+    document.getElementById('chart').innerHTML = slots.map((s) =>
+      '<div class="col' + (s.today ? ' today' : '') + '" title="' + esc(s.label + ': ' + rupiah(s.v)) + '">' +
+      '<span class="v">' + (s.v ? esc(compact(s.v).replace('Rp ', '')) : '') + '</span>' +
+      '<div class="barwrap"><div class="bar" style="height:' + Math.max(2, Math.round((s.v / max) * 100)) + '%"></div></div>' +
+      '<span class="d">' + esc(s.label) + '</span></div>').join('');
+  }
+
+  // ---- Transaksi & aktivitas ----
+  async function loadDetail() {
+    document.getElementById('paneOrders').innerHTML = '<div class="card loading">Memuat…</div>';
+    document.getElementById('paneActivity').innerHTML = '<div class="card loading">Memuat…</div>';
+    try {
+      const d = await api('/detail');
+      renderOrders(d.orders);
+      renderActivity(d.auditLogs);
+    } catch (e) {
+      if (String(e.message) === '401') return;
+      const msg = '<div class="card empty">' + esc(e.message) + '</div>';
+      document.getElementById('paneOrders').innerHTML = msg;
+      document.getElementById('paneActivity').innerHTML = msg;
+    }
+  }
+  const ST = { paid: ['Lunas', 'paid'], completed: ['Selesai', 'paid'], void: ['Batal', 'void'], open: ['Terbuka', 'open'] };
+  function renderOrders(orders) {
+    const el = document.getElementById('paneOrders');
+    if (!orders || !orders.length) { el.innerHTML = '<div class="card empty">Belum ada transaksi.</div>'; return; }
+    el.innerHTML = '<div class="card list">' + orders.map((o) => {
+      const st = ST[o.status] || [o.status || '—', 'open'];
+      const who = o.cashierName || (o.source === 'qr_table' ? 'Pesanan QR' : '—');
+      return '<div class="item"><div class="main">' +
+        '<div class="t1">' + esc(o.orderNumber || '—') + ' <span class="tag ' + st[1] + '">' + esc(st[0]) + '</span></div>' +
+        '<div class="t2">' + esc(fmtTime(o.paidAt || o.createdAt)) + ' · ' + esc(who) + '</div></div>' +
+        '<div class="amt">' + rupiah(o.grandTotal) + (o.discountAmount > 0 ? '<small>diskon ' + rupiah(o.discountAmount) + '</small>' : '') + '</div></div>';
+    }).join('') + '</div><div class="muted" style="text-align:center;margin-top:10px">60 transaksi terbaru · unduh PDF untuk periode lengkap</div>';
+  }
+  function renderActivity(logs) {
+    const el = document.getElementById('paneActivity');
+    if (!logs || !logs.length) { el.innerHTML = '<div class="card empty">Belum ada log aktivitas.</div>'; return; }
+    el.innerHTML = '<div class="card list">' + logs.map((l) =>
+      '<div class="item"><div class="main">' +
+      '<div class="t1">' + esc(l.userName || '—') + ' <span class="tag">' + esc(l.action || '') + '</span></div>' +
+      '<div class="t2">' + esc(l.details || '') + '</div></div>' +
+      '<div class="muted" style="white-space:nowrap">' + esc(fmtTime(l.createdAt)) + '</div></div>').join('') + '</div>';
+  }
+
+  function showTab(which) {
+    currentTab = which;
+    for (const [tab, pane, key] of [['tabOrders', 'paneOrders', 'orders'], ['tabCancels', 'paneCancels', 'cancels'], ['tabActivity', 'paneActivity', 'activity']]) {
+      document.getElementById(tab).classList.toggle('active', which === key);
+      document.getElementById(pane).classList.toggle('hide', which !== key);
+    }
+    document.getElementById('exportBar').classList.toggle('hide', which === 'activity');
+    document.getElementById('expTitle').textContent = which === 'cancels' ? 'Unduh PDF pembatalan' : 'Unduh PDF transaksi';
+    setExpMsg('');
+    if (which === 'cancels' && !cancelsLoaded) loadCancels();
+  }
+
+  // ---- Kode pembatalan Pemilik ----
+  function renderOwnerCode(st) {
+    document.getElementById('ocDel').classList.toggle('hide', !st.active);
+    document.getElementById('ocGen').textContent = st.active ? 'Buat Kode Baru' : 'Buat Kode';
+    let text;
+    if (st.active) text = 'Ada 1 kode aktif sejak ' + fmtTime(st.active.createdAt) + ', belum terpakai. Membuat kode baru menggantikannya.';
+    else if (st.lastUsed) text = 'Tidak ada kode aktif. Terakhir dipakai ' + fmtTime(st.lastUsed.usedAt) + (st.lastUsed.deviceLabel ? ' di ' + st.lastUsed.deviceLabel : '') + '.';
+    else text = 'Buat kode 6 digit saat kasir perlu membatalkan pesanan atau retur dan Anda tidak di tempat.';
+    document.getElementById('ocStatus').textContent = text;
+  }
+  async function loadOwnerCode() {
+    try { renderOwnerCode(await api('/owner-code')); }
+    catch (e) { if (String(e.message) !== '401') document.getElementById('ocStatus').textContent = 'Gagal memuat status kode.'; }
+  }
+  async function genOwnerCode() {
+    const btn = document.getElementById('ocGen');
+    document.getElementById('ocErr').textContent = '';
+    btn.disabled = true;
+    try {
+      const r = await api('/owner-code', 'POST');
+      document.getElementById('ocCode').textContent = r.code;
+      document.getElementById('ocShow').classList.remove('hide');
+      renderOwnerCode({ active: { createdAt: r.createdAt }, lastUsed: null });
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
+    } finally { btn.disabled = false; }
+  }
+  async function delOwnerCode() {
+    document.getElementById('ocErr').textContent = '';
+    try {
+      await api('/owner-code', 'DELETE');
+      document.getElementById('ocShow').classList.add('hide');
+      document.getElementById('ocCode').textContent = '';
+      loadOwnerCode();
+    } catch (e) { if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message; }
+  }
+
+  // ---- Export PDF (tanggal kalender WIB) ----
+  const wibDay = (offsetDays) => new Date(Date.now() + 7 * 3600000 + (offsetDays || 0) * 86400000).toISOString().slice(0, 10);
+  function presetRange(p) {
+    const today = wibDay(0);
+    const [y, m] = today.split('-').map(Number);
+    const ymd = (yy, mm, dd) => new Date(Date.UTC(yy, mm - 1, dd)).toISOString().slice(0, 10);
+    switch (p) {
+      case 'yesterday': return [wibDay(-1), wibDay(-1)];
+      case '7d': return [wibDay(-6), today];
+      case '30d': return [wibDay(-29), today];
+      case 'month': return [ymd(y, m, 1), today];
+      case 'lastmonth': return [ymd(y, m - 1, 1), ymd(y, m, 0)];
+      case 'custom': return [document.getElementById('expFrom').value || today, document.getElementById('expTo').value || today];
+      default: return [today, today];
+    }
+  }
+  function onPresetChange() {
+    const custom = document.getElementById('expPreset').value === 'custom';
+    const f = document.getElementById('expFrom'), t = document.getElementById('expTo');
+    f.classList.toggle('hide', !custom); t.classList.toggle('hide', !custom);
+    if (custom && !f.value) { f.value = wibDay(-6); t.value = wibDay(0); }
+    setExpMsg('');
+  }
+  function setExpMsg(text, isErr) {
+    const el = document.getElementById('expMsg');
+    el.textContent = text || ''; el.classList.toggle('err', !!isErr);
+  }
+  async function exportPdf() {
+    const kind = currentTab === 'cancels' ? 'cancellations' : 'transactions';
+    const [from, to] = presetRange(document.getElementById('expPreset').value);
+    const btn = document.getElementById('expBtn');
+    btn.disabled = true; btn.textContent = 'Membuat PDF…'; setExpMsg('');
+    try {
+      const res = await fetch('/owner/api/export/' + kind + '.pdf?from=' + from + '&to=' + to, {
+        headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store',
+      });
+      if (res.status === 401) { setToken(''); showGate(REJECTED); return; }
+      if (!res.ok) {
+        let msg = 'Gagal membuat PDF (HTTP ' + res.status + ').';
+        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
+        setExpMsg(msg, true); return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') || '';
+      const name = (/filename="([^"]+)"/.exec(cd) || [])[1] || (kind + '.pdf');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setExpMsg('Terunduh: ' + name);
+    } catch {
+      setExpMsg('Tidak bisa menghubungi server. Periksa koneksi internet.', true);
+    } finally { btn.disabled = false; btn.textContent = 'Unduh PDF'; }
+  }
+
+  // ---- Pembatalan ----
+  const STAGE = {
+    paid: ['Sudah lunas · uang dikembalikan', 'void'],
+    kitchen: ['Sudah ke dapur', 'open'],
+    unprocessed: ['Belum diproses', ''],
+  };
+  const APPROVAL = { owner_code: 'Kode Pemilik', supervisor: 'PIN Supervisor', self: 'Tanpa persetujuan' };
+  const KIND = { removed: 'dihapus', voided: 'di-void', reduced: 'dikurangi' };
+
+  async function loadCancels(days) {
+    if (days) cancelDays = days;
+    const pane = document.getElementById('paneCancels');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    try { renderCancels(await api('/cancellations?days=' + cancelDays)); cancelsLoaded = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat pembatalan.</div>'; }
+  }
+  function groupHtml(title, groups) {
+    const top = (groups || []).slice(0, 5);
+    return '<div class="card group"><h4>' + esc(title) + '</h4>' +
+      (top.length ? top.map((g) => '<div class="gr"><span>' + esc(g.name) + '</span><span>' + g.count + '× · ' + compact(g.value) + '</span></div>').join('')
+                  : '<div class="muted">—</div>') + '</div>';
+  }
+  function correctionsHtml(r) {
+    const list = r.corrections || [];
+    if (!list.length) return '';
+    return '<div class="corr"><div class="cm">Item dikoreksi sebelum dibatalkan' + (r.emptiedFirst ? ' — nilai = total item yang dihapus' : '') + '</div>' +
+      list.map((c) =>
+        '<div class="ci"><span>' + esc(c.name) + (c.qty ? ' ×' + c.qty : '') + ' · ' + KIND[c.kind] +
+        ' · ' + esc(c.reason || (c.kind === 'reduced' ? 'lihat Aktivitas' : 'tanpa alasan')) +
+        (c.by ? ' · ' + esc(c.by) : '') + (c.ownerApproved ? ' · kode Pemilik' : '') +
+        '</span><span>−' + rupiah(c.value) + '</span></div>').join('') + '</div>';
+  }
+  function renderCancels(d) {
+    const seg = '<div class="seg">' + [7, 30, 90].map((n) =>
+      '<button class="' + (n === cancelDays ? 'active' : '') + '" onclick="loadCancels(' + n + ')">' + n + ' hari</button>').join('') + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Semua pembatalan ' + d.days + ' hari terakhir</span>' + seg + '</div>';
+    const t = d.totals;
+    const kp = '<div class="ckpis">' + [
+      kpi('Jumlah batal', t.count, compact(t.value), t.count > 0),
+      kpi('Batal setelah lunas', t.paidCount, compact(t.paidValue), t.paidCount > 0),
+      kpi('Dikosongkan dulu', t.emptiedFirstCount, compact(t.emptiedFirstValue), t.emptiedFirstCount > 0),
+      kpi('Pakai kode Pemilik', t.ownerCodeCount, ''),
+      kpi('Retur', d.returnTotals.count, compact(d.returnTotals.value), d.returnTotals.count > 0),
+    ].join('') + '</div>';
+    const returnsHtml = (d.returns || []).length
+      ? '<div class="sect">Retur — pengembalian uang (' + d.returns.length + ')</div>' +
+        d.returns.map((x) =>
+          '<div class="card crow"><div class="top"><span class="no">' + esc((x.orderNumber || '—') + (x.buyer ? ' · ' + x.buyer : '')) + '</span>' +
+          '<span class="amt">−' + rupiah(x.amount) + '</span></div>' +
+          '<div class="tags"><span class="tag void">Retur</span>' + (x.ownerApproved ? '<span class="tag owner">Kode Pemilik</span>' : '') + '</div>' +
+          '<div class="reason">' + esc(x.reason || '(tanpa alasan)') + '</div>' +
+          '<div class="who"><span>Item <b>' + esc(x.items.join(', ') || '—') + '</b></span>' +
+          '<span>Waktu <b>' + esc(fmtTime(x.at)) + '</b></span><span>Disetujui <b>' + esc(x.approvedBy || '—') + '</b></span></div></div>').join('')
+      : '';
+    const pane = document.getElementById('paneCancels');
+    if (!d.rows.length) { pane.innerHTML = head + kp + '<div class="card empty">Tidak ada pembatalan pada periode ini.</div>' + returnsHtml; return; }
+    const groups = '<div class="groups">' + groupHtml('Diminta oleh', d.byRequester) + groupHtml('Disetujui oleh', d.byApprover) + groupHtml('Alasan', d.byReason) + '</div>';
+    const list = d.rows.map((r) => {
+      const st = STAGE[r.stage] || STAGE.unprocessed;
+      const label = (r.queueNumber ? '#' + r.queueNumber + ' · ' : '') + (r.orderNumber || '—') + (r.buyer ? ' · ' + r.buyer : '');
+      return '<div class="card crow">' +
+        '<div class="top"><span class="no">' + esc(label) + '</span><span class="amt">' + rupiah(r.value) + '</span></div>' +
+        '<div class="tags"><span class="tag ' + st[1] + '">' + st[0] + '</span>' +
+          (r.approval ? '<span class="tag' + (r.approval === 'owner_code' ? ' owner' : '') + '">' + esc(APPROVAL[r.approval] || r.approval) + '</span>' : '') +
+          (r.payLater ? '<span class="tag open">Tagihan tertunda</span>' : '') +
+          (r.emptiedFirst ? '<span class="tag void">Dikosongkan dulu lalu dibatalkan</span>' : '') +
+          (r.neverHadItems ? '<span class="tag">Pesanan kosong</span>' : '') + '</div>' +
+        '<div class="reason">' + esc(r.reason || '(tanpa alasan)') + '</div>' + correctionsHtml(r) +
+        '<div class="who"><span>Dibatalkan <b>' + esc(fmtTime(r.voidedAt)) + '</b></span>' +
+          '<span>Diminta <b>' + esc(r.requestedBy || '—') + '</b></span>' +
+          '<span>Disetujui <b>' + esc(r.approvedBy || '—') + '</b></span>' +
+          '<span>Kasir <b>' + esc(r.cashierName || '—') + '</b></span></div></div>';
+    }).join('');
+    pane.innerHTML = head + kp + groups + list + returnsHtml;
+  }
+
+  document.getElementById('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+
+  // Tautan akses \`…/owner#k=<token>\`: simpan token, lalu hapus dari bilah alamat.
+  (function boot() {
+    const fromLink = parseToken(location.hash);
+    if (location.hash && fromLink && fromLink !== location.hash) {
+      setToken(fromLink);
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    if (!token()) { showGate(''); return; }
+    start().catch((e) => { if (String(e.message) !== '401') showGate(e.message); });
+  })();
+</script>
+</body>
+</html>
+`

@@ -16,6 +16,7 @@ import { registerMidtransRoutes } from './routes/midtransPay.js'
 import { registerMidtransCashierRoutes } from './routes/midtransCashier.js'
 import { registerOwnerCodeRoutes } from './routes/ownerCode.js'
 import { registerOpsRoutes } from './routes/ops.js'
+import { registerOwnerRoutes } from './routes/owner.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -150,6 +151,9 @@ export async function buildServer(): Promise<FastifyInstance> {
       { prefix: '/ops' },
     )
   }
+
+  // ---- Konsol Pemilik usaha (/owner) — satu tenant, masuk lewat tautan bertoken dari /ops ----
+  await app.register(registerOwnerRoutes, { prefix: '/owner' })
 
   // Bersihkan tabel throttle berkala.
   const pruneTimer = setInterval(pruneAuthThrottle, 5 * 60_000)

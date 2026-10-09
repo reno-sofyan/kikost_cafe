@@ -1,5 +1,8 @@
 # Konsol Operator (`/ops`)
 
+> Untuk pemilik usaha ada konsol terpisah per usaha: [`/owner`](OWNER-CONSOLE.md).
+> Tautan aksesnya dibuat dari panel usaha di `/ops`.
+
 Dashboard lintas-tenant untuk **pemilik backend** memantau semua usaha (cafe, kantin,
 minimarket) yang menyinkron ke satu server ini: omzet & transaksi, kesehatan teknis
 (perangkat online, push ditolak), log aktivitas, dan ringkasan per tenant.
@@ -48,6 +51,9 @@ Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/
 | GET | `/ops/api/tenant/:tenantId/owner-code` | Bearer | Status kode pembatalan Pemilik: aktif sejak kapan / terakhir dipakai di perangkat mana |
 | POST | `/ops/api/tenant/:tenantId/owner-code` | Bearer | Buat kode 6 digit baru (menggantikan yang lama). Kode polos hanya ada di respons ini |
 | DELETE | `/ops/api/tenant/:tenantId/owner-code` | Bearer | Hapus kode aktif yang belum terpakai |
+| GET | `/ops/api/tenant/:tenantId/owner-access` | Bearer | Daftar tautan akses konsol Pemilik yang aktif (label, dibuat, terakhir dipakai) |
+| POST | `/ops/api/tenant/:tenantId/owner-access` | Bearer | `{ label }` → buat tautan akses `/owner` baru. Token polos hanya ada di respons ini |
+| DELETE | `/ops/api/tenant/:tenantId/owner-access/:id` | Bearer | Cabut satu tautan akses (langsung ditolak) |
 | POST | `/api/sync/owner-code/consume` | Kunci perangkat | Tablet mencocokkan kode; cocok → langsung hangus |
 
 ### Pelacakan pembatalan
