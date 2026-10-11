@@ -30,9 +30,22 @@ export function onlineChannelLabel(order: Pick<Order, 'type' | 'onlinePlatform' 
   return `${ONLINE_PLATFORM_LABELS[platform]}${ref ? ` #${ref}` : ''}`
 }
 
-/** Harga jual produk untuk sebuah kanal: harga online bila diisi, selain itu harga biasa. */
-export function productPriceFor(product: Pick<Product, 'price' | 'onlinePrice'>, online: boolean): number {
-  return online && product.onlinePrice != null && product.onlinePrice > 0 ? product.onlinePrice : product.price
+/**
+ * Harga jual produk untuk sebuah kanal: harga khusus aplikasi itu → harga online
+ * umum → harga jual biasa (yang pertama terisi).
+ */
+export function productPriceFor(product: Pick<Product, 'price' | 'onlinePrice' | 'platformPrices'>, online: boolean, platform?: OnlinePlatform | null): number {
+  if (!online) return product.price
+  const perPlatform = platform ? product.platformPrices?.[platform] : undefined
+  if (perPlatform != null && perPlatform > 0) return perPlatform
+  return product.onlinePrice != null && product.onlinePrice > 0 ? product.onlinePrice : product.price
+}
+
+/** Harga jual + markup persen, dibulatkan KE ATAS ke kelipatan `roundTo` (mis. 500). */
+export function markedUpPrice(price: number, percent: number, roundTo: number): number {
+  const raw = price * (1 + percent / 100)
+  const step = Math.max(1, Math.round(roundTo))
+  return Math.ceil(Math.round(raw) / step) * step
 }
 
 /** Estimasi komisi platform (Rp) dari penjualan bersih sebuah pesanan online. */

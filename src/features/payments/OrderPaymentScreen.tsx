@@ -5,7 +5,8 @@ import { db } from '@/db/schema'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
 import { markAwaitingPayment } from '@/db/repositories/tables'
 import { getSettings } from '@/db/repositories/settings'
-import { depositEnabledFor, getCustomerDeposit } from '@/db/repositories/deposits'
+import { depositEnabledFor, getCustomerDeposit, listGiftCards } from '@/db/repositories/deposits'
+import { GiftCardPaymentModal } from '@/features/payments/GiftCardPaymentModal'
 import { implicitBillId, listOrderBills, unsplitBills } from '@/db/repositories/billing'
 import {
   finalizePayment,
@@ -48,6 +49,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   card: 'Kartu',
   platform: 'Aplikasi Online',
   deposit: 'Saldo Member',
+  giftcard: 'Voucher Hadiah',
 }
 
 const DEFAULT_METHODS: PaymentMethod[] = ['cash', 'qris', 'transfer', 'card']
@@ -90,7 +92,11 @@ export function OrderPaymentScreen() {
       async () => (order?.customerId && depositEnabledFor(await getSettings()) ? (await getCustomerDeposit(order.customerId)).balance : 0),
       [order?.customerId],
     ) ?? 0
-  const paymentMethods: PaymentMethod[] = online ? ['platform', 'cash'] : depositAvailable > 0 ? [...basePaymentMethods, 'deposit'] : basePaymentMethods
+  // Voucher hadiah: muncul bila usaha ini pernah menjualnya.
+  const hasGiftCards = useLiveQuery(async () => !!features?.promos && (await listGiftCards()).length > 0, [features?.promos]) ?? false
+  const paymentMethods: PaymentMethod[] = online
+    ? ['platform', 'cash']
+    : [...basePaymentMethods, ...(depositAvailable > 0 ? (['deposit'] as const) : []), ...(hasGiftCards ? (['giftcard'] as const) : [])]
   const platformRef = order && online ? onlineChannelLabel(order) : undefined
 
   if (!order || !orderId) {
@@ -534,6 +540,7 @@ function PayControls({
             <div key={line.key} className="flex items-center justify-between rounded-xl bg-ink-800 px-4 py-2.5">
               <span className="text-ink-200">
                 {line.methodLabel}
+                {line.method === 'giftcard' && line.reference ? <span className="ml-2 font-mono text-xs text-ink-300">{line.reference}</span> : null}
                 {line.gateway && <span className="ml-2 text-xs font-semibold text-success-500">Lunas via Midtrans</span>}
                 {line.tipAmount ? <span className="ml-2 text-xs font-semibold text-accent-500">+ Tip {formatRupiah(line.tipAmount)}</span> : null}
               </span>
@@ -605,6 +612,19 @@ function PayControls({
           onConfirm={() => {
             addLine({ method: 'qris', amount: remaining })
             setForceStaticQris(false)
+            setActiveModal(null)
+          }}
+        />
+      )}
+      {activeModal === 'giftcard' && (
+        <GiftCardPaymentModal
+          remaining={remaining}
+          alreadyUsed={lines
+            .filter((l) => l.method === 'giftcard' && l.reference)
+            .reduce<Record<string, number>>((acc, l) => ({ ...acc, [l.reference as string]: (acc[l.reference as string] ?? 0) + l.amount + (l.tipAmount ?? 0) }), {})}
+          onCancel={() => setActiveModal(null)}
+          onConfirm={({ amount, code }) => {
+            addLine({ method: 'giftcard', amount, reference: code })
             setActiveModal(null)
           }}
         />

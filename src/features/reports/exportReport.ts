@@ -5,6 +5,7 @@ import { saveFile, saveTextFile } from '@/lib/saveFile'
 import { REPORT_SCOPE_LABELS, type SalesReport, type DateRange } from '@/db/repositories/reports'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { buildDepositReport, type DepositReport } from '@/db/repositories/deposits'
+import { buildMenuEngineering, MENU_CLASS_INFO } from '@/lib/menuEngineering'
 import { accountingExportToCsv, buildAccountingExport } from '@/db/repositories/accounting'
 
 export async function exportAccountingJournalCsv(range: DateRange): Promise<{ balanced: boolean }> {
@@ -40,7 +41,7 @@ const PAYMENT_LABELS_FOR_DEPOSIT: Record<string, string> = { cash: 'Tunai', qris
 async function depositReportFor(report: SalesReport): Promise<DepositReport | null> {
   if (report.scope !== 'all') return null
   const d = await buildDepositReport(report.range)
-  return d.topUpTotal > 0 || d.usedTotal !== 0 || d.withdrawnTotal > 0 || d.outstanding !== 0 ? d : null
+  return d.topUpTotal > 0 || d.usedTotal !== 0 || d.withdrawnTotal > 0 || d.outstanding !== 0 || d.giftCardSoldTotal > 0 || d.giftCardOutstanding !== 0 ? d : null
 }
 
 export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
@@ -114,10 +115,21 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
     lines.push(csvRow('Saldo Dipakai Belanja', deposit.usedTotal))
     lines.push(csvRow('Saldo Ditarik', deposit.withdrawnTotal))
     lines.push(csvRow('Titipan Saldo Saat Ini', deposit.outstanding))
+    lines.push(csvRow('Voucher Hadiah Terjual', deposit.giftCardSoldTotal))
+    lines.push(csvRow('Voucher Hadiah Ditukar', deposit.giftCardUsedTotal))
+    lines.push(csvRow('Voucher Hadiah Belum Ditukar', deposit.giftCardOutstanding))
   }
   lines.push('')
   lines.push(csvRow('Produk', 'Qty Terjual', 'Omzet', 'HPP', 'Laba'))
   for (const p of report.allProductSales) lines.push(csvRow(p.productName, p.qtySold, p.revenue, p.costTotal, p.revenue - p.costTotal))
+  const menu = buildMenuEngineering(report.allProductSales)
+  if (menu.rows.length >= 4) {
+    lines.push('')
+    lines.push(csvRow('Analisis Menu', 'Kelompok', 'Terjual', '% Porsi', 'Margin per Porsi', 'Total Margin', 'Saran'))
+    for (const r of menu.rows) {
+      lines.push(csvRow(r.productName, MENU_CLASS_INFO[r.menuClass].label, r.qtySold, r.mixPercent.toFixed(1), Math.round(r.marginPerUnit), Math.round(r.marginTotal), MENU_CLASS_INFO[r.menuClass].advice))
+    }
+  }
   lines.push('')
   lines.push(csvRow('Kategori', 'Omzet'))
   for (const c of report.byCategory) lines.push(csvRow(c.categoryName, c.revenue))
@@ -153,6 +165,7 @@ const PDF_PAYMENT_METHOD_LABELS: Record<string, string> = {
   card: 'Kartu',
   platform: 'Aplikasi Online',
   deposit: 'Saldo Member',
+  giftcard: 'Voucher Hadiah',
 }
 
 const PAGE_MARGIN = 15
@@ -434,6 +447,8 @@ export async function exportSalesReportPdf(
       [
         ['Isi Saldo', formatRupiah(deposit.topUpTotal), 'Dipakai Belanja', formatRupiah(deposit.usedTotal)],
         ['Saldo Ditarik', formatRupiah(deposit.withdrawnTotal), 'Titipan Saat Ini', formatRupiah(deposit.outstanding)],
+        ['Voucher Hadiah Terjual', formatRupiah(deposit.giftCardSoldTotal), 'Voucher Ditukar', formatRupiah(deposit.giftCardUsedTotal)],
+        ['Voucher Belum Ditukar', formatRupiah(deposit.giftCardOutstanding), '', ''],
       ],
     )
   }

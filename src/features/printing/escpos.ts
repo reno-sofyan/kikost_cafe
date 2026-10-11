@@ -137,6 +137,7 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   if (data.isPreBill) b.line('Bukan bukti pembayaran.').line('Silakan bayar di kasir.')
   if (data.pointsEarned && data.pointsEarned > 0) b.line(`Anda mendapat ${data.pointsEarned} poin member`)
   if (data.depositBalance != null) b.line(`Sisa saldo member ${formatRupiah(data.depositBalance)}`)
+  for (const g of data.giftCardBalances ?? []) b.line(`Sisa voucher ${g.code} ${formatRupiah(g.balance)}`)
   if (data.footerNote) b.line(data.footerNote)
   b.feed(3).cut()
 

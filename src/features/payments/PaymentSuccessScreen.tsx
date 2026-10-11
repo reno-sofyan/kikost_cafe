@@ -12,6 +12,7 @@ import { getSettings } from '@/db/repositories/settings'
 import { formatRupiah } from '@/lib/currency'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
+import { GuestRating } from '@/features/payments/GuestRating'
 import type { Order, PrintJob } from '@/types/domain'
 import type { ReceiptData } from '@/features/printing/receiptData'
 
@@ -23,6 +24,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   const [showPreview, setShowPreview] = useState(false)
   const [autoPrinted, setAutoPrinted] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
+  const [showRating, setShowRating] = useState(false)
   const currentUser = useSessionStore((s) => s.currentUser)
   // Struk otomatis (lihat enqueueReceiptForOrder) — undefined = memuat, null = tak ada printer kasir.
   const receiptJob = useLiveQuery(async () => (await db.printJobs.get(`rc_${orderId}`)) ?? null, [orderId])
@@ -37,6 +39,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
 
       const settings = await getSettings()
       setShowQueue(featuresForBusinessType(settings.businessType).queueNumbers)
+      setShowRating(featuresForBusinessType(settings.businessType).promos)
       if (settings.printerConfig.autoPrintOnPayment && !autoPrinted) {
         setAutoPrinted(true)
         setShowPreview(true)
@@ -68,6 +71,8 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
       ) : null}
       <p className="text-ink-400">Transaksi {order.orderNumber}</p>
       <p className="text-3xl font-bold text-success-500">{formatRupiah(order.grandTotal)}</p>
+
+      {showRating && currentUser && <GuestRating orderId={order.id} actor={{ userId: currentUser.id, userName: currentUser.name }} />}
 
       <ReceiptPrintStatus
         job={receiptJob}

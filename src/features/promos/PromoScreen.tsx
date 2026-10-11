@@ -17,6 +17,7 @@ import {
   type KolCommission,
 } from '@/db/repositories/promos'
 import { buildSalesReport } from '@/db/repositories/reports'
+import { GiftCardTab } from '@/features/promos/GiftCardTab'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { formatNumber, formatRupiah, parseRupiahInput } from '@/lib/currency'
@@ -29,8 +30,8 @@ import { useSessionStore } from '@/state/sessionStore'
 import { toast } from '@/state/toastStore'
 import type { Kol, LoyaltySettings, Promo } from '@/types/domain'
 
-type Tab = 'promo' | 'kol' | 'member'
-const TAB_LABELS: Record<Tab, string> = { promo: 'Promo & Voucher', kol: 'KOL / Influencer', member: 'Member & Poin' }
+type Tab = 'promo' | 'kol' | 'gift' | 'member'
+const TAB_LABELS: Record<Tab, string> = { promo: 'Promo & Voucher', kol: 'KOL / Influencer', gift: 'Voucher Hadiah', member: 'Member & Poin' }
 
 /** Promo otomatis, voucher, KOL, dan program member — pengelolaan untuk kafe & restoran. */
 export function PromoScreen() {
@@ -51,6 +52,7 @@ export function PromoScreen() {
       </div>
       {tab === 'promo' && <PromoTab />}
       {tab === 'kol' && <KolTab />}
+      {tab === 'gift' && <GiftCardTab />}
       {tab === 'member' && <MemberTab />}
     </div>
   )

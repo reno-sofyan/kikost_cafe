@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
+  addToWaitlist,
   closeReservation,
   listReservations,
   RESERVATION_STATUS_LABELS,
 } from '@/db/repositories/reservations'
 import { listTables } from '@/db/repositories/tables'
-import { formatDate, formatTime, jakartaDateKey, startOfJakartaDay } from '@/lib/datetime'
+import { durationSince, formatDate, formatTime, jakartaDateKey, startOfJakartaDay } from '@/lib/datetime'
+import { waLink } from '@/lib/whatsapp'
 import { useSessionStore } from '@/state/sessionStore'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { Icon } from '@/components/ui/Icon'
@@ -15,9 +17,9 @@ import { ReservationFormModal } from '@/features/tables/ReservationFormModal'
 import { toast } from '@/state/toastStore'
 import type { CafeTable, Reservation, ReservationStatus } from '@/types/domain'
 
-type Filter = 'today' | 'upcoming' | 'history'
+type Filter = 'waitlist' | 'today' | 'upcoming' | 'history'
 
-const FILTER_LABELS: Record<Filter, string> = { today: 'Hari Ini', upcoming: 'Mendatang', history: 'Riwayat' }
+const FILTER_LABELS: Record<Filter, string> = { waitlist: 'Daftar Tunggu', today: 'Reservasi Hari Ini', upcoming: 'Mendatang', history: 'Riwayat' }
 
 const STATUS_BADGE: Record<ReservationStatus, string> = {
   booked: 'bg-brand-600/15 text-brand-400',
@@ -43,6 +45,7 @@ export function ReservationsPanel({ onSeat }: Props) {
   const [filter, setFilter] = useState<Filter>('today')
   const [editing, setEditing] = useState<Reservation | null>(null)
   const [showNew, setShowNew] = useState(false)
+  const [showWaitlist, setShowWaitlist] = useState(false)
   const [pickTableFor, setPickTableFor] = useState<Reservation | null>(null)
   const { confirm, dialog } = useConfirmDialog()
   // Penanda "terlambat" ikut bergerak tanpa harus ada perubahan data.
@@ -57,12 +60,14 @@ export function ReservationsPanel({ onSeat }: Props) {
   const tomorrowStart = todayStart + 86_400_000
 
   const visible = useMemo(() => {
-    if (filter === 'today') return reservations.filter((r) => r.reservedAt >= todayStart && r.reservedAt < tomorrowStart)
+    if (filter === 'waitlist') return reservations.filter((r) => r.walkIn && r.status === 'booked' && r.reservedAt >= todayStart)
+    if (filter === 'today') return reservations.filter((r) => !r.walkIn && r.reservedAt >= todayStart && r.reservedAt < tomorrowStart)
     if (filter === 'upcoming') return reservations.filter((r) => r.reservedAt >= tomorrowStart && r.status === 'booked')
     return reservations.filter((r) => r.reservedAt < todayStart).reverse()
   }, [reservations, filter, todayStart, tomorrowStart])
 
-  const todayBooked = reservations.filter((r) => r.status === 'booked' && r.reservedAt >= todayStart && r.reservedAt < tomorrowStart)
+  const todayBooked = reservations.filter((r) => !r.walkIn && r.status === 'booked' && r.reservedAt >= todayStart && r.reservedAt < tomorrowStart)
+  const waitingCount = reservations.filter((r) => r.walkIn && r.status === 'booked' && r.reservedAt >= todayStart).length
   const todayGuests = todayBooked.reduce((s, r) => s + r.guestCount, 0)
 
   async function handleSeat(reservation: Reservation, tableId: string) {
@@ -97,12 +102,17 @@ export function ReservationsPanel({ onSeat }: Props) {
         {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`btn btn-compact !px-4 text-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}>
             {FILTER_LABELS[f]}
+            {f === 'waitlist' && waitingCount > 0 ? ` (${waitingCount})` : ''}
           </button>
         ))}
         <span className="ml-2 text-sm text-ink-400">
           Hari ini: {todayBooked.length} reservasi menunggu · {todayGuests} tamu
         </span>
-        <button className="btn-primary btn-compact ml-auto !px-4" onClick={() => setShowNew(true)}>
+        <button className="btn-secondary btn-compact ml-auto !px-4" onClick={() => setShowWaitlist(true)}>
+          <Icon name="plus" size={14} className="mr-1 inline" />
+          Daftar Tunggu
+        </button>
+        <button className="btn-primary btn-compact !px-4" onClick={() => setShowNew(true)}>
           <Icon name="plus" size={14} className="mr-1 inline" />
           Reservasi Baru
         </button>
@@ -110,23 +120,25 @@ export function ReservationsPanel({ onSeat }: Props) {
 
       {visible.length === 0 && (
         <p className="mt-16 text-center text-sm text-ink-400">
-          {filter === 'today' ? 'Belum ada reservasi untuk hari ini.' : filter === 'upcoming' ? 'Belum ada reservasi mendatang.' : 'Belum ada riwayat reservasi.'}
+          {filter === 'waitlist' ? 'Tidak ada tamu yang menunggu meja.' : filter === 'today' ? 'Belum ada reservasi untuk hari ini.' : filter === 'upcoming' ? 'Belum ada reservasi mendatang.' : 'Belum ada riwayat reservasi.'}
         </p>
       )}
 
       <div className="space-y-2">
-        {visible.map((r) => {
+        {visible.map((r, index) => {
           const table = r.tableId ? tableById.get(r.tableId) : undefined
-          const late = r.status === 'booked' && now > r.reservedAt + LATE_AFTER_MS
+          const late = !r.walkIn && r.status === 'booked' && now > r.reservedAt + LATE_AFTER_MS
+          const callLink = r.walkIn ? waLink(r.phone, `Halo ${r.customerName}, meja Anda sudah siap. Silakan menuju kasir/pelayan kami. Terima kasih sudah menunggu.`) : null
           const dayKey = jakartaDateKey(r.reservedAt)
-          const showDay = filter !== 'today' && dayKey !== lastDay
+          const showDay = filter !== 'today' && filter !== 'waitlist' && dayKey !== lastDay
           lastDay = dayKey
           return (
             <div key={r.id}>
               {showDay && <h3 className="eyebrow mb-2 mt-4">{formatDate(r.reservedAt)}</h3>}
               <div className="card flex flex-wrap items-center gap-4 p-4">
                 <div className="w-16 flex-none text-center">
-                  <p className="font-display text-xl font-bold text-ink-50">{formatTime(r.reservedAt)}</p>
+                  <p className="font-display text-xl font-bold text-ink-50">{filter === 'waitlist' ? `#${index + 1}` : formatTime(r.reservedAt)}</p>
+                  {filter === 'waitlist' && <p className="text-[0.7rem] font-semibold text-ink-300">{durationSince(r.reservedAt, now)}</p>}
                   {late && <p className="text-[0.7rem] font-semibold text-yellow-400">Terlambat</p>}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -135,7 +147,7 @@ export function ReservationsPanel({ onSeat }: Props) {
                     <span className="ml-2 text-sm font-normal text-ink-300">{r.guestCount} tamu</span>
                   </p>
                   <p className="truncate text-sm text-ink-400">
-                    {table ? table.name : 'Meja belum ditentukan'}
+                    {r.walkIn ? `Daftar tunggu sejak ${formatTime(r.reservedAt)}` : table ? table.name : 'Meja belum ditentukan'}
                     {r.phone ? ` · ${r.phone}` : ''}
                     {r.note ? ` · ${r.note}` : ''}
                   </p>
@@ -146,9 +158,16 @@ export function ReservationsPanel({ onSeat }: Props) {
                     <button className="btn-primary btn-compact !px-3 text-sm" onClick={() => startSeat(r)}>
                       Dudukkan
                     </button>
-                    <button className="btn-secondary btn-compact !px-3 text-sm" onClick={() => setEditing(r)}>
-                      Ubah
-                    </button>
+                    {callLink && (
+                      <a className="btn-secondary btn-compact !px-3 text-sm" href={callLink} target="_blank" rel="noreferrer">
+                        Panggil via WA
+                      </a>
+                    )}
+                    {!r.walkIn && (
+                      <button className="btn-secondary btn-compact !px-3 text-sm" onClick={() => setEditing(r)}>
+                        Ubah
+                      </button>
+                    )}
                     <button className="btn-ghost btn-compact !px-3 text-sm" onClick={() => void handleClose(r, 'no_show')}>
                       Tidak Datang
                     </button>
@@ -169,6 +188,17 @@ export function ReservationsPanel({ onSeat }: Props) {
           onClose={() => {
             setShowNew(false)
             setEditing(null)
+          }}
+        />
+      )}
+      {showWaitlist && (
+        <WaitlistModal
+          onClose={() => setShowWaitlist(false)}
+          onSubmit={async (input) => {
+            await addToWaitlist(input, actor)
+            setShowWaitlist(false)
+            setFilter('waitlist')
+            toast.success(`${input.customerName} masuk daftar tunggu.`)
           }}
         />
       )}
@@ -220,6 +250,45 @@ function SeatTablePicker({
       <button className="btn-ghost w-full" onClick={onCancel}>
         Batal
       </button>
+    </Modal>
+  )
+}
+
+function WaitlistModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (input: { customerName: string; phone: string; guestCount: number; note: string }) => Promise<void> }) {
+  const [customerName, setCustomerName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [guestCount, setGuestCount] = useState(2)
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <Modal onClose={onClose}>
+      <h2 className="mb-1 text-lg font-bold text-ink-50">Daftar Tunggu Meja</h2>
+      <p className="mb-3 text-sm text-ink-400">Untuk tamu yang sudah datang tetapi meja masih penuh. Urutan mengikuti waktu daftar.</p>
+      <input className="input-field mb-3" autoFocus placeholder="Nama tamu" aria-label="Nama tamu" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+      <div className="mb-3 grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="mb-1 block text-sm text-ink-300">Jumlah tamu</span>
+          <input type="number" min={1} className="input-field" aria-label="Jumlah tamu menunggu" value={guestCount} onChange={(e) => setGuestCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm text-ink-300">No. HP (untuk dipanggil)</span>
+          <input className="input-field" inputMode="tel" aria-label="No. HP tamu menunggu" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </label>
+      </div>
+      <input className="input-field mb-3" placeholder="Catatan (opsional), mis. kursi bayi" value={note} onChange={(e) => setNote(e.target.value)} />
+      {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+      <div className="flex gap-3">
+        <button className="btn-ghost flex-1" onClick={onClose}>
+          Batal
+        </button>
+        <button
+          className="btn-primary flex-[2]"
+          disabled={!customerName.trim()}
+          onClick={() => void onSubmit({ customerName, phone, guestCount, note }).catch((e) => setError(e instanceof Error ? e.message : 'Gagal menyimpan'))}
+        >
+          Masukkan ke Daftar Tunggu
+        </button>
+      </div>
     </Modal>
   )
 }

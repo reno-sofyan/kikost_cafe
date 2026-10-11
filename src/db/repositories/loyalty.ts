@@ -16,6 +16,8 @@ import type { Customer, LoyaltyTier, Order } from '@/types/domain'
 export interface CustomerLoyalty {
   lifetimeSpend: number
   transactionCount: number
+  /** Transaksi lunas terakhir (null = belum pernah). */
+  lastOrderAt: number | null
   earned: number
   redeemed: number
   adjustment: number
@@ -53,6 +55,7 @@ function summarize(paid: Order[], open: Order[], customer: Customer | undefined,
   return {
     lifetimeSpend,
     transactionCount: paid.length,
+    lastOrderAt: paid.length ? Math.max(...paid.map((o) => o.paidAt ?? o.createdAt)) : null,
     earned,
     redeemed,
     adjustment,

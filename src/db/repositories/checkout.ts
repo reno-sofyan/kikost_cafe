@@ -252,7 +252,7 @@ async function createReversalPayment(
   const existing = await db.payments.get(key)
   if (existing) return existing
   // Pembalik pembayaran saldo member mengembalikan saldo ke pemilik aslinya.
-  const depositOwner = original.method === 'deposit' ? ((await db.payments.get(original.id))?.customerId ?? order.customerId) : null
+  const depositOwner = original.method === 'deposit' || original.method === 'giftcard' ? ((await db.payments.get(original.id))?.customerId ?? order.customerId) : null
   const reversal: Payment = {
     id: key,
     orderId: order.id,

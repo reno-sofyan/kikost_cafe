@@ -5,14 +5,15 @@ import type { Customer, Order } from '@/types/domain'
 import { getTrustedNow } from '@/lib/clockGuard'
 
 export async function listCustomers(): Promise<Customer[]> {
-  return db.customers.orderBy('name').toArray()
+  // Voucher hadiah disimpan di tabel yang sama — bukan pelanggan sungguhan.
+  return (await db.customers.orderBy('name').toArray()).filter((c) => !c.giftCard)
 }
 
 export async function searchCustomers(query: string): Promise<Customer[]> {
   const lowered = query.trim().toLowerCase()
   if (!lowered) return listCustomers()
   return db.customers
-    .filter((c) => c.name.toLowerCase().includes(lowered) || c.phone.includes(lowered))
+    .filter((c) => !c.giftCard && (c.name.toLowerCase().includes(lowered) || c.phone.includes(lowered)))
     .toArray()
 }
 

@@ -1,4 +1,5 @@
 import { onlineChannelLabel } from '@/lib/onlineOrders'
+import { COURSE_LABELS, itemsToFire } from '@/lib/courses'
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
@@ -32,16 +33,22 @@ function toLine(item: OrderItem): KitchenTicketLine {
 export async function sendOrderToKitchen(
   orderId: string,
   actor: { userId: string; userName: string },
-): Promise<{ stations: PrinterStation[]; itemCount: number }> {
+  /** `holdCourses`: hanya lepas tahap saji paling awal; tahap berikutnya ditahan (lihat lib/courses.ts). */
+  opts: { holdCourses?: boolean } = {},
+): Promise<{ stations: PrinterStation[]; itemCount: number; course: number | null; heldCount: number }> {
   const order = await db.orders.get(orderId)
   if (!order) throw new Error('Pesanan tidak ditemukan')
 
-  const items = await db.orderItems
+  const unsent = await db.orderItems
     .where('orderId')
     .equals(orderId)
     .filter((i) => !i.voided && !i.removed && !i.skipKitchen && i.kitchenPrintedAt == null)
     .toArray()
-  if (items.length === 0) return { stations: [], itemCount: 0 }
+  const plan = opts.holdCourses ? itemsToFire(unsent) : { fire: unsent, held: [], course: null }
+  const items = plan.fire
+  const none = { stations: [], itemCount: 0, course: plan.course, heldCount: plan.held.length }
+  if (items.length === 0) return none
+  const courseLabel = plan.course != null ? ` — ${COURSE_LABELS[plan.course].toUpperCase()}` : ''
 
   const settings = await getSettings()
   const byStation = new Map<PrinterStation, OrderItem[]>()
@@ -54,7 +61,7 @@ export async function sendOrderToKitchen(
     list.push(item)
     byStation.set(station, list)
   }
-  if (byStation.size === 0) return { stations: [], itemCount: 0 }
+  if (byStation.size === 0) return none
 
   const now = Date.now()
   await db.transaction(
@@ -93,7 +100,7 @@ export async function sendOrderToKitchen(
           orderedAtLabel: formatTime(order.createdAt),
           cashierName: order.cashierName,
           source: onlineChannelLabel(order) || (SOURCE_LABELS[order.source] ?? order.source),
-          ticketLabel: seq > 1 ? `ORDER — TAMBAHAN #${seq}` : `ORDER ${station.toUpperCase()}`,
+          ticketLabel: (seq > 1 ? `ORDER — TAMBAHAN #${seq}` : `ORDER ${station.toUpperCase()}`) + courseLabel,
           paperSize: settings.receiptPaperSize,
           lines: stationItems.map(toLine),
         }
@@ -113,7 +120,7 @@ export async function sendOrderToKitchen(
   )
 
   void processPrintQueue() // tak ditunggu — kasir tak tertahan printer lambat
-  return { stations: [...byStation.keys()], itemCount: [...byStation.values()].reduce((n, list) => n + list.length, 0) }
+  return { stations: [...byStation.keys()], itemCount: [...byStation.values()].reduce((n, list) => n + list.length, 0), course: plan.course, heldCount: plan.held.length }
 }
 
 /** Cetak ulang satu kitchen ticket (hanya item tiket itu) — ber-audit + label. */

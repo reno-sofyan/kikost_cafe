@@ -53,7 +53,7 @@ test('beli X gratis Y, saldo member, promo ulang tahun, dan pembayaran komisi KO
   await page.getByPlaceholder('Telepon', { exact: true }).fill('08123')
   await page.getByLabel('Tanggal lahir').fill(`1990-${month}-15`)
   await page.getByRole('button', { name: 'Simpan', exact: true }).click()
-  await expect(page.getByText('Ulang tahun bulan ini')).toBeVisible()
+  await expect(page.locator('span', { hasText: 'Ulang tahun bulan ini' })).toBeVisible()
   await page.getByRole('button', { name: 'Isi Saldo' }).click()
   await page.getByRole('button', { name: '100rb' }).click()
   await page.getByRole('button', { name: 'Isi Saldo' }).last().click()

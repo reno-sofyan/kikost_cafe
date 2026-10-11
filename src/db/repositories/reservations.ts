@@ -27,6 +27,8 @@ export interface ReservationInput {
   reservedAt: number
   tableId: string | null
   note: string
+  /** Daftar tunggu: tamu sudah di tempat, menunggu meja kosong. */
+  walkIn?: boolean
 }
 
 type Actor = { userId: string; userName: string }
@@ -77,6 +79,7 @@ export async function createReservation(input: ReservationInput, actor: Actor): 
       tableId: input.tableId,
       note: input.note.trim(),
       status: 'booked',
+      ...(input.walkIn ? { walkIn: true } : {}),
       orderId: null,
       createdByUserId: actor.userId,
       createdByName: actor.userName,
@@ -90,7 +93,7 @@ export async function createReservation(input: ReservationInput, actor: Actor): 
       action: 'reservation.create',
       entityType: 'reservation',
       entityId: reservation.id,
-      details: `Reservasi ${reservation.customerName} (${reservation.guestCount} tamu) dibuat.`,
+      details: `${reservation.walkIn ? 'Daftar tunggu' : 'Reservasi'} ${reservation.customerName} (${reservation.guestCount} tamu) dibuat.`,
     })
     return reservation
   })
@@ -119,6 +122,11 @@ export async function updateReservation(id: string, input: ReservationInput): Pr
     await db.reservations.put(updated)
     await enqueueSync('reservations', id, updated)
   })
+}
+
+/** Menambahkan tamu yang datang langsung ke daftar tunggu meja (urut waktu daftar). */
+export async function addToWaitlist(input: { customerName: string; phone: string; guestCount: number; note: string }, actor: Actor): Promise<Reservation> {
+  return createReservation({ ...input, reservedAt: getTrustedNow(), tableId: null, walkIn: true }, actor)
 }
 
 /** Membatalkan reservasi atau menandainya "tidak datang". Hanya dari status `booked`. */

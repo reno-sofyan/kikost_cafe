@@ -850,6 +850,18 @@ export async function listActiveKitchenItems(): Promise<OrderItem[]> {
     .sortBy('createdAt')
 }
 
+/** Menandai urutan saji sebuah item (null = tanpa tahap). Hanya selama item belum dikirim ke dapur. */
+export async function setOrderItemCourse(itemId: string, course: number | null): Promise<void> {
+  await db.transaction('rw', db.orderItems, db.syncQueue, async () => {
+    const item = await db.orderItems.get(itemId)
+    if (!item) return
+    if (isItemSentToKitchen(item)) throw new Error('Item sudah dikirim ke dapur — urutan saji tak bisa diubah.')
+    const updated = { ...item, course: course != null && course >= 1 && course <= 3 ? Math.floor(course) : null, updatedAt: getTrustedNow() }
+    await db.orderItems.put(updated)
+    await enqueueSync('orderItems', itemId, updated)
+  })
+}
+
 export async function setOrderNotes(orderId: string, notes: string): Promise<void> {
   await db.orders.update(orderId, { notes, updatedAt: getTrustedNow() })
 }

@@ -50,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/produk', label: 'Produk', icon: 'coffee', permission: 'settings.manage' },
   { to: '/stok', label: 'Stok', icon: 'box', permission: 'stock.adjust' },
   { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: SHIFT_ROLES },
+  { to: '/absensi', label: 'Absensi', icon: 'checkCircle', feature: 'attendance' },
   { to: '/pengaturan', label: 'Pengaturan', icon: 'settings', permission: 'settings.manage' },
 ]
 

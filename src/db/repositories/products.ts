@@ -1,4 +1,5 @@
 import { db } from '@/db/schema'
+import { markedUpPrice } from '@/lib/onlineOrders'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import type { Product, Recipe } from '@/types/domain'
@@ -134,4 +135,27 @@ function csvEscape(value: string): string {
     return `"${value.replace(/"/g, '""')}"`
   }
   return value
+}
+
+/**
+ * Mengisi harga online banyak produk sekaligus: harga jual + `percent`%, dibulatkan
+ * ke atas ke kelipatan `roundTo`. `onlyEmpty` melewati produk yang harga online-nya
+ * sudah diisi manual. Mengembalikan jumlah produk yang berubah.
+ */
+export async function bulkSetOnlinePrices(params: { percent: number; roundTo: number; onlyEmpty: boolean; categoryId?: string | null }): Promise<number> {
+  if (!(params.percent >= 0) || params.percent > 500) throw new Error('Persen kenaikan harus antara 0 dan 500.')
+  return db.transaction('rw', db.products, db.syncQueue, async () => {
+    const products = (await db.products.toArray()).filter((p) => !p.archived && (!params.categoryId || p.categoryId === params.categoryId))
+    let changed = 0
+    for (const p of products) {
+      if (params.onlyEmpty && (p.onlinePrice ?? 0) > 0) continue
+      const next = params.percent === 0 ? null : markedUpPrice(p.price, params.percent, params.roundTo)
+      if ((p.onlinePrice ?? null) === next) continue
+      const updated = { ...p, onlinePrice: next, updatedAt: getTrustedNow() }
+      await db.products.put(updated)
+      await enqueueSync('products', p.id, updated)
+      changed += 1
+    }
+    return changed
+  })
 }

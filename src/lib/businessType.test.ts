@@ -32,6 +32,7 @@ describe('featuresForBusinessType', () => {
       promos: false,
       loyalty: false,
       combos: false,
+      attendance: false,
     })
   })
 
@@ -90,6 +91,7 @@ describe('featuresForBusinessType', () => {
       promos: true,
       loyalty: true,
       combos: true,
+      attendance: true,
     })
   })
 
@@ -123,6 +125,7 @@ describe('featuresForBusinessType', () => {
       promos: true,
       loyalty: true,
       combos: true,
+      attendance: true,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
       tables: true,
@@ -153,6 +156,7 @@ describe('featuresForBusinessType', () => {
       promos: true,
       loyalty: true,
       combos: true,
+      attendance: true,
     })
   })
 

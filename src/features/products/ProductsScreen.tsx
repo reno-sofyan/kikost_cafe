@@ -22,7 +22,10 @@ import { ModifierManager } from '@/features/products/ModifierManager'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { toast } from '@/state/toastStore'
-import type { Product } from '@/types/domain'
+import { Modal } from '@/components/ui/Modal'
+import { bulkSetOnlinePrices } from '@/db/repositories/products'
+import { markedUpPrice } from '@/lib/onlineOrders'
+import type { Category, Product } from '@/types/domain'
 
 type Tab = 'produk' | 'kategori' | 'modifier'
 
@@ -46,6 +49,7 @@ export function ProductsScreen() {
   const [view, setView] = useState<'aktif' | 'arsip'>('aktif')
   const [editing, setEditing] = useState<Product | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showBulkOnline, setShowBulkOnline] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
@@ -150,6 +154,11 @@ export function ProductsScreen() {
                   <button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>
                     + Produk Baru
                   </button>
+                  {features.onlineOrders && (
+                    <button className="btn-secondary" onClick={() => setShowBulkOnline(true)}>
+                      Harga Online Massal
+                    </button>
+                  )}
                   <button className="btn-secondary" onClick={() => void handleExport()}>
                     Ekspor CSV
                   </button>
@@ -267,7 +276,80 @@ export function ProductsScreen() {
       </div>
 
       {showForm && <ProductFormModal initial={editing} onClose={() => setShowForm(false)} />}
+      {showBulkOnline && <BulkOnlinePriceModal categories={categories} onClose={() => setShowBulkOnline(false)} />}
       {confirmDialog}
     </div>
+  )
+}
+
+/** Mengisi harga online banyak produk sekaligus dari harga jual + persen kenaikan. */
+function BulkOnlinePriceModal({ categories, onClose }: { categories: Category[]; onClose: () => void }) {
+  const [percent, setPercent] = useState(20)
+  const [roundTo, setRoundTo] = useState(500)
+  const [onlyEmpty, setOnlyEmpty] = useState(true)
+  const [categoryId, setCategoryId] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function apply() {
+    setBusy(true)
+    setError(null)
+    try {
+      const changed = await bulkSetOnlinePrices({ percent, roundTo, onlyEmpty, categoryId: categoryId || null })
+      toast.success(`Harga online ${changed} produk diperbarui.`)
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal memperbarui harga.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <h2 className="mb-1 text-lg font-bold text-ink-50">Harga Online Massal</h2>
+      <p className="mb-3 text-sm text-ink-400">Harga online = harga jual + kenaikan, untuk menutup komisi aplikasi pesan-antar. Isi 0% untuk mengosongkan harga online.</p>
+      <div className="mb-3 grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="mb-1 block text-sm text-ink-300">Kenaikan (%)</span>
+          <input type="number" min={0} max={500} className="input-field" aria-label="Kenaikan harga online" value={percent} onChange={(e) => setPercent(Math.max(0, Number(e.target.value) || 0))} />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm text-ink-300">Dibulatkan ke atas ke</span>
+          <select className="input-field" value={roundTo} onChange={(e) => setRoundTo(Number(e.target.value))}>
+            {[100, 500, 1000].map((v) => (
+              <option key={v} value={v}>
+                {formatRupiah(v)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="mb-3 block">
+        <span className="mb-1 block text-sm text-ink-300">Kategori</span>
+        <select className="input-field" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">Semua kategori</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="mb-3 flex items-center gap-2 text-sm text-ink-200">
+        <input type="checkbox" checked={onlyEmpty} onChange={(e) => setOnlyEmpty(e.target.checked)} />
+        Lewati produk yang harga online-nya sudah diisi
+      </label>
+      {percent > 0 && <p className="mb-3 text-sm text-ink-300">Contoh: {formatRupiah(18000)} menjadi {formatRupiah(markedUpPrice(18000, percent, roundTo))}.</p>}
+      {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+      <div className="flex gap-3">
+        <button className="btn-ghost flex-1" onClick={onClose}>
+          Batal
+        </button>
+        <button className="btn-primary flex-[2]" disabled={busy} onClick={() => void apply()}>
+          Terapkan
+        </button>
+      </div>
+    </Modal>
   )
 }

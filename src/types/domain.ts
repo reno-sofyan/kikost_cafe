@@ -126,6 +126,8 @@ export interface AppSettings {
   kols?: Kol[]
   /** Riwayat pembayaran komisi ke KOL. Terutang = komisi dari transaksi lunas − total di sini. */
   kolPayouts?: KolPayout[]
+  /** Target omzet (Rp) per hari & per bulan untuk indikator pencapaian di Laporan. */
+  salesTargets?: { daily?: number; monthly?: number }
   /** Program member & poin loyalitas. Kosong = belum diaktifkan. */
   loyalty?: LoyaltySettings
   /** Kantin: diskon kasir di atas persen ini (dari subtotal) wajib kode Pemilik. Default 10. */
@@ -320,6 +322,8 @@ export interface Product {
   /** Harga jual khusus pesanan online (biasanya dinaikkan untuk menutup komisi platform).
    *  Kosong/0 = sama dengan `price`. */
   onlinePrice?: number | null
+  /** Harga khusus per aplikasi (mengalahkan `onlinePrice`). Kosong = ikut harga online umum. */
+  platformPrices?: Partial<Record<OnlinePlatform, number>> | null
   costPrice: number
   unit: UnitOfMeasure
   photoDataUrl: string | null
@@ -546,6 +550,8 @@ export interface Reservation {
   tableId: string | null
   note: string
   status: ReservationStatus
+  /** Tamu datang langsung & menunggu meja (daftar tunggu) — `reservedAt` = saat didaftarkan. */
+  walkIn?: boolean
   orderId: string | null
   createdByUserId: string
   createdByName: string
@@ -577,6 +583,12 @@ export interface Customer {
   pointsLog?: PointsLogEntry[]
   /** Isi & tarik saldo member. Saldo = jumlah di sini − pembayaran bermetode `deposit` milik pelanggan ini. */
   depositLog?: DepositEntry[]
+  /**
+   * Voucher hadiah (gift card): dicatat sebagai "pelanggan" khusus supaya saldo,
+   * penggabungan antar-perangkat, & pembukuannya memakai mekanisme saldo member.
+   * Tidak tampil di daftar pelanggan.
+   */
+  giftCard?: { code: string; recipient: string } | null
   createdAt: number
   updatedAt: number
 }
@@ -648,6 +660,8 @@ export interface OrderItem {
   categoryId?: string | null
   /** Menu paket: komponen per 1 paket. Stok dipotong per komponen, bukan dari produk paketnya. */
   comboComponents?: ComboComponent[]
+  /** Urutan saji: 1 Pembuka, 2 Utama, 3 Penutup. Kosong = langsung dikirim. */
+  course?: number | null
   kitchenStatus: KitchenItemStatus
   /**
    * Item kategori ber-station `direct` (barang siap jual): dibuat langsung `done`,
@@ -1016,8 +1030,8 @@ export interface OnlinePayment {
 }
 
 /** `platform` = dibayar pelanggan lewat aplikasi pesan-antar; dicairkan platform belakangan (piutang). */
-/** `deposit` = dibayar dari saldo member (uangnya sudah diterima saat isi saldo). */
-export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card' | 'platform' | 'deposit'
+/** `deposit` = dibayar dari saldo member; `giftcard` = dari voucher hadiah (uangnya sudah diterima di muka). */
+export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card' | 'platform' | 'deposit' | 'giftcard'
 
 export interface PaymentInput {
   method: PaymentMethod

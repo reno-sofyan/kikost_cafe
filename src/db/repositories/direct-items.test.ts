@@ -57,7 +57,7 @@ describe('kategori "Langsung (tanpa dapur)"', () => {
 
     const res = await sendOrderToKitchen(order.id, actor)
 
-    expect(res).toEqual({ stations: ['kitchen'], itemCount: 1 })
+    expect(res).toMatchObject({ stations: ['kitchen'], itemCount: 1 })
     const tickets = await db.kitchenTickets.where('orderId').equals(order.id).toArray()
     expect(tickets).toHaveLength(1)
     expect(tickets[0].itemIds).toEqual([nasi.id])
@@ -68,7 +68,7 @@ describe('kategori "Langsung (tanpa dapur)"', () => {
     await product('teh-botol', 'cat-botol')
     const order = await newOrder()
     await add(order.id, 'teh-botol')
-    expect(await sendOrderToKitchen(order.id, actor)).toEqual({ stations: [], itemCount: 0 })
+    expect(await sendOrderToKitchen(order.id, actor)).toMatchObject({ stations: [], itemCount: 0 })
   })
 
   it('tidak menahan status pesanan: masakan siap → pesanan READY walau ada minuman botol', async () => {

@@ -12,7 +12,10 @@ import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { db } from '@/db/schema'
-import type { Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
+import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
+import type { OnlinePlatform, Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
+
+const PRICED_PLATFORMS: OnlinePlatform[] = ['gofood', 'grabfood', 'shopeefood']
 
 const UNITS: UnitOfMeasure[] = ['pcs', 'g', 'kg', 'ml', 'l']
 
@@ -38,6 +41,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const [barcode, setBarcode] = useState(initial?.barcode ?? '')
   const [price, setPrice] = useState(initial?.price ?? 0)
   const [onlinePrice, setOnlinePrice] = useState(initial?.onlinePrice ?? 0)
+  const [platformPrices, setPlatformPrices] = useState<Partial<Record<OnlinePlatform, number>>>(initial?.platformPrices ?? {})
   const [costPrice, setCostPrice] = useState(initial?.costPrice ?? 0)
   const [unit, setUnit] = useState<UnitOfMeasure>(initial?.unit ?? 'pcs')
   const [stockQty, setStockQty] = useState(initial?.stockQty ?? 0)
@@ -106,6 +110,9 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
       price,
       // 0 = kosong → pesanan online memakai harga jual biasa.
       onlinePrice: onlinePrice > 0 ? onlinePrice : null,
+      platformPrices: Object.values(platformPrices).some((v) => (v ?? 0) > 0)
+        ? (Object.fromEntries(Object.entries(platformPrices).filter(([, v]) => (v ?? 0) > 0)) as Partial<Record<OnlinePlatform, number>>)
+        : null,
       costPrice,
       unit,
       photoDataUrl,
@@ -175,6 +182,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
             <input className="input-field" inputMode="numeric" value={formatRupiah(price)} onChange={(e) => setPrice(parseRupiahInput(e.target.value))} />
           </label>
           {(features.onlineOrders || onlinePrice > 0) && (
+            <div>
             <label>
               <span className="mb-1 block text-sm text-ink-300">Harga Online (opsional)</span>
               <input
@@ -190,6 +198,25 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
                   : 'Dipakai untuk pesanan GoFood/GrabFood/ShopeeFood. Kosongkan bila sama.'}
               </span>
             </label>
+              <details className="mt-2" open={Object.values(platformPrices).some((v) => (v ?? 0) > 0)}>
+                <summary className="cursor-pointer text-xs font-semibold text-brand-400">Harga berbeda per aplikasi</summary>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {PRICED_PLATFORMS.map((platform) => (
+                    <label key={platform}>
+                      <span className="mb-1 block text-xs text-ink-300">{ONLINE_PLATFORM_LABELS[platform]}</span>
+                      <input
+                        className="input-field"
+                        inputMode="numeric"
+                        aria-label={`Harga ${ONLINE_PLATFORM_LABELS[platform]}`}
+                        placeholder="Ikut harga online"
+                        value={(platformPrices[platform] ?? 0) > 0 ? formatRupiah(platformPrices[platform] ?? 0) : ''}
+                        onChange={(e) => setPlatformPrices((p) => ({ ...p, [platform]: parseRupiahInput(e.target.value) }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </details>
+            </div>
           )}
           <label>
             <span className="mb-1 block text-sm text-ink-300">HPP (Harga Pokok)</span>

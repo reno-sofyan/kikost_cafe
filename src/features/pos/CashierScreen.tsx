@@ -17,6 +17,7 @@ import {
   markOrderPayLater,
   removeOrderItem,
   setOrderDiscount,
+  setOrderItemCourse,
   setOrderWaiter,
   discountRequirements,
   DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT,
@@ -31,6 +32,7 @@ import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
 import { WaiterPickerModal } from '@/features/pos/WaiterPickerModal'
 import type { ReceiptData } from '@/features/printing/receiptData'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
+import { COURSE_LABELS, cycleCourse, nextCourseToFire } from '@/lib/courses'
 import { voidOrder } from '@/db/repositories/checkout'
 import { ITEM_CORRECTION_REASONS, ORDER_CANCEL_REASONS } from '@/lib/orderState'
 import { usePosStore } from '@/state/posStore'
@@ -38,7 +40,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
 import { roleHasPermission } from '@/lib/permissions'
 import { featuresForBusinessType } from '@/lib/businessType'
-import { isOnlineOrder, onlineChannelLabel, productPriceFor } from '@/lib/onlineOrders'
+import { isOnlineOrder, onlineChannelLabel, onlinePlatformOf, productPriceFor } from '@/lib/onlineOrders'
 import { discountLinesOf } from '@/lib/promos'
 import { OrderPerks } from '@/features/pos/OrderPerks'
 import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
@@ -109,8 +111,12 @@ export function CashierScreen() {
   const quickStartRef = useRef<Promise<string> | null>(null)
 
   const activeItems = useMemo(() => (items ?? []).filter((i) => !i.voided && !i.removed), [items])
+  // Urutan saji (pembuka/utama/penutup) hanya untuk layanan meja.
+  const courseMode = features.kitchen && features.preBill && order?.type === 'dine_in'
+  const heldCourse = courseMode ? nextCourseToFire(activeItems) : null
   // Pesanan online memakai Harga Online produk (bila diisi).
   const orderIsOnline = !!order && !!activeOrderId && isOnlineOrder(order)
+  const orderPlatform = order && orderIsOnline ? onlinePlatformOf(order) : null
 
   if (!openShift) {
     return (
@@ -210,7 +216,7 @@ export function CashierScreen() {
       orderId,
       productId: product.id,
       productName: product.name,
-      unitPrice: productPriceFor(product, orderIsOnline),
+      unitPrice: productPriceFor(product, orderIsOnline, orderPlatform),
       qty: 1,
       modifiers: [],
       notes: '',
@@ -406,7 +412,7 @@ export function CashierScreen() {
         orderId: activeOrderId,
         productId: pickerProduct.id,
         productName: pickerProduct.name,
-        unitPrice: productPriceFor(pickerProduct, orderIsOnline),
+        unitPrice: productPriceFor(pickerProduct, orderIsOnline, orderPlatform),
         qty: params.qty,
         modifiers: params.modifiers,
         notes: params.notes,
@@ -498,8 +504,8 @@ export function CashierScreen() {
                   )}
                 </div>
                 <span className="line-clamp-2 text-sm font-semibold text-ink-50">{product.name}</span>
-                <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(productPriceFor(product, orderIsOnline))}</span>
-                {orderIsOnline && product.onlinePrice ? <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
+                <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(productPriceFor(product, orderIsOnline, orderPlatform))}</span>
+                {orderIsOnline && productPriceFor(product, true, orderPlatform) !== product.price ? <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
                 {!product.isAvailable && <span className="mt-1 text-xs text-red-400">Habis</span>}
                 {product.isFavorite && (
                   <span className="absolute right-2 top-2 text-accent-500">
@@ -579,6 +585,17 @@ export function CashierScreen() {
                           </p>
                         ))}
                         {item.notes && <p className="mt-0.5 text-xs italic text-ink-500">"{item.notes}"</p>}
+                        {courseMode && !item.skipKitchen && (
+                          <button
+                            className={`mt-1 rounded-full px-2 py-0.5 text-xs font-semibold disabled:opacity-60 ${item.course ? 'bg-accent-500/15 text-accent-500' : 'bg-ink-700 text-ink-300'}`}
+                            disabled={item.kitchenPrintedAt != null}
+                            aria-label={`Urutan saji ${item.productName}`}
+                            onClick={() => void setOrderItemCourse(item.id, cycleCourse(item.course)).catch((e) => toast.error(e instanceof Error ? e.message : 'Gagal'))}
+                          >
+                            {item.course ? COURSE_LABELS[item.course] : 'Urutan saji: —'}
+                            {item.course && item.kitchenPrintedAt == null && heldCourse != null && item.course > heldCourse ? ' • ditahan' : ''}
+                          </button>
+                        )}
                       </div>
                       <span className="flex-none font-semibold text-brand-400">{formatRupiah(item.lineTotal)}</span>
                     </div>
@@ -646,15 +663,15 @@ export function CashierScreen() {
                 <button
                   className="btn-secondary w-full"
                   onClick={async () => {
-                    const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name })
+                    const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
                     toast.success(
                       res.itemCount === 0
                         ? 'Semua item sudah dikirim ke dapur.'
-                        : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}.`,
+                        : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}${res.heldCount > 0 ? ` • ${res.heldCount} item ditahan untuk tahap berikutnya` : ''}.`,
                     )
                   }}
                 >
-                  Kirim ke Dapur / Bar
+                  {heldCourse != null ? `Lepas ${COURSE_LABELS[heldCourse]} ke Dapur / Bar` : 'Kirim ke Dapur / Bar'}
                 </button>
               )}
               {features.preBill && (
@@ -714,7 +731,7 @@ export function CashierScreen() {
           initialQty={editingItem?.qty}
           initialNotes={editingItem?.notes}
           initialModifiers={editingItem?.modifiers}
-          basePrice={productPriceFor(pickerProduct, orderIsOnline)}
+          basePrice={productPriceFor(pickerProduct, orderIsOnline, orderPlatform)}
           onCancel={() => {
             setPickerProduct(null)
             setEditingItem(null)

@@ -9,6 +9,7 @@ import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { loyaltySettingsOf } from '@/lib/loyalty'
 import { isBirthdayAt } from '@/lib/promos'
+import { greetingMessage, waLink, type GreetingKind } from '@/lib/whatsapp'
 import { roleHasPermission } from '@/lib/permissions'
 import { useSessionStore } from '@/state/sessionStore'
 import { toast } from '@/state/toastStore'
@@ -21,7 +22,8 @@ export function CustomersScreen() {
   const [selected, setSelected] = useState<Customer | null>(null)
   const [showForm, setShowForm] = useState(false)
 
-  const customers = useLiveQuery(() => searchCustomers(search), [search]) ?? []
+  const found = useLiveQuery(() => searchCustomers(search), [search]) ?? []
+  const [segment, setSegment] = useState<Segment>('all')
   const history = useLiveQuery(() => (selected ? purchaseHistoryForCustomer(selected.id) : []), [selected?.id]) ?? []
   const currentUser = useSessionStore((s) => s.currentUser)!
   const settings = useLiveQuery(() => getSettings(), [])
@@ -35,6 +37,19 @@ export function CustomersScreen() {
   const deposit = selected ? deposits?.get(selected.id) : undefined
   const [showDeposit, setShowDeposit] = useState(false)
   const canManage = roleHasPermission(currentUser.role, 'settings.manage')
+  const [showGreeting, setShowGreeting] = useState(false)
+  const now = Date.now()
+  const daysSinceVisit = (customerId: string) => {
+    const last = loyaltyByCustomer?.get(customerId)?.lastOrderAt
+    return last == null ? null : Math.floor((now - last) / DAY_MS)
+  }
+  const customers = found.filter((c) => {
+    if (segment === 'all') return true
+    if (segment === 'birthday') return isBirthdayAt(c.birthDate, now, 'month')
+    const days = daysSinceVisit(c.id)
+    return days != null && days >= Number(segment)
+  })
+  const selectedDays = selected ? daysSinceVisit(selected.id) : null
 
   return (
     <div className="flex h-full">
@@ -42,6 +57,13 @@ export function CustomersScreen() {
         <div className="flex-none border-b border-ink-800 p-4">
           <h1 className="mb-3 text-xl font-bold text-ink-50">Pelanggan</h1>
           <input className="input-field mb-2" placeholder="Cari nama/telepon" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="input-field mb-2" aria-label="Saring pelanggan" value={segment} onChange={(e) => setSegment(e.target.value as Segment)}>
+            {(Object.keys(SEGMENT_LABELS) as Segment[]).map((s) => (
+              <option key={s} value={s}>
+                {SEGMENT_LABELS[s]}
+              </option>
+            ))}
+          </select>
           <button className="btn-primary w-full" onClick={() => setShowForm(true)}>
             + Pelanggan Baru
           </button>
@@ -61,7 +83,7 @@ export function CustomersScreen() {
               </p>
             </button>
           ))}
-          {customers.length === 0 && <p className="text-center text-sm text-ink-500">Belum ada pelanggan</p>}
+          {customers.length === 0 && <p className="text-center text-sm text-ink-500">{segment === 'all' ? 'Belum ada pelanggan' : 'Tidak ada pelanggan di kelompok ini'}</p>}
         </div>
       </div>
 
@@ -82,11 +104,22 @@ export function CustomersScreen() {
                   {isBirthdayAt(selected.birthDate, Date.now(), 'month') && <span className="ml-2 rounded-full bg-accent-500/15 px-2 py-0.5 text-xs font-semibold text-accent-500">Ulang tahun bulan ini</span>}
                 </p>
               </div>
-              <button className="btn-secondary" onClick={() => setShowForm(true)}>
-                Edit
-              </button>
+              <div className="flex gap-2">
+                <button className="btn-secondary" onClick={() => setShowGreeting(true)}>
+                  Sapa via WhatsApp
+                </button>
+                <button className="btn-secondary" onClick={() => setShowForm(true)}>
+                  Edit
+                </button>
+              </div>
             </div>
             {selected.note && <p className="mb-4 rounded-xl bg-ink-900 p-3 text-sm text-ink-300">{selected.note}</p>}
+            {selectedDays != null && (
+              <p className={`mb-4 text-sm ${selectedDays >= 30 ? 'text-yellow-400' : 'text-ink-300'}`}>
+                Kunjungan terakhir {selectedDays === 0 ? 'hari ini' : `${formatNumber(selectedDays)} hari lalu`}
+                {selectedDays >= 30 ? ' — sudah lama tidak datang.' : '.'}
+              </p>
+            )}
 
             {memberOn && info && loyalty && (
               <div className="mb-5">
@@ -200,6 +233,15 @@ export function CustomersScreen() {
             toast.success('Poin dikoreksi.')
             setShowAdjust(false)
           }}
+        />
+      )}
+      {showGreeting && selected && settings && (
+        <GreetingModal
+          customer={selected}
+          businessName={settings.businessName ?? ''}
+          vouchers={(settings.promos ?? []).filter((p) => p.active && p.voucherCode).map((p) => ({ code: p.voucherCode as string, name: p.name }))}
+          defaultKind={isBirthdayAt(selected.birthDate, now, 'month') ? 'birthday' : (selectedDays ?? 0) >= 30 ? 'winback' : 'general'}
+          onClose={() => setShowGreeting(false)}
         />
       )}
       {showDeposit && selected && deposit && (
@@ -391,6 +433,87 @@ function DepositModal({
         <button className="btn-primary flex-[2]" disabled={busy || !(amount > 0) || (withdraw && !note.trim())} onClick={() => void submit()}>
           {withdraw ? 'Tarik Saldo' : 'Isi Saldo'}
         </button>
+      </div>
+    </Modal>
+  )
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+type Segment = 'all' | 'birthday' | '30' | '60' | '90'
+const SEGMENT_LABELS: Record<Segment, string> = {
+  all: 'Semua pelanggan',
+  birthday: 'Ulang tahun bulan ini',
+  '30': 'Tidak datang 30+ hari',
+  '60': 'Tidak datang 60+ hari',
+  '90': 'Tidak datang 90+ hari',
+}
+const GREETING_LABELS: Record<GreetingKind, string> = { birthday: 'Ulang tahun', winback: 'Ajak kembali', general: 'Sapaan' }
+
+/** Draf pesan WhatsApp untuk seorang pelanggan — dibuka di WhatsApp, dikirim oleh staf sendiri. */
+function GreetingModal({
+  customer,
+  businessName,
+  vouchers,
+  defaultKind,
+  onClose,
+}: {
+  customer: Customer
+  businessName: string
+  vouchers: { code: string; name: string }[]
+  defaultKind: GreetingKind
+  onClose: () => void
+}) {
+  const draft = (kind: GreetingKind, code: string) =>
+    greetingMessage({ kind, customerName: customer.name, businessName, voucherCode: code || null, voucherLabel: vouchers.find((v) => v.code === code)?.name ?? null })
+  const [kind, setKind] = useState<GreetingKind>(defaultKind)
+  const [voucher, setVoucher] = useState('')
+  const [text, setText] = useState(() => draft(defaultKind, ''))
+  const link = waLink(customer.phone, text)
+  const change = (nextKind: GreetingKind, nextVoucher: string) => {
+    setKind(nextKind)
+    setVoucher(nextVoucher)
+    setText(draft(nextKind, nextVoucher))
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <h2 className="mb-1 text-lg font-bold text-ink-50">Sapa {customer.name}</h2>
+      <p className="mb-3 text-sm text-ink-400">Pesan dibuka di WhatsApp dan baru terkirim setelah Anda menekan kirim di sana.</p>
+      <div className="mb-3 flex gap-2">
+        {(Object.keys(GREETING_LABELS) as GreetingKind[]).map((k) => (
+          <button key={k} className={`btn btn-compact flex-1 !px-1 text-sm ${kind === k ? 'btn-primary' : 'btn-secondary'}`} onClick={() => change(k, voucher)}>
+            {GREETING_LABELS[k]}
+          </button>
+        ))}
+      </div>
+      {vouchers.length > 0 && (
+        <label className="mb-3 block">
+          <span className="mb-1 block text-sm text-ink-300">Sertakan kode voucher</span>
+          <select className="input-field" aria-label="Sertakan kode voucher" value={voucher} onChange={(e) => change(kind, e.target.value)}>
+            <option value="">Tanpa voucher</option>
+            {vouchers.map((v) => (
+              <option key={v.code} value={v.code}>
+                {v.code} — {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <textarea className="input-field mb-3" rows={5} aria-label="Isi pesan" value={text} onChange={(e) => setText(e.target.value)} />
+      {!link && <p className="mb-2 text-sm text-red-400">Nomor HP pelanggan belum diisi atau tidak valid.</p>}
+      <div className="flex gap-3">
+        <button className="btn-ghost flex-1" onClick={onClose}>
+          Tutup
+        </button>
+        {link ? (
+          <a className="btn-primary flex-[2] text-center" href={link} target="_blank" rel="noreferrer" onClick={onClose}>
+            Buka WhatsApp
+          </a>
+        ) : (
+          <button className="btn-primary flex-[2]" disabled>
+            Buka WhatsApp
+          </button>
+        )}
       </div>
     </Modal>
   )

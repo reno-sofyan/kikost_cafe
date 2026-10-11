@@ -86,6 +86,7 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   if (data.isPreBill) rows.push('<div class="center">Bukan bukti pembayaran.<br />Silakan bayar di kasir.</div>')
   if (data.pointsEarned && data.pointsEarned > 0) rows.push(`<div class="center">Anda mendapat ${data.pointsEarned} poin member</div>`)
   if (data.depositBalance != null) rows.push(`<div class="center">Sisa saldo member ${formatRupiah(data.depositBalance)}</div>`)
+  for (const g of data.giftCardBalances ?? []) rows.push(`<div class="center">Sisa voucher ${escapeHtml(g.code)} ${formatRupiah(g.balance)}</div>`)
   if (data.footerNote) rows.push(`<div class="center">${escapeHtml(data.footerNote)}</div>`)
 
   return rows.join('\n')

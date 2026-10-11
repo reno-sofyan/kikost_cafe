@@ -5,7 +5,7 @@ import { addExpectedCash, getOpenShift } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
 import { deductSaleStock, findOrderStockShortages, saleLinesForItems } from '@/db/repositories/stock'
 import { pointsToEarnForOrder } from '@/db/repositories/loyalty'
-import { depositEnabledFor, getCustomerDeposit } from '@/db/repositories/deposits'
+import { depositEnabledFor, findGiftCard, getCustomerDeposit, normalizeGiftCardCode } from '@/db/repositories/deposits'
 import { getSettings } from '@/db/repositories/settings'
 import type { Bill, BillPaymentStatus, Order, Payment, PaymentInput, PaymentProof } from '@/types/domain'
 import { newId } from '@/lib/id'
@@ -189,6 +189,16 @@ export async function payBill(params: {
         depositLeft = (await getCustomerDeposit(order.customerId)).balance
       }
 
+      // Voucher hadiah: kodenya ada di `reference`; nilainya tak boleh melebihi sisa voucher.
+      const giftCards = new Map<string, { id: string; left: number }>()
+      for (const p of params.payments.filter((x) => x.method === 'giftcard')) {
+        const key = normalizeGiftCardCode(p.reference)
+        if (giftCards.has(key)) continue
+        const card = await findGiftCard(key)
+        if (!card) throw new Error('Kode voucher hadiah tidak dikenal.')
+        giftCards.set(key, { id: card.id, left: card.balance })
+      }
+
       const created: Payment[] = []
       let addedThisCall = 0
       for (let i = 0; i < params.payments.length; i++) {
@@ -205,6 +215,11 @@ export async function payBill(params: {
           depositLeft -= p.amount + tip
           if (depositLeft < 0) throw new Error('Saldo member tidak cukup untuk pembayaran ini.')
         }
+        const giftCard = p.method === 'giftcard' ? giftCards.get(normalizeGiftCardCode(p.reference)) : undefined
+        if (giftCard) {
+          giftCard.left -= p.amount + tip
+          if (giftCard.left < 0) throw new Error('Sisa nilai voucher hadiah tidak cukup untuk pembayaran ini.')
+        }
         const payment: Payment = {
           id: key,
           orderId: order.id,
@@ -215,7 +230,7 @@ export async function payBill(params: {
           changeAmount: p.receivedAmount != null ? Math.max(0, p.receivedAmount - p.amount - tip) : null,
           reference: p.reference ?? null,
           ...(tip > 0 ? { tipAmount: tip } : {}),
-          ...(p.method === 'deposit' ? { customerId: order.customerId } : {}),
+          ...(p.method === 'deposit' ? { customerId: order.customerId } : giftCard ? { customerId: giftCard.id } : {}),
           idempotencyKey: key,
           reversalOfPaymentId: null,
           confirmedByUserId: params.confirmedByUserId,

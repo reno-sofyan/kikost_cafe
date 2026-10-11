@@ -14,7 +14,7 @@ export const ACCOUNTS = {
   PLATFORM_RECEIVABLE: '1-10201 Piutang Platform Online',
   INVENTORY: '1-10301 Persediaan Bahan',
   TAX_PAYABLE: '2-20001 Utang Pajak (PB1/PPN)',
-  MEMBER_DEPOSIT: '2-20101 Titipan Saldo Member',
+  MEMBER_DEPOSIT: '2-20101 Titipan Saldo Member & Voucher Hadiah',
   SALES: '4-40001 Pendapatan Penjualan',
   SERVICE_CHARGE: '4-40002 Pendapatan Service Charge',
   DISCOUNT: '4-49001 Potongan Penjualan',
@@ -53,7 +53,7 @@ function ymd(ts: number): string {
 
 // Pembayaran via aplikasi pesan-antar belum jadi uang di bank — dicatat sebagai piutang platform.
 const accountForMethod = (m: PaymentMethod) =>
-  m === 'cash' ? ACCOUNTS.CASH : m === 'platform' ? ACCOUNTS.PLATFORM_RECEIVABLE : m === 'deposit' ? ACCOUNTS.MEMBER_DEPOSIT : ACCOUNTS.BANK
+  m === 'cash' ? ACCOUNTS.CASH : m === 'platform' ? ACCOUNTS.PLATFORM_RECEIVABLE : m === 'deposit' || m === 'giftcard' ? ACCOUNTS.MEMBER_DEPOSIT : ACCOUNTS.BANK
 
 export async function buildAccountingExport(range: DateRange): Promise<AccountingExport> {
   const lines: JournalLine[] = []
@@ -128,8 +128,9 @@ export async function buildAccountingExport(range: DateRange): Promise<Accountin
       const amount = Math.abs(e.amount)
       const cashSide = accountForMethod(e.method)
       if (e.amount > 0) {
-        add({ date, ref, account: cashSide, description: `Isi saldo member — ${c.name}`, debit: amount })
-        add({ date, ref, account: ACCOUNTS.MEMBER_DEPOSIT, description: `Isi saldo member — ${c.name}`, credit: amount })
+        const what = c.giftCard ? 'Jual voucher hadiah' : 'Isi saldo member'
+        add({ date, ref, account: cashSide, description: `${what} — ${c.name}`, debit: amount })
+        add({ date, ref, account: ACCOUNTS.MEMBER_DEPOSIT, description: `${what} — ${c.name}`, credit: amount })
       } else {
         add({ date, ref, account: ACCOUNTS.MEMBER_DEPOSIT, description: `Tarik saldo member — ${c.name}`, debit: amount })
         add({ date, ref, account: cashSide, description: `Tarik saldo member — ${c.name}`, credit: amount })

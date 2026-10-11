@@ -2,7 +2,7 @@ import { discountLinesOf } from '@/lib/promos'
 import { db } from '@/db/schema'
 import { formatDateTime } from '@/lib/datetime'
 import { businessDisplayName } from '@/db/repositories/settings'
-import { getCustomerDeposit } from '@/db/repositories/deposits'
+import { findGiftCard, getCustomerDeposit } from '@/db/repositories/deposits'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { onlineChannelLabel } from '@/lib/onlineOrders'
 import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
@@ -40,6 +40,8 @@ export interface ReceiptData {
   pointsEarned?: number
   /** Sisa saldo member setelah transaksi ini — hanya bila dibayar dengan saldo. */
   depositBalance?: number
+  /** Sisa nilai voucher hadiah yang dipakai di transaksi ini. */
+  giftCardBalances?: { code: string; balance: number }[]
   taxPercent: number
   taxAmount: number
   serviceChargePercent: number
@@ -73,6 +75,7 @@ const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
   card: 'Kartu',
   platform: 'Aplikasi Online',
   deposit: 'Saldo Member',
+  giftcard: 'Voucher Hadiah',
 }
 
 export function buildSampleReceiptData(settings: AppSettings): ReceiptData {
@@ -129,6 +132,13 @@ export async function buildReceiptData(
       note: item.notes || null,
     }))
 
+  const giftCardBalances: { code: string; balance: number }[] = []
+  if (!opts.preBill) {
+    for (const code of new Set(payments.filter((p) => p.method === 'giftcard' && p.amount > 0 && p.reference).map((p) => p.reference as string))) {
+      const card = await findGiftCard(code)
+      if (card) giftCardBalances.push({ code: card.code, balance: card.balance })
+    }
+  }
   const depositOwner = opts.preBill ? null : (payments.find((p) => p.method === 'deposit' && p.amount > 0)?.customerId ?? null)
   const depositBalance = depositOwner ? (await getCustomerDeposit(depositOwner)).balance : undefined
 
@@ -152,6 +162,7 @@ export async function buildReceiptData(
     discountLines: discountLinesOf(order),
     pointsEarned: opts.preBill ? 0 : (order.pointsEarned ?? 0),
     ...(depositBalance != null ? { depositBalance } : {}),
+    ...(giftCardBalances.length ? { giftCardBalances } : {}),
     taxPercent: order.taxPercent,
     taxAmount: order.taxAmount,
     serviceChargePercent: order.serviceChargePercent,

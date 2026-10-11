@@ -93,6 +93,8 @@ export interface BusinessFeatures {
   loyalty: boolean
   /** Menu paket/combo: satu harga, stok dipotong per produk isi paket. */
   combos: boolean
+  /** Absensi karyawan (masuk/pulang dengan PIN) & rekap jam kerja. */
+  attendance: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -123,13 +125,14 @@ const ALL_FEATURES: BusinessFeatures = {
   promos: true,
   loyalty: true,
   combos: true,
+  attendance: true,
 }
 
 /** Fitur layanan meja ala restoran — tak relevan untuk kantin & minimarket. */
 const NO_TABLE_SERVICE = { preBill: false, tips: false, reservations: false, waiterTracking: false } as const
 
 /** Fitur premium kafe & restoran — belum dipasang untuk kantin & minimarket. */
-const NO_PREMIUM = { promos: false, loyalty: false, combos: false } as const
+const NO_PREMIUM = { promos: false, loyalty: false, combos: false, attendance: false } as const
 
 /**
  * Fitur yang relevan per jenis usaha. Ini HANYA mengatur apa yang TERLIHAT di

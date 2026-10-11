@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import { NavLink, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { buildDepositReport } from '@/db/repositories/deposits'
+import { FeedbackSection, MenuEngineeringSection, SalesTargetCard } from '@/features/reports/ReportExtras'
+import { roleHasPermission } from '@/lib/permissions'
+import { useSessionStore } from '@/state/sessionStore'
 import {
   buildOperationsReport,
   buildSalesReport,
@@ -39,6 +42,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   card: 'Kartu',
   platform: 'Aplikasi Online',
   deposit: 'Saldo Member',
+  giftcard: 'Voucher Hadiah',
 }
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
@@ -145,6 +149,7 @@ export function ReportsScreen() {
   const ops = useLiveQuery(() => buildOperationsReport(range), [range.from, range.to])
   const settings = useLiveQuery(() => getSettings(), [])
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+  const currentUser = useSessionStore((s) => s.currentUser)
   // Usaha tanpa pesanan online (kantin, minimarket) cukup satu halaman gabungan.
   const showScopeTabs = features.onlineOrders || scope !== 'all' || (report?.channelSplit.online.transactionCount ?? 0) > 0
   const isAll = scope === 'all'
@@ -182,6 +187,9 @@ export function ReportsScreen() {
             </NavLink>
           ))}
         </nav>
+      )}
+      {isAll && currentUser && (
+        <SalesTargetCard canManage={roleHasPermission(currentUser.role, 'settings.manage')} actor={{ userId: currentUser.id, userName: currentUser.name }} />
       )}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h1 className="mr-4 text-xl font-bold text-ink-50">{showScopeTabs ? `Laporan ${REPORT_SCOPE_LABELS[scope]}` : 'Laporan'}</h1>
@@ -344,7 +352,7 @@ export function ReportsScreen() {
             </div>
           )}
 
-          {isAll && depositReport && (depositReport.topUpTotal > 0 || depositReport.usedTotal !== 0 || depositReport.outstanding !== 0 || depositReport.withdrawnTotal > 0) && (
+          {isAll && depositReport && (depositReport.topUpTotal > 0 || depositReport.usedTotal !== 0 || depositReport.outstanding !== 0 || depositReport.withdrawnTotal > 0 || depositReport.giftCardSoldTotal > 0 || depositReport.giftCardOutstanding !== 0) && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <MiniStat
                 label="Isi Saldo Member"
@@ -353,6 +361,13 @@ export function ReportsScreen() {
               />
               <MiniStat label="Saldo Dipakai Belanja" value={formatRupiah(depositReport.usedTotal)} note="sudah termasuk di omzet" />
               {depositReport.withdrawnTotal > 0 && <MiniStat label="Saldo Ditarik" value={formatRupiah(depositReport.withdrawnTotal)} />}
+              {(depositReport.giftCardSoldTotal > 0 || depositReport.giftCardOutstanding !== 0 || depositReport.giftCardUsedTotal !== 0) && (
+                <MiniStat
+                  label="Voucher Hadiah Terjual"
+                  value={formatRupiah(depositReport.giftCardSoldTotal)}
+                  note={`${formatNumber(depositReport.giftCardSoldCount)} voucher • ditukar ${formatRupiah(depositReport.giftCardUsedTotal)} • belum ditukar ${formatRupiah(depositReport.giftCardOutstanding)}`}
+                />
+              )}
               <MiniStat label="Titipan Saldo Saat Ini" value={formatRupiah(depositReport.outstanding)} note={`${formatNumber(depositReport.customersWithBalance)} member • kewajiban usaha`} />
             </div>
           )}
@@ -375,6 +390,9 @@ export function ReportsScreen() {
               secondaryHeader="Transaksi"
             />
           )}
+
+          <MenuEngineeringSection sales={report.allProductSales} />
+          {isAll && <FeedbackSection range={range} />}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ShareTable

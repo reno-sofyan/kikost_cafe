@@ -44,7 +44,7 @@ async function spentByCustomer(): Promise<Map<string, number>> {
   const spent = new Map<string, number>()
   await db.payments
     .where('method')
-    .equals('deposit')
+    .anyOf(['deposit', 'giftcard'])
     .each((p) => {
       if (p.customerId) spent.set(p.customerId, (spent.get(p.customerId) ?? 0) + p.amount + (p.tipAmount ?? 0))
     })
@@ -78,7 +78,8 @@ export async function recordCustomerDeposit(params: {
   if (!DEPOSIT_TOPUP_METHODS.includes(params.method)) throw new Error('Metode pembayaran tidak didukung untuk saldo member.')
   const note = params.note.trim()
   if (amount < 0 && !note) throw new Error('Alasan tarik/koreksi saldo wajib diisi.')
-  if (!depositEnabledFor(await getSettings())) throw new Error('Saldo member belum diaktifkan.')
+  const target = await db.customers.get(params.customerId)
+  if (!target?.giftCard && !depositEnabledFor(await getSettings())) throw new Error('Saldo member belum diaktifkan.')
   const shift = await getOpenShift()
   if (params.method === 'cash' && !shift) throw new Error('Buka shift terlebih dahulu untuk menerima/mengeluarkan uang tunai.')
 
@@ -106,17 +107,17 @@ export async function recordCustomerDeposit(params: {
         shiftId: shift.id,
         type: amount > 0 ? 'in' : 'out',
         amount: Math.abs(amount),
-        reason: `${amount > 0 ? 'Isi' : 'Tarik'} saldo member ${customer.name}`,
+        reason: customer.giftCard ? `${amount > 0 ? 'Jual' : 'Tarik'} voucher hadiah ${customer.giftCard.code}` : `${amount > 0 ? 'Isi' : 'Tarik'} saldo member ${customer.name}`,
         userId: params.actor.userId,
       })
     }
     await recordAuditLog({
       userId: params.actor.userId,
       userName: params.actor.userName,
-      action: amount > 0 ? 'customer.deposit_topup' : 'customer.deposit_withdraw',
+      action: customer.giftCard ? (amount > 0 ? 'giftcard.sell' : 'giftcard.withdraw') : amount > 0 ? 'customer.deposit_topup' : 'customer.deposit_withdraw',
       entityType: 'customer',
       entityId: customer.id,
-      details: `Saldo ${customer.name} ${amount > 0 ? 'diisi' : 'ditarik'} Rp${Math.abs(amount).toLocaleString('id-ID')} (${params.method})${note ? `. Catatan: ${note}` : ''}`,
+      details: `${customer.giftCard ? customer.name : `Saldo ${customer.name}`} ${amount > 0 ? (customer.giftCard ? 'dijual' : 'diisi') : 'ditarik'} Rp${Math.abs(amount).toLocaleString('id-ID')} (${params.method})${note ? `. Catatan: ${note}` : ''}`,
     })
     return entry
   })
@@ -131,15 +132,34 @@ export interface DepositReport {
   /** Total saldo seluruh member SAAT INI — titipan yang belum dipakai. */
   outstanding: number
   customersWithBalance: number
+  /** Voucher hadiah: terjual & dipakai dalam rentang, dan sisa nilai yang belum ditukar saat ini. */
+  giftCardSoldTotal: number
+  giftCardSoldCount: number
+  giftCardUsedTotal: number
+  giftCardOutstanding: number
 }
 
 export async function buildDepositReport(range: DateRange): Promise<DepositReport> {
   const all = await listCustomerDeposits()
+  const giftCardIds = new Set((await db.customers.toArray()).filter((c) => c.giftCard).map((c) => c.id))
+  let giftCardSoldTotal = 0
+  let giftCardSoldCount = 0
+  let giftCardOutstanding = 0
+  let giftCardUsedTotal = 0
   const byMethod = new Map<PaymentMethod, { amount: number; count: number }>()
   let withdrawnTotal = 0
   let outstanding = 0
   let customersWithBalance = 0
-  for (const d of all.values()) {
+  for (const [customerId, d] of all) {
+    if (giftCardIds.has(customerId)) {
+      giftCardOutstanding += d.balance
+      for (const e of d.entries) {
+        if (e.at < range.from || e.at > range.to || e.amount <= 0) continue
+        giftCardSoldTotal += e.amount
+        giftCardSoldCount += 1
+      }
+      continue
+    }
     outstanding += d.balance
     if (d.balance > 0) customersWithBalance += 1
     for (const e of d.entries) {
@@ -157,10 +177,88 @@ export async function buildDepositReport(range: DateRange): Promise<DepositRepor
   let usedTotal = 0
   await db.payments
     .where('method')
-    .equals('deposit')
+    .anyOf(['deposit', 'giftcard'])
     .each((p) => {
-      if (p.createdAt >= range.from && p.createdAt <= range.to) usedTotal += p.amount
+      if (p.createdAt < range.from || p.createdAt > range.to) return
+      if (p.method === 'giftcard') giftCardUsedTotal += p.amount
+      else usedTotal += p.amount
     })
   const topUpByMethod = Array.from(byMethod.entries()).map(([method, v]) => ({ method, ...v }))
-  return { topUpTotal: topUpByMethod.reduce((s, m) => s + m.amount, 0), topUpByMethod, withdrawnTotal, usedTotal, outstanding, customersWithBalance }
+  return { topUpTotal: topUpByMethod.reduce((s, m) => s + m.amount, 0), topUpByMethod, withdrawnTotal, usedTotal, outstanding, customersWithBalance, giftCardSoldTotal, giftCardSoldCount, giftCardUsedTotal, giftCardOutstanding }
+}
+
+// ---------------------------------------------------------------- Voucher hadiah (gift card)
+
+export interface GiftCard {
+  id: string
+  code: string
+  recipient: string
+  initialAmount: number
+  balance: number
+  soldAt: number
+  soldBy: string
+}
+
+/** Kode dibandingkan tanpa peduli huruf besar/kecil, spasi, & tanda hubung. */
+export function normalizeGiftCardCode(code: string | null | undefined): string {
+  return (code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+// Tanpa huruf/angka yang mudah tertukar (0/O, 1/I/L).
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+function randomGiftCardCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8))
+  const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
+  return `GC-${chars.slice(0, 4)}-${chars.slice(4)}`
+}
+
+function toGiftCard(customer: Customer, deposit: CustomerDeposit): GiftCard {
+  const first = [...deposit.entries].sort((a, b) => a.at - b.at)[0]
+  return {
+    id: customer.id,
+    code: customer.giftCard?.code ?? '',
+    recipient: customer.giftCard?.recipient ?? '',
+    initialAmount: deposit.toppedUp,
+    balance: deposit.balance,
+    soldAt: first?.at ?? customer.createdAt,
+    soldBy: first?.userName ?? '',
+  }
+}
+
+export async function listGiftCards(): Promise<GiftCard[]> {
+  const spent = await spentByCustomer()
+  return (await db.customers.toArray())
+    .filter((c) => c.giftCard)
+    .map((c) => toGiftCard(c, summarize(c, spent.get(c.id) ?? 0)))
+    .sort((a, b) => b.soldAt - a.soldAt)
+}
+
+export async function findGiftCard(code: string): Promise<GiftCard | null> {
+  const wanted = normalizeGiftCardCode(code)
+  if (!wanted) return null
+  const customer = (await db.customers.toArray()).find((c) => c.giftCard && normalizeGiftCardCode(c.giftCard.code) === wanted)
+  return customer ? toGiftCard(customer, summarize(customer, (await spentByCustomer()).get(customer.id) ?? 0)) : null
+}
+
+/** Menjual voucher hadiah bernilai `amount`: uang diterima sekarang, nilainya ditukar belakangan dengan kodenya. */
+export async function sellGiftCard(params: { amount: number; method: PaymentMethod; recipient: string; actor: { userId: string; userName: string } }): Promise<GiftCard> {
+  const amount = Math.round(params.amount)
+  if (!(amount > 0)) throw new Error('Nilai voucher harus lebih dari 0.')
+  if (!featuresForBusinessType((await getSettings()).businessType).promos) throw new Error('Voucher hadiah tidak tersedia untuk jenis usaha ini.')
+  if (params.method === 'cash' && !(await getOpenShift())) throw new Error('Buka shift terlebih dahulu untuk menerima uang tunai.')
+  let code = randomGiftCardCode()
+  while (await findGiftCard(code)) code = randomGiftCardCode()
+  const now = getTrustedNow()
+  const customer: Customer = { id: newId(), name: `Voucher Hadiah ${code}`, phone: '', note: '', giftCard: { code, recipient: params.recipient.trim() }, createdAt: now, updatedAt: now }
+  await db.transaction('rw', db.customers, db.syncQueue, async () => {
+    await db.customers.add(customer)
+    await enqueueSync('customers', customer.id, customer)
+  })
+  try {
+    await recordCustomerDeposit({ customerId: customer.id, amount, method: params.method, note: params.recipient.trim() ? `Untuk ${params.recipient.trim()}` : '', actor: params.actor })
+  } catch (e) {
+    await db.customers.delete(customer.id)
+    throw e
+  }
+  return (await findGiftCard(code))!
 }
