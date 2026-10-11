@@ -1,3 +1,4 @@
+import Dexie from 'dexie'
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId, newIdempotencyKey } from '@/lib/id'
@@ -12,7 +13,12 @@ import { stationForCategory } from '@/db/repositories/printers'
 import { getDeviceId } from '@/sync/device'
 import { jakartaDateKey } from '@/lib/datetime'
 import { getTrustedNow } from '@/lib/clockGuard'
+import { evaluatePromos, normalizeVoucherCode, promoCustomerBlock, promoDiscountFor, isPromoActiveAt, usedUpPromoIds, type PromoCustomer } from '@/lib/promos'
+import { loyaltySettingsOf } from '@/lib/loyalty'
+import { getCustomerLoyalty } from '@/db/repositories/loyalty'
 import type {
+  AppliedPromo,
+  ComboComponent,
   DiscountType,
   KitchenItemStatus,
   OnlinePlatform,
@@ -22,6 +28,7 @@ import type {
   OrderLifecycleStatus,
   OrderSource,
   OrderType,
+  Promo,
   VoidApproval,
 } from '@/types/domain'
 
@@ -444,6 +451,9 @@ export async function listOrderItems(orderId: string): Promise<OrderItem[]> {
   return db.orderItems.where('orderId').equals(orderId).sortBy('createdAt')
 }
 
+/** `groupId` baris modifier yang mewakili isi menu paket. */
+export const COMBO_GROUP_ID = 'combo'
+
 export async function addOrderItem(params: {
   orderId: string
   productId: string
@@ -453,6 +463,8 @@ export async function addOrderItem(params: {
   modifiers: OrderItemModifierSnapshot[]
   notes: string
   discountAmount?: number
+  /** Menu paket: isi per 1 paket (stok dipotong per komponen). */
+  comboComponents?: ComboComponent[]
 }): Promise<OrderItem> {
   const now = getTrustedNow()
   const lineTotal = computeLineTotal({
@@ -463,6 +475,22 @@ export async function addOrderItem(params: {
   })
   const product = await db.products.get(params.productId)
   const skipKitchen = (await stationForCategory(product?.categoryId ?? null)) === 'direct'
+  // Menu paket: snapshot isinya dari master produk. Isi paket juga dicatat sebagai
+  // baris "Isi paket" supaya ikut tercetak di tiket dapur & struk tanpa kode khusus.
+  let comboComponents = params.comboComponents
+  if (!comboComponents?.length && product?.comboItems?.length) {
+    comboComponents = []
+    for (const c of product.comboItems) {
+      const component = await db.products.get(c.productId)
+      if (component) comboComponents.push({ productId: component.id, name: component.name, qty: c.qty })
+    }
+  }
+  const modifiers: OrderItemModifierSnapshot[] = [
+    ...(comboComponents ?? [])
+      .filter((c) => !params.modifiers.some((m) => m.groupId === COMBO_GROUP_ID && m.optionId === c.productId))
+      .map((c) => ({ groupId: COMBO_GROUP_ID, groupName: 'Isi paket', optionId: c.productId, optionName: `${c.qty}× ${c.name}`, priceDelta: 0 })),
+    ...params.modifiers,
+  ]
   const item: OrderItem = {
     id: newId(),
     orderId: params.orderId,
@@ -470,10 +498,12 @@ export async function addOrderItem(params: {
     productName: params.productName,
     unitPrice: params.unitPrice,
     qty: params.qty,
-    modifiers: params.modifiers,
+    modifiers,
     notes: params.notes,
     discountAmount: params.discountAmount ?? 0,
     lineTotal,
+    categoryId: product?.categoryId ?? null,
+    ...(comboComponents?.length ? { comboComponents } : {}),
     kitchenStatus: skipKitchen ? 'done' : 'new',
     skipKitchen,
     removed: false,
@@ -490,7 +520,7 @@ export async function addOrderItem(params: {
   }
   await db.transaction(
     'rw',
-    [db.orderItems, db.orders, db.syncQueue, db.settings],
+    [db.orderItems, db.orders, db.syncQueue, db.settings, db.customers],
     async () => {
       // Tiket dapur & cetak dibuat saat item di-"Kirim ke Dapur/Bar"
       // (sendOrderToKitchen) — bukan saat item ditambahkan. Item baru mulai
@@ -542,7 +572,7 @@ export async function updateOrderItemQty(itemId: string, qty: number, correction
     modifiers: item.modifiers,
     discountAmount: item.discountAmount,
   })
-  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.auditLogs], async () => {
+  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.customers, db.auditLogs], async () => {
     const lost = Math.max(0, item.lineTotal - lineTotal)
     await db.orderItems.update(itemId, {
       qty,
@@ -576,7 +606,7 @@ export async function setOrderItemDiscount(itemId: string, discountAmount: numbe
     modifiers: item.modifiers,
     discountAmount,
   })
-  await db.transaction('rw', db.orderItems, db.orders, db.syncQueue, db.settings, async () => {
+  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.customers], async () => {
     await db.orderItems.update(itemId, { discountAmount, lineTotal, updatedAt: getTrustedNow() })
     const updated = await db.orderItems.get(itemId)
     if (updated) await enqueueSync('orderItems', itemId, updated)
@@ -594,7 +624,7 @@ export async function removeOrderItem(itemId: string, correction?: ItemCorrectio
   if (!item || item.removed) return
   await assertCorrectionReason(correction)
   const reason = correction?.reason.trim() || null
-  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.auditLogs], async () => {
+  await db.transaction('rw', [db.orderItems, db.orders, db.syncQueue, db.settings, db.customers, db.auditLogs], async () => {
     const now = getTrustedNow()
     await db.orderItems.update(itemId, {
       removed: true,
@@ -635,7 +665,7 @@ export async function clearOrderItems(
   const trimmed = reason.trim()
   if (!trimmed) throw new ItemCorrectionReasonRequiredError()
   if (!ownerApproval && (await isOwnerCancelRequired())) throw new OwnerApprovalRequiredError()
-  return db.transaction('rw', [db.orders, db.orderItems, db.cancelCodes, db.syncQueue, db.settings, db.auditLogs], async () => {
+  return db.transaction('rw', [db.orders, db.orderItems, db.cancelCodes, db.syncQueue, db.settings, db.customers, db.auditLogs], async () => {
     const order = await db.orders.get(orderId)
     if (!order) throw new Error('Pesanan tidak ditemukan')
     if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
@@ -693,7 +723,7 @@ export async function voidOrderItem(
   }
   await db.transaction(
     'rw',
-    [db.orderItems, db.orders, db.syncQueue, db.settings, db.auditLogs],
+    [db.orderItems, db.orders, db.syncQueue, db.settings, db.customers, db.auditLogs],
     async () => {
       await db.orderItems.update(itemId, { voided: true, voidReason: reason, updatedAt: getTrustedNow() })
       const updated = await db.orderItems.get(itemId)
@@ -762,7 +792,7 @@ export async function setOrderDiscount(
       `Diskon ${req.percent.toFixed(1)}% melebihi batas ${req.maxPercent}% — butuh kode Pemilik.`,
     )
   }
-  await db.transaction('rw', [db.orders, db.orderItems, db.cancelCodes, db.syncQueue, db.settings, db.auditLogs], async () => {
+  await db.transaction('rw', [db.orders, db.orderItems, db.cancelCodes, db.syncQueue, db.settings, db.customers, db.auditLogs], async () => {
     const before = await db.orders.get(orderId)
     if (!removing && control?.ownerApproval && req.needsOwnerCode) await consumeCancelCodeInTx(control.ownerApproval)
     await db.orders.update(orderId, {
@@ -872,10 +902,53 @@ export async function markBillPrinted(orderId: string, actor: { userId: string; 
   })
 }
 
+/**
+ * Data pelanggan untuk syarat promo (khusus member, sekali per member, ulang
+ * tahun): pelanggan pesanan ini + promo yang jatahnya sudah ia habiskan di
+ * transaksi lunas sebelumnya.
+ */
+async function promoEligibilityFor(order: Order, promos: Promo[], now: number): Promise<{ customer: PromoCustomer | null; usedPromoIds: Set<string> }> {
+  if (!order.customerId) return { customer: null, usedPromoIds: new Set() }
+  const customerId = order.customerId
+  const tx = Dexie.currentTransaction
+  const record = !tx || tx.storeNames.includes('customers') ? await db.customers.get(customerId) : undefined
+  const customer: PromoCustomer = { id: customerId, birthDate: record?.birthDate ?? null }
+  if (!promos.some((p) => p.oncePerCustomer || p.birthday)) return { customer, usedPromoIds: new Set() }
+  const usages: { promoId: string; at: number }[] = []
+  await db.orders
+    .where('status')
+    .anyOf(['paid', 'completed'])
+    .filter((o) => o.customerId === customerId && o.id !== order.id)
+    .each((o) => {
+      for (const a of o.appliedPromos ?? []) usages.push({ promoId: a.promoId, at: o.paidAt ?? o.createdAt })
+    })
+  return { customer, usedPromoIds: usedUpPromoIds(promos, usages, now) }
+}
+
 export async function recalcOrderTotals(orderId: string): Promise<void> {
   const order = await db.orders.get(orderId)
   if (!order) return
   const items = await db.orderItems.where('orderId').equals(orderId).toArray()
+
+  // Promo & voucher dievaluasi ulang selama pesanan masih terbuka (isi keranjang
+  // & jam happy hour bisa berubah); setelah lunas, snapshot-nya dibekukan. Dilewati
+  // bila transaksi pemanggil tak menyertakan tabel pengaturan.
+  let appliedPromos: AppliedPromo[] = order.appliedPromos ?? []
+  const tx = Dexie.currentTransaction
+  if (order.status === 'open' && (!tx || tx.storeNames.includes('settings'))) {
+    const settings = await getSettings()
+    const promos = settings.promos ?? []
+    const now = getTrustedNow()
+    const eligibility = await promoEligibilityFor(order, promos, now)
+    appliedPromos = featuresForBusinessType(settings.businessType).promos
+      ? evaluatePromos({ promos, items, orderType: order.type, now, voucherCode: order.voucherCode, kols: settings.kols, ...eligibility })
+      : []
+  }
+  const activeSubtotal = items.filter((i) => !i.voided && !i.removed).reduce((s, i) => s + i.lineTotal, 0)
+  const promoTotal = Math.min(activeSubtotal, appliedPromos.reduce((s, p) => s + p.amount, 0))
+  const pointsDiscount = Math.min(Math.max(0, activeSubtotal - promoTotal), (order.pointsRedeemed ?? 0) * (order.pointsRedeemValue ?? 0))
+  const extraDiscount = promoTotal + pointsDiscount
+
   const totals = computeOrderTotals({
     items,
     discountType: order.discountType,
@@ -885,15 +958,105 @@ export async function recalcOrderTotals(orderId: string): Promise<void> {
     // Snapshot pembulatan milik order — bukan setelan live — supaya perubahan
     // setelan tak menggeser total order lama saat di-recalc.
     roundingIncrement: order.roundingIncrementSnapshot ?? (await getSettings()).roundingIncrement,
+    extraDiscount,
   })
-  await db.orders.update(orderId, { ...totals, updatedAt: getTrustedNow() })
+  const hasPromoData = extraDiscount > 0 || order.appliedPromos != null || order.promoDiscountAmount != null
+  await db.orders.update(orderId, {
+    ...totals,
+    ...(hasPromoData ? { appliedPromos, promoDiscountAmount: extraDiscount } : {}),
+    updatedAt: getTrustedNow(),
+  })
   const updated = await db.orders.get(orderId)
   if (updated) await enqueueSync('orders', orderId, updated)
 }
 
+export class VoucherError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'VoucherError'
+  }
+}
+
+/**
+ * Memasang kode voucher (kosong = melepas). Ditolak dengan alasan yang jelas bila
+ * kode tak dikenal, di luar jadwal, kuota habis, atau syarat belanja belum terpenuhi.
+ */
+export async function setOrderVoucher(orderId: string, code: string | null): Promise<AppliedPromo | null> {
+  const normalized = normalizeVoucherCode(code)
+  const order = await db.orders.get(orderId)
+  if (!order) throw new Error('Pesanan tidak ditemukan')
+  if (normalized) {
+    const settings = await getSettings()
+    const voucher = (settings.promos ?? []).find((p) => normalizeVoucherCode(p.voucherCode) === normalized)
+    if (!voucher || !voucher.active) throw new VoucherError('Kode voucher tidak dikenal atau sudah nonaktif.')
+    if (!isPromoActiveAt(voucher, getTrustedNow(), order.type)) throw new VoucherError('Voucher tidak berlaku pada waktu atau jenis pesanan ini.')
+    const eligibility = await promoEligibilityFor(order, [voucher], getTrustedNow())
+    const blocked = promoCustomerBlock(voucher, eligibility.customer, eligibility.usedPromoIds, getTrustedNow())
+    if (blocked) throw new VoucherError(blocked.replace(/^Promo/, 'Voucher').replace('promo ini', 'voucher ini'))
+    if (voucher.usageLimit && voucher.usageLimit > 0) {
+      const used = await db.orders
+        .where('status')
+        .anyOf(['paid', 'completed'])
+        .filter((o) => (o.appliedPromos ?? []).some((a) => a.promoId === voucher.id))
+        .count()
+      if (used >= voucher.usageLimit) throw new VoucherError(`Kuota voucher sudah habis (${voucher.usageLimit}× terpakai).`)
+    }
+    const items = await db.orderItems.where('orderId').equals(orderId).toArray()
+    if (promoDiscountFor(voucher, items) <= 0) {
+      throw new VoucherError(
+        voucher.minSubtotal ? `Syarat voucher belum terpenuhi (min. belanja Rp${voucher.minSubtotal.toLocaleString('id-ID')} / item yang sesuai).` : 'Belum ada item yang memenuhi syarat voucher ini.',
+      )
+    }
+  }
+  await db.transaction('rw', [db.orders, db.orderItems, db.syncQueue, db.settings, db.customers], async () => {
+    await db.orders.update(orderId, { voucherCode: normalized || null, updatedAt: getTrustedNow() })
+    await recalcOrderTotals(orderId)
+  })
+  const updated = await db.orders.get(orderId)
+  return updated?.appliedPromos?.find((a) => a.voucherCode === normalized && normalized) ?? null
+}
+
+/** Mengaitkan/melepas pelanggan terdaftar (member). Melepas pelanggan ikut membatalkan tukar poin. */
+export async function setOrderCustomer(orderId: string, customerId: string | null): Promise<void> {
+  await db.transaction('rw', [db.orders, db.orderItems, db.syncQueue, db.settings, db.customers], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    const changed = order.customerId !== customerId
+    await db.orders.update(orderId, {
+      customerId,
+      ...(changed ? { pointsRedeemed: 0, pointsRedeemValue: 0 } : {}),
+      updatedAt: getTrustedNow(),
+    })
+    await recalcOrderTotals(orderId)
+  })
+}
+
+/**
+ * Menukar poin member jadi potongan di pesanan ini (0 = batal tukar). Poin yang
+ * sedang dipakai di pesanan terbuka lain ikut diperhitungkan agar tak terpakai dua kali.
+ */
+export async function setOrderPointsRedeem(orderId: string, points: number): Promise<void> {
+  const order = await db.orders.get(orderId)
+  if (!order) throw new Error('Pesanan tidak ditemukan')
+  const want = Math.max(0, Math.floor(points))
+  const settings = await getSettings()
+  const loyalty = loyaltySettingsOf(settings)
+  if (want > 0) {
+    if (!loyalty.enabled || !featuresForBusinessType(settings.businessType).loyalty) throw new Error('Program member belum diaktifkan.')
+    if (!order.customerId) throw new Error('Pilih pelanggan member terlebih dahulu.')
+    if (want < loyalty.minRedeem) throw new Error(`Minimal tukar ${loyalty.minRedeem} poin.`)
+    const info = await getCustomerLoyalty(order.customerId, orderId)
+    if (want > info.available) throw new Error(`Poin tidak cukup — tersedia ${info.available} poin.`)
+  }
+  await db.transaction('rw', [db.orders, db.orderItems, db.syncQueue, db.settings, db.customers], async () => {
+    await db.orders.update(orderId, { pointsRedeemed: want, pointsRedeemValue: want > 0 ? loyalty.pointValue : 0, updatedAt: getTrustedNow() })
+    await recalcOrderTotals(orderId)
+  })
+}
+
 /** Memisahkan sebagian item ke pesanan baru (split bill). */
 export async function splitOrder(orderId: string, itemIdsToMove: string[]): Promise<Order> {
-  return db.transaction('rw', db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.settings, async () => {
+  return db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.settings, db.customers], async () => {
     const original = await db.orders.get(orderId)
     if (!original) throw new Error('Pesanan tidak ditemukan')
     const orderNumber = await nextTransactionNumber()
@@ -931,8 +1094,9 @@ export async function splitOrder(orderId: string, itemIdsToMove: string[]): Prom
 }
 
 /** Menggabungkan tagihan pesanan `sourceOrderId` ke dalam `targetOrderId`. */
-export async function mergeOrders(targetOrderId: string, sourceOrderId: string): Promise<void> {
-  await db.transaction('rw', db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.settings, async () => {
+export async function mergeOrders(targetOrderId: string, sourceOrderId: string, actor?: { userId: string; userName: string }): Promise<void> {
+  await db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.settings, db.customers, db.auditLogs], async () => {
+    const target = await db.orders.get(targetOrderId)
     const items = await db.orderItems.where('orderId').equals(sourceOrderId).toArray()
     for (const item of items) {
       await db.orderItems.update(item.id, { orderId: targetOrderId, updatedAt: getTrustedNow() })
@@ -942,7 +1106,7 @@ export async function mergeOrders(targetOrderId: string, sourceOrderId: string):
     const source = await db.orders.get(sourceOrderId)
     await db.orders.update(sourceOrderId, {
       status: 'void',
-      voidReason: `Digabung ke pesanan ${targetOrderId}`,
+      voidReason: `Digabung ke pesanan ${target?.orderNumber ?? targetOrderId}`,
       voidedAt: getTrustedNow(),
       updatedAt: getTrustedNow(),
     })
@@ -962,5 +1126,15 @@ export async function mergeOrders(targetOrderId: string, sourceOrderId: string):
       }
     }
     await recalcOrderTotals(targetOrderId)
+    if (actor && source && target) {
+      await recordAuditLog({
+        userId: actor.userId,
+        userName: actor.userName,
+        action: 'order.merge',
+        entityType: 'order',
+        entityId: targetOrderId,
+        details: `Tagihan ${source.orderNumber} (${items.length} item) digabung ke ${target.orderNumber}.`,
+      })
+    }
   })
 }

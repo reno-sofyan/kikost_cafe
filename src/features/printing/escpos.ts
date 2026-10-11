@@ -101,7 +101,11 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   b.line(divider(width))
 
   b.line(twoColumns('Subtotal', formatRupiah(data.subtotal), width))
-  if (data.discountAmount > 0) b.line(twoColumns('Diskon', `-${formatRupiah(data.discountAmount)}`, width))
+  if (data.discountAmount > 0) {
+    for (const d of data.discountLines?.length ? data.discountLines : [{ label: 'Diskon', amount: data.discountAmount }]) {
+      b.line(twoColumns(d.label, `-${formatRupiah(d.amount)}`, width))
+    }
+  }
   if (data.serviceChargeAmount > 0) {
     b.line(twoColumns(`Service (${data.serviceChargePercent}%)`, formatRupiah(data.serviceChargeAmount), width))
   }
@@ -131,6 +135,8 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
 
   b.align('center')
   if (data.isPreBill) b.line('Bukan bukti pembayaran.').line('Silakan bayar di kasir.')
+  if (data.pointsEarned && data.pointsEarned > 0) b.line(`Anda mendapat ${data.pointsEarned} poin member`)
+  if (data.depositBalance != null) b.line(`Sisa saldo member ${formatRupiah(data.depositBalance)}`)
   if (data.footerNote) b.line(data.footerNote)
   b.feed(3).cut()
 

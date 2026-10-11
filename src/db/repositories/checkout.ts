@@ -5,7 +5,7 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { consumeCancelCodeInTx, isOwnerCancelRequired, OwnerApprovalRequiredError, type OwnerApproval } from '@/db/repositories/cancelCodes'
 import { addExpectedCash } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
-import { restockSaleStock } from '@/db/repositories/stock'
+import { restockSaleStock, saleLinesForItems } from '@/db/repositories/stock'
 import {
   ensureOrderBill,
   implicitBillId,
@@ -23,7 +23,7 @@ import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType, requiresPaymentProof } from '@/lib/businessType'
-import type { Order, OrderItem, Payment, PaymentInput, PaymentMethod, Refund, RefundReason, ReturnRecord } from '@/types/domain'
+import type { Order, Payment, PaymentInput, PaymentMethod, Refund, RefundReason, ReturnRecord } from '@/types/domain'
 
 export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalizedError, PaymentProofRequiredError }
 export type { PaymentInput, PaymentProofInput }
@@ -188,7 +188,7 @@ export async function voidOrder(params: {
             .filter((i) => !i.voided && !i.removed)
             .toArray()
           await restockSaleStock(
-            items.map((it) => ({ productId: it.productId, qty: it.qty })),
+            saleLinesForItems(items),
             order.id,
             params.approverUserId,
           )
@@ -251,6 +251,8 @@ async function createReversalPayment(
   const key = `refund_${order.id}_${original.id}_${Math.round(Math.abs(amount))}`
   const existing = await db.payments.get(key)
   if (existing) return existing
+  // Pembalik pembayaran saldo member mengembalikan saldo ke pemilik aslinya.
+  const depositOwner = original.method === 'deposit' ? ((await db.payments.get(original.id))?.customerId ?? order.customerId) : null
   const reversal: Payment = {
     id: key,
     orderId: order.id,
@@ -261,6 +263,7 @@ async function createReversalPayment(
     changeAmount: null,
     reference: null,
     idempotencyKey: key,
+    ...(depositOwner ? { customerId: depositOwner } : {}),
     reversalOfPaymentId: original.id,
     confirmedByUserId: approverUserId,
     createdAt: at,
@@ -358,7 +361,7 @@ export async function returnOrderItems(params: {
       }
       if (params.restock) {
         await restockSaleStock(
-          items.map((it: OrderItem) => ({ productId: it.productId, qty: it.qty })),
+          saleLinesForItems(items),
           order.id,
           params.approverUserId,
         )

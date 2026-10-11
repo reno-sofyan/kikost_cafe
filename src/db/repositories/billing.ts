@@ -3,8 +3,11 @@ import { enqueueSync } from '@/sync/outbox'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { addExpectedCash, getOpenShift } from '@/db/repositories/shifts'
 import { transitionOrder } from '@/db/repositories/orders'
-import { deductSaleStock, findOrderStockShortages } from '@/db/repositories/stock'
-import type { Bill, BillPaymentStatus, Order, OrderItem, Payment, PaymentInput, PaymentProof } from '@/types/domain'
+import { deductSaleStock, findOrderStockShortages, saleLinesForItems } from '@/db/repositories/stock'
+import { pointsToEarnForOrder } from '@/db/repositories/loyalty'
+import { depositEnabledFor, getCustomerDeposit } from '@/db/repositories/deposits'
+import { getSettings } from '@/db/repositories/settings'
+import type { Bill, BillPaymentStatus, Order, Payment, PaymentInput, PaymentProof } from '@/types/domain'
 import { newId } from '@/lib/id'
 
 /** Foto bukti pembayaran yang dilampirkan kasir saat membayar (lihat `PaymentProof`). */
@@ -138,7 +141,7 @@ export async function payBill(params: {
 }): Promise<{ order: Order; bill: Bill; payments: Payment[] }> {
   return db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.bills, db.payments, db.paymentProofs, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.syncQueue, db.shifts, db.cashMovements, db.auditLogs],
+    [db.orders, db.orderItems, db.bills, db.payments, db.paymentProofs, db.products, db.ingredients, db.recipes, db.stockMovements, db.cafeTables, db.syncQueue, db.shifts, db.cashMovements, db.auditLogs, db.settings, db.customers],
     async () => {
       let bill = await db.bills.get(params.billId)
       if (!bill) throw new Error('Tagihan tidak ditemukan')
@@ -178,6 +181,14 @@ export async function payBill(params: {
         }
       }
 
+      // Saldo member: hanya untuk pesanan ber-member, dan tak boleh melebihi saldonya.
+      let depositLeft = 0
+      if (params.payments.some((p) => p.method === 'deposit')) {
+        if (!order.customerId) throw new Error('Pilih pelanggan member terlebih dahulu untuk membayar dengan saldo.')
+        if (!depositEnabledFor(await getSettings())) throw new Error('Saldo member belum diaktifkan.')
+        depositLeft = (await getCustomerDeposit(order.customerId)).balance
+      }
+
       const created: Payment[] = []
       let addedThisCall = 0
       for (let i = 0; i < params.payments.length; i++) {
@@ -190,6 +201,10 @@ export async function payBill(params: {
         }
         // Tip di luar `amount`: tak ikut melunasi tagihan & bukan omzet.
         const tip = Math.max(0, Math.round(p.tipAmount ?? 0))
+        if (p.method === 'deposit') {
+          depositLeft -= p.amount + tip
+          if (depositLeft < 0) throw new Error('Saldo member tidak cukup untuk pembayaran ini.')
+        }
         const payment: Payment = {
           id: key,
           orderId: order.id,
@@ -200,6 +215,7 @@ export async function payBill(params: {
           changeAmount: p.receivedAmount != null ? Math.max(0, p.receivedAmount - p.amount - tip) : null,
           reference: p.reference ?? null,
           ...(tip > 0 ? { tipAmount: tip } : {}),
+          ...(p.method === 'deposit' ? { customerId: order.customerId } : {}),
           idempotencyKey: key,
           reversalOfPaymentId: null,
           confirmedByUserId: params.confirmedByUserId,
@@ -269,7 +285,7 @@ export async function payBill(params: {
           .equals(order.id)
           .filter((i) => !i.voided && !i.removed)
           .toArray()
-        const lines = items.map((it: OrderItem) => ({ productId: it.productId, qty: it.qty }))
+        const lines = saleLinesForItems(items)
 
         if (!params.allowNegativeStock) {
           const short = await findOrderStockShortages(lines)
@@ -288,7 +304,9 @@ export async function payBill(params: {
           })
         }
 
-        await transitionOrder(order.id, 'COMPLETED', { paidAt: now })
+        // Poin member dihitung dari penjualan bersih saat lunas (0 bila program tak aktif).
+        const pointsEarned = await pointsToEarnForOrder(order)
+        await transitionOrder(order.id, 'COMPLETED', { paidAt: now, ...(pointsEarned > 0 ? { pointsEarned } : {}) })
 
         if (order.type === 'dine_in' && order.tableId) {
           const table = await db.cafeTables.get(order.tableId)

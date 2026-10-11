@@ -39,6 +39,8 @@ import { formatRupiah } from '@/lib/currency'
 import { roleHasPermission } from '@/lib/permissions'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { isOnlineOrder, onlineChannelLabel, productPriceFor } from '@/lib/onlineOrders'
+import { discountLinesOf } from '@/lib/promos'
+import { OrderPerks } from '@/features/pos/OrderPerks'
 import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
 import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
@@ -610,8 +612,11 @@ export function CashierScreen() {
             </div>
 
             <div className="flex-none space-y-2 border-t border-ink-800 px-4 py-3">
+              <OrderPerks order={order} features={features} />
               <SummaryRow label="Subtotal" value={order.subtotal} />
-              {order.discountAmount > 0 && <SummaryRow label="Diskon" value={-order.discountAmount} />}
+              {discountLinesOf(order).map((d) => (
+                <SummaryRow key={d.label} label={d.label} value={-d.amount} />
+              ))}
               {order.serviceChargeAmount > 0 && <SummaryRow label={`Service Charge (${order.serviceChargePercent}%)`} value={order.serviceChargeAmount} />}
               {order.taxAmount > 0 && <SummaryRow label={`Pajak (${order.taxPercent}%)`} value={order.taxAmount} />}
               {order.roundingAdjustment !== 0 && <SummaryRow label="Pembulatan" value={order.roundingAdjustment} />}

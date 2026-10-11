@@ -29,6 +29,9 @@ describe('featuresForBusinessType', () => {
       reservations: false,
       waiterTracking: false,
       onlineOrders: false,
+      promos: false,
+      loyalty: false,
+      combos: false,
     })
   })
 
@@ -52,6 +55,7 @@ describe('featuresForBusinessType', () => {
     // Layanan meja ala restoran tak relevan di kantin.
     expect(f).toMatchObject({ preBill: false, tips: false, reservations: false, waiterTracking: false })
     expect(f.onlineOrders).toBe(false)
+    expect(f).toMatchObject({ promos: false, loyalty: false, combos: false })
     // Kode pembatalan kantin hanya dari Konsol Pemilik online, bukan dari tablet.
     expect(f.ownerCodeOnlineOnly).toBe(true)
   })
@@ -83,6 +87,9 @@ describe('featuresForBusinessType', () => {
       reservations: true,
       waiterTracking: true,
       onlineOrders: true,
+      promos: true,
+      loyalty: true,
+      combos: true,
     })
   })
 
@@ -113,6 +120,9 @@ describe('featuresForBusinessType', () => {
       reservations: true,
       waiterTracking: true,
       onlineOrders: true,
+      promos: true,
+      loyalty: true,
+      combos: true,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
       tables: true,
@@ -140,6 +150,9 @@ describe('featuresForBusinessType', () => {
       reservations: true,
       waiterTracking: true,
       onlineOrders: true,
+      promos: true,
+      loyalty: true,
+      combos: true,
     })
   })
 

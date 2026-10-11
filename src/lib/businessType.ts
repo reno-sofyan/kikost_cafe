@@ -87,6 +87,12 @@ export interface BusinessFeatures {
   waiterTracking: boolean
   /** Pesanan online (GoFood/GrabFood/ShopeeFood/…): harga online, platform, laporan terpisah. */
   onlineOrders: boolean
+  /** Promo otomatis terjadwal (happy hour, per kategori/produk) & kode voucher. */
+  promos: boolean
+  /** Member: poin dari tiap belanja, tukar poin jadi potongan, tingkatan member. */
+  loyalty: boolean
+  /** Menu paket/combo: satu harga, stok dipotong per produk isi paket. */
+  combos: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -114,10 +120,16 @@ const ALL_FEATURES: BusinessFeatures = {
   reservations: true,
   waiterTracking: true,
   onlineOrders: true,
+  promos: true,
+  loyalty: true,
+  combos: true,
 }
 
 /** Fitur layanan meja ala restoran — tak relevan untuk kantin & minimarket. */
 const NO_TABLE_SERVICE = { preBill: false, tips: false, reservations: false, waiterTracking: false } as const
+
+/** Fitur premium kafe & restoran — belum dipasang untuk kantin & minimarket. */
+const NO_PREMIUM = { promos: false, loyalty: false, combos: false } as const
 
 /**
  * Fitur yang relevan per jenis usaha. Ini HANYA mengatur apa yang TERLIHAT di
@@ -152,6 +164,7 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         shiftReminder: false,
         ...NO_TABLE_SERVICE,
         onlineOrders: false,
+        ...NO_PREMIUM,
       }
     case 'kantin':
       return {
@@ -170,6 +183,7 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         shiftReminder: true,
         ...NO_TABLE_SERVICE,
         onlineOrders: false,
+        ...NO_PREMIUM,
       }
     case 'cafe_resto':
       // Pengaman kas kantin dipasang sebagian ke kafe (2026-10-11): kode Pemilik untuk

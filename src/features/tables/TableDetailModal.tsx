@@ -1,3 +1,4 @@
+import { useSessionStore } from '@/state/sessionStore'
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getOrder, listOrderItems, mergeOrders } from '@/db/repositories/orders'
@@ -21,6 +22,8 @@ interface Props {
 
 export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
   const [mode, setMode] = useState<'default' | 'move' | 'merge'>('default')
+  const currentUser = useSessionStore((st) => st.currentUser)
+  const actor = currentUser ? { userId: currentUser.id, userName: currentUser.name } : undefined
   const order = useLiveQuery(() => (table.currentOrderId ? getOrder(table.currentOrderId) : undefined), [table.currentOrderId])
   const orderItems = useLiveQuery(() => (order ? listOrderItems(order.id) : []), [order?.id]) ?? []
   const allTables = useLiveQuery(() => listTables(), []) ?? []
@@ -122,7 +125,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
                   key={t.id}
                   className="btn-secondary"
                   onClick={() => {
-                    void moveTable(table.id, t.id)
+                    void moveTable(table.id, t.id, actor)
                     onClose()
                   }}
                 >
@@ -147,7 +150,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
                   className="btn-secondary w-full"
                   onClick={() => {
                     if (order && t.currentOrderId) {
-                      void mergeOrders(order.id, t.currentOrderId)
+                      void mergeOrders(order.id, t.currentOrderId, actor)
                     }
                     onClose()
                   }}

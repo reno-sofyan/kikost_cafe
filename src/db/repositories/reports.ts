@@ -58,7 +58,7 @@ export interface SalesReport {
   grossMargin: number
   /** Persen laba kotor terhadap penjualan bersih (0 bila tak ada penjualan). */
   grossMarginPercent: number
-  /** Laba operasional (estimasi) = laba kotor − komisi platform − pengeluaran. */
+  /** Laba operasional (estimasi) = laba kotor − komisi platform − komisi KOL − pengeluaran. */
   operatingProfit: number
 
   // ---- Pesanan online ----
@@ -69,6 +69,21 @@ export interface SalesReport {
   /** Omzet online − komisi = perkiraan yang benar-benar dicairkan platform. */
   onlineNetReceived: number
   byPlatform: { platform: OnlinePlatform; revenue: number; transactionCount: number; commission: number; net: number }[]
+
+  // ---- Promo, voucher, member, & KOL ----
+  /** Potongan dari promo otomatis & voucher (bagian dari `discountTotal`). */
+  promoDiscountTotal: number
+  byPromo: { promoId: string; name: string; voucherCode: string | null; transactionCount: number; discount: number; revenue: number }[]
+  pointsEarnedTotal: number
+  pointsRedeemedTotal: number
+  /** Nilai rupiah poin yang ditukar (bagian dari `discountTotal`). */
+  pointsRedeemedValue: number
+  /** Transaksi yang mencatat pelanggan member. */
+  memberTransactionCount: number
+  memberRevenue: number
+  /** Penjualan lewat voucher KOL; komisi = persen komisi × penjualan bersih transaksinya. */
+  byKol: { kolId: string; name: string; transactionCount: number; revenue: number; discount: number; commission: number }[]
+  kolCommissionTotal: number
   roundingTotal: number
   itemsSold: number
 
@@ -129,7 +144,9 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
   const productSalesMap = new Map<string, ProductSalesRow>()
   for (const item of activeItems) {
     const product = productById.get(item.productId)
-    const cost = (product?.costPrice ?? 0) * item.qty
+    // Menu paket tanpa HPP sendiri: HPP = jumlah HPP produk isinya.
+    const comboCost = (item.comboComponents ?? []).reduce((s, c) => s + (productById.get(c.productId)?.costPrice ?? 0) * c.qty, 0)
+    const cost = (product?.costPrice || comboCost) * item.qty
     const existing = productSalesMap.get(item.productId)
     if (existing) {
       existing.qtySold += item.qty
@@ -216,6 +233,45 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
     .sort((a, b) => b.revenue - a.revenue)
   const onlineCommissionTotal = byPlatform.reduce((s, p) => s + p.commission, 0)
 
+  const promoStats = new Map<string, { name: string; voucherCode: string | null; transactionCount: number; discount: number; revenue: number }>()
+  const kolStats = new Map<string, { name: string; transactionCount: number; revenue: number; discount: number; commission: number }>()
+  let pointsEarnedTotal = 0
+  let pointsRedeemedTotal = 0
+  let pointsRedeemedValue = 0
+  let memberTransactionCount = 0
+  let memberRevenue = 0
+  for (const order of orders) {
+    pointsEarnedTotal += order.pointsEarned ?? 0
+    pointsRedeemedTotal += order.pointsRedeemed ?? 0
+    pointsRedeemedValue += (order.pointsRedeemed ?? 0) * (order.pointsRedeemValue ?? 0)
+    if (order.customerId) {
+      memberTransactionCount += 1
+      memberRevenue += order.grandTotal
+    }
+    for (const a of order.appliedPromos ?? []) {
+      const p = promoStats.get(a.promoId) ?? { name: a.name, voucherCode: a.voucherCode ?? null, transactionCount: 0, discount: 0, revenue: 0 }
+      p.transactionCount += 1
+      p.discount += a.amount
+      p.revenue += order.grandTotal
+      promoStats.set(a.promoId, p)
+      if (a.kolId) {
+        const k = kolStats.get(a.kolId) ?? { name: a.kolName ?? 'KOL', transactionCount: 0, revenue: 0, discount: 0, commission: 0 }
+        k.transactionCount += 1
+        k.revenue += order.grandTotal
+        k.discount += a.amount
+        k.commission += Math.round(((order.subtotal - order.discountAmount) * (a.kolCommissionPercent ?? 0)) / 100)
+        kolStats.set(a.kolId, k)
+      }
+    }
+  }
+  const byPromo = Array.from(promoStats.entries())
+    .map(([promoId, s]) => ({ promoId, ...s }))
+    .sort((a, b) => b.discount - a.discount)
+  const byKol = Array.from(kolStats.entries())
+    .map(([kolId, s]) => ({ kolId, ...s }))
+    .sort((a, b) => b.revenue - a.revenue)
+  const kolCommissionTotal = byKol.reduce((s, k) => s + k.commission, 0)
+
   const typeStats = new Map<OrderType, { revenue: number; transactionCount: number }>()
   const waiterStats = new Map<string, { revenue: number; transactionCount: number; guestCount: number; tips: number }>()
   const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour, revenue: 0, transactionCount: 0 }))
@@ -281,7 +337,16 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
     costOfGoodsSold,
     grossMargin,
     grossMarginPercent: netSales > 0 ? (grossMargin / netSales) * 100 : 0,
-    operatingProfit: grossMargin - onlineCommissionTotal - expenseTotal,
+    operatingProfit: grossMargin - onlineCommissionTotal - kolCommissionTotal - expenseTotal,
+    promoDiscountTotal: byPromo.reduce((s, p) => s + p.discount, 0),
+    byPromo,
+    pointsEarnedTotal,
+    pointsRedeemedTotal,
+    pointsRedeemedValue,
+    memberTransactionCount,
+    memberRevenue,
+    byKol,
+    kolCommissionTotal,
     channelSplit,
     onlineCommissionTotal,
     onlineNetReceived: channelSplit.online.revenue - onlineCommissionTotal,

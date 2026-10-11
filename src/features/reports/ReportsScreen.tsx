@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { NavLink, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { buildDepositReport } from '@/db/repositories/deposits'
 import {
   buildOperationsReport,
   buildSalesReport,
@@ -37,6 +38,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   transfer: 'Transfer',
   card: 'Kartu',
   platform: 'Aplikasi Online',
+  deposit: 'Saldo Member',
 }
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
@@ -139,6 +141,7 @@ export function ReportsScreen() {
   const report = loaded?.scope === scope ? loaded.report : undefined
   const previous = loadedPrevious?.scope === scope ? loadedPrevious.report : undefined
   const stockReport = useLiveQuery(() => buildStockReport(), [])
+  const depositReport = useLiveQuery(() => buildDepositReport(range), [range.from, range.to])
   const ops = useLiveQuery(() => buildOperationsReport(range), [range.from, range.to])
   const settings = useLiveQuery(() => getSettings(), [])
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
@@ -305,6 +308,52 @@ export function ReportsScreen() {
                   ])}
                 />
               </div>
+            </div>
+          )}
+
+          {(report.byPromo.length > 0 || report.byKol.length > 0 || report.pointsEarnedTotal > 0 || report.pointsRedeemedTotal > 0) && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {report.promoDiscountTotal > 0 && <MiniStat label="Potongan Promo & Voucher" value={formatRupiah(report.promoDiscountTotal)} note="sudah termasuk di Diskon" />}
+                {report.memberTransactionCount > 0 && (
+                  <MiniStat
+                    label="Transaksi Member"
+                    value={formatNumber(report.memberTransactionCount)}
+                    note={`${formatRupiah(report.memberRevenue)} • ${report.transactionCount > 0 ? ((report.memberTransactionCount / report.transactionCount) * 100).toFixed(0) : 0}% transaksi`}
+                  />
+                )}
+                {report.pointsEarnedTotal > 0 && <MiniStat label="Poin Diberikan" value={formatNumber(report.pointsEarnedTotal)} />}
+                {report.pointsRedeemedTotal > 0 && <MiniStat label="Poin Ditukar" value={formatNumber(report.pointsRedeemedTotal)} note={`senilai ${formatRupiah(report.pointsRedeemedValue)}`} />}
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {report.byPromo.length > 0 && (
+                  <ReportTable
+                    title="Kinerja Promo & Voucher"
+                    headers={['Promo', 'Dipakai', 'Potongan', 'Omzet']}
+                    rows={report.byPromo.map((p) => [p.voucherCode ? `${p.name} (${p.voucherCode})` : p.name, `${formatNumber(p.transactionCount)}×`, `−${formatRupiah(p.discount)}`, formatRupiah(p.revenue)])}
+                  />
+                )}
+                {report.byKol.length > 0 && (
+                  <ReportTable
+                    title="Penjualan lewat KOL"
+                    headers={['KOL', 'Transaksi', 'Omzet', 'Potongan', 'Komisi (est.)']}
+                    rows={report.byKol.map((k) => [k.name, formatNumber(k.transactionCount), formatRupiah(k.revenue), `−${formatRupiah(k.discount)}`, formatRupiah(k.commission)])}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {isAll && depositReport && (depositReport.topUpTotal > 0 || depositReport.usedTotal !== 0 || depositReport.outstanding !== 0 || depositReport.withdrawnTotal > 0) && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <MiniStat
+                label="Isi Saldo Member"
+                value={formatRupiah(depositReport.topUpTotal)}
+                note={depositReport.topUpByMethod.map((m) => `${PAYMENT_METHOD_LABELS[m.method]} ${formatRupiah(m.amount)}`).join(' • ') || 'uang diterima, bukan omzet'}
+              />
+              <MiniStat label="Saldo Dipakai Belanja" value={formatRupiah(depositReport.usedTotal)} note="sudah termasuk di omzet" />
+              {depositReport.withdrawnTotal > 0 && <MiniStat label="Saldo Ditarik" value={formatRupiah(depositReport.withdrawnTotal)} />}
+              <MiniStat label="Titipan Saldo Saat Ini" value={formatRupiah(depositReport.outstanding)} note={`${formatNumber(depositReport.customersWithBalance)} member • kewajiban usaha`} />
             </div>
           )}
 
@@ -508,8 +557,9 @@ function ProfitStatement({ report, showTips }: { report: SalesReport; showTips: 
       <Line label="HPP" value={report.costOfGoodsSold} minus note="harga pokok" />
       <Line label="Laba kotor" value={report.grossMargin} strong note={`${report.grossMarginPercent.toFixed(1)}%`} />
       {(report.onlineCommissionTotal > 0 || report.scope === 'online') && <Line label="Komisi platform" value={report.onlineCommissionTotal} minus note="estimasi" />}
+      {report.kolCommissionTotal > 0 && <Line label="Komisi KOL" value={report.kolCommissionTotal} minus note="estimasi" />}
       {report.scope === 'all' && <Line label="Pengeluaran" value={report.expenseTotal} minus />}
-      {report.scope !== 'offline' && (
+      {(report.scope !== 'offline' || report.kolCommissionTotal > 0) && (
         <div className={`flex items-baseline justify-between gap-3 border-t border-ink-600 py-1.5 text-base font-bold ${report.operatingProfit < 0 ? 'text-red-400' : 'text-ink-50'}`}>
           <span>{report.scope === 'all' ? 'Laba operasional' : 'Laba setelah komisi'}</span>
           <span className="whitespace-nowrap tabular-nums">

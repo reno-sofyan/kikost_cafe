@@ -1,6 +1,8 @@
+import { discountLinesOf } from '@/lib/promos'
 import { db } from '@/db/schema'
 import { formatDateTime } from '@/lib/datetime'
 import { businessDisplayName } from '@/db/repositories/settings'
+import { getCustomerDeposit } from '@/db/repositories/deposits'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { onlineChannelLabel } from '@/lib/onlineOrders'
 import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
@@ -32,6 +34,12 @@ export interface ReceiptData {
   lines: ReceiptLine[]
   subtotal: number
   discountAmount: number
+  /** Rincian potongan (promo, voucher, tukar poin, diskon). Kosong = satu baris "Diskon". */
+  discountLines?: { label: string; amount: number }[]
+  /** Poin member yang didapat dari transaksi ini (hanya struk lunas). */
+  pointsEarned?: number
+  /** Sisa saldo member setelah transaksi ini — hanya bila dibayar dengan saldo. */
+  depositBalance?: number
   taxPercent: number
   taxAmount: number
   serviceChargePercent: number
@@ -64,6 +72,7 @@ const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
   transfer: 'Transfer',
   card: 'Kartu',
   platform: 'Aplikasi Online',
+  deposit: 'Saldo Member',
 }
 
 export function buildSampleReceiptData(settings: AppSettings): ReceiptData {
@@ -120,6 +129,9 @@ export async function buildReceiptData(
       note: item.notes || null,
     }))
 
+  const depositOwner = opts.preBill ? null : (payments.find((p) => p.method === 'deposit' && p.amount > 0)?.customerId ?? null)
+  const depositBalance = depositOwner ? (await getCustomerDeposit(depositOwner)).balance : undefined
+
   return {
     businessName: businessDisplayName(settings),
     address: settings.address,
@@ -137,6 +149,9 @@ export async function buildReceiptData(
     lines,
     subtotal: order.subtotal,
     discountAmount: order.discountAmount,
+    discountLines: discountLinesOf(order),
+    pointsEarned: opts.preBill ? 0 : (order.pointsEarned ?? 0),
+    ...(depositBalance != null ? { depositBalance } : {}),
     taxPercent: order.taxPercent,
     taxAmount: order.taxAmount,
     serviceChargePercent: order.serviceChargePercent,

@@ -14,6 +14,7 @@ export const ACCOUNTS = {
   PLATFORM_RECEIVABLE: '1-10201 Piutang Platform Online',
   INVENTORY: '1-10301 Persediaan Bahan',
   TAX_PAYABLE: '2-20001 Utang Pajak (PB1/PPN)',
+  MEMBER_DEPOSIT: '2-20101 Titipan Saldo Member',
   SALES: '4-40001 Pendapatan Penjualan',
   SERVICE_CHARGE: '4-40002 Pendapatan Service Charge',
   DISCOUNT: '4-49001 Potongan Penjualan',
@@ -52,7 +53,7 @@ function ymd(ts: number): string {
 
 // Pembayaran via aplikasi pesan-antar belum jadi uang di bank — dicatat sebagai piutang platform.
 const accountForMethod = (m: PaymentMethod) =>
-  m === 'cash' ? ACCOUNTS.CASH : m === 'platform' ? ACCOUNTS.PLATFORM_RECEIVABLE : ACCOUNTS.BANK
+  m === 'cash' ? ACCOUNTS.CASH : m === 'platform' ? ACCOUNTS.PLATFORM_RECEIVABLE : m === 'deposit' ? ACCOUNTS.MEMBER_DEPOSIT : ACCOUNTS.BANK
 
 export async function buildAccountingExport(range: DateRange): Promise<AccountingExport> {
   const lines: JournalLine[] = []
@@ -116,6 +117,24 @@ export async function buildAccountingExport(range: DateRange): Promise<Accountin
     const date = ymd(r.createdAt)
     add({ date, ref: `REF-${r.id.slice(0, 6)}`, account: ACCOUNTS.REFUND, description: `Refund ${r.reason}`, debit: r.amount })
     add({ date, ref: `REF-${r.id.slice(0, 6)}`, account: accountForMethod(r.method), description: `Kembalian dana (${r.method})`, credit: r.amount })
+  }
+
+  // ---- Isi / tarik saldo member (titipan pelanggan, bukan pendapatan) ----
+  for (const c of await db.customers.toArray()) {
+    for (const e of c.depositLog ?? []) {
+      if (e.at < range.from || e.at > range.to) continue
+      const date = ymd(e.at)
+      const ref = `SALDO-${e.id.slice(0, 6)}`
+      const amount = Math.abs(e.amount)
+      const cashSide = accountForMethod(e.method)
+      if (e.amount > 0) {
+        add({ date, ref, account: cashSide, description: `Isi saldo member — ${c.name}`, debit: amount })
+        add({ date, ref, account: ACCOUNTS.MEMBER_DEPOSIT, description: `Isi saldo member — ${c.name}`, credit: amount })
+      } else {
+        add({ date, ref, account: ACCOUNTS.MEMBER_DEPOSIT, description: `Tarik saldo member — ${c.name}`, debit: amount })
+        add({ date, ref, account: cashSide, description: `Tarik saldo member — ${c.name}`, credit: amount })
+      }
+    }
   }
 
   // ---- Pengeluaran operasional (tunai) ----

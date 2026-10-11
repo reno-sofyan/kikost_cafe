@@ -4,6 +4,7 @@ import { formatDate } from '@/lib/datetime'
 import { saveFile, saveTextFile } from '@/lib/saveFile'
 import { REPORT_SCOPE_LABELS, type SalesReport, type DateRange } from '@/db/repositories/reports'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
+import { buildDepositReport, type DepositReport } from '@/db/repositories/deposits'
 import { accountingExportToCsv, buildAccountingExport } from '@/db/repositories/accounting'
 
 export async function exportAccountingJournalCsv(range: DateRange): Promise<{ balanced: boolean }> {
@@ -33,6 +34,15 @@ function fileSuffix(report: SalesReport): string {
   return report.scope === 'online' ? '-online' : report.scope === 'offline' ? '-dine-in-takeaway' : ''
 }
 
+const PAYMENT_LABELS_FOR_DEPOSIT: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu' }
+
+/** Ringkasan saldo member untuk laporan Keseluruhan; null bila tak ada aktivitas saldo. */
+async function depositReportFor(report: SalesReport): Promise<DepositReport | null> {
+  if (report.scope !== 'all') return null
+  const d = await buildDepositReport(report.range)
+  return d.topUpTotal > 0 || d.usedTotal !== 0 || d.withdrawnTotal > 0 || d.outstanding !== 0 ? d : null
+}
+
 export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   const lines: string[] = []
   lines.push(csvRow(reportTitle(report), `${formatDate(report.range.from)} - ${formatDate(report.range.to)}`))
@@ -54,6 +64,7 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   lines.push(csvRow('Laba Kotor', report.grossMargin))
   lines.push(csvRow('Margin Laba Kotor (%)', report.grossMarginPercent.toFixed(1)))
   if (report.scope !== 'offline') lines.push(csvRow('Komisi Platform (estimasi)', -report.onlineCommissionTotal))
+  if (report.kolCommissionTotal > 0) lines.push(csvRow('Komisi KOL (estimasi)', -report.kolCommissionTotal))
   if (report.scope === 'all') {
     lines.push(csvRow('Pengeluaran', -report.expenseTotal))
     lines.push(csvRow('Laba Operasional', report.operatingProfit))
@@ -74,6 +85,35 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
     lines.push('')
     lines.push(csvRow('Platform', 'Jumlah Pesanan', 'Omzet', 'Komisi (estimasi)', 'Diterima Bersih'))
     for (const p of report.byPlatform) lines.push(csvRow(ONLINE_PLATFORM_LABELS[p.platform], p.transactionCount, p.revenue, p.commission, p.net))
+  }
+  if (report.byPromo.length > 0) {
+    lines.push('')
+    lines.push(csvRow('Promo / Voucher', 'Kode', 'Dipakai', 'Potongan', 'Omzet'))
+    for (const p of report.byPromo) lines.push(csvRow(p.name, p.voucherCode ?? '', p.transactionCount, p.discount, p.revenue))
+  }
+  if (report.byKol.length > 0) {
+    lines.push('')
+    lines.push(csvRow('KOL', 'Jumlah Transaksi', 'Omzet', 'Potongan', 'Komisi (estimasi)'))
+    for (const k of report.byKol) lines.push(csvRow(k.name, k.transactionCount, k.revenue, k.discount, k.commission))
+  }
+  if (report.pointsEarnedTotal > 0 || report.pointsRedeemedTotal > 0) {
+    lines.push('')
+    lines.push('Member')
+    lines.push(csvRow('Transaksi Member', report.memberTransactionCount))
+    lines.push(csvRow('Omzet Member', report.memberRevenue))
+    lines.push(csvRow('Poin Diberikan', report.pointsEarnedTotal))
+    lines.push(csvRow('Poin Ditukar', report.pointsRedeemedTotal))
+    lines.push(csvRow('Nilai Poin Ditukar', report.pointsRedeemedValue))
+  }
+  const deposit = await depositReportFor(report)
+  if (deposit) {
+    lines.push('')
+    lines.push('Saldo Member (titipan, bukan omzet)')
+    lines.push(csvRow('Isi Saldo', deposit.topUpTotal))
+    for (const m of deposit.topUpByMethod) lines.push(csvRow(`Isi Saldo — ${PAYMENT_LABELS_FOR_DEPOSIT[m.method] ?? m.method}`, m.amount))
+    lines.push(csvRow('Saldo Dipakai Belanja', deposit.usedTotal))
+    lines.push(csvRow('Saldo Ditarik', deposit.withdrawnTotal))
+    lines.push(csvRow('Titipan Saldo Saat Ini', deposit.outstanding))
   }
   lines.push('')
   lines.push(csvRow('Produk', 'Qty Terjual', 'Omzet', 'HPP', 'Laba'))
@@ -112,6 +152,7 @@ const PDF_PAYMENT_METHOD_LABELS: Record<string, string> = {
   transfer: 'Transfer',
   card: 'Kartu',
   platform: 'Aplikasi Online',
+  deposit: 'Saldo Member',
 }
 
 const PAGE_MARGIN = 15
@@ -281,6 +322,7 @@ export async function exportSalesReportPdf(
       ...(report.scope !== 'offline' && (report.onlineCommissionTotal > 0 || report.scope === 'online')
         ? [['Komisi platform (estimasi)', minus(report.onlineCommissionTotal)]]
         : []),
+      ...(report.kolCommissionTotal > 0 ? [['Komisi KOL (estimasi)', minus(report.kolCommissionTotal)]] : []),
       ...(report.scope === 'all'
         ? [
             ['Pengeluaran', minus(report.expenseTotal)],
@@ -325,6 +367,74 @@ export async function exportSalesReportPdf(
         { header: 'Diterima Bersih', width: 35, align: 'right' },
       ],
       report.byPlatform.map((p) => [ONLINE_PLATFORM_LABELS[p.platform], String(p.transactionCount), formatRupiah(p.revenue), minus(p.commission), formatRupiah(p.net)]),
+    )
+  }
+
+  if (report.byPromo.length > 0) {
+    y = sectionTitle(doc, y, 'Kinerja Promo & Voucher')
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: 'Promo', width: 80 },
+        { header: 'Dipakai', width: 25, align: 'right' },
+        { header: 'Potongan', width: 35, align: 'right' },
+        { header: 'Omzet', width: 40, align: 'right' },
+      ],
+      report.byPromo.map((p) => [p.voucherCode ? `${p.name} (${p.voucherCode})` : p.name, String(p.transactionCount), minus(p.discount), formatRupiah(p.revenue)]),
+    )
+  }
+
+  if (report.byKol.length > 0) {
+    y = sectionTitle(doc, y, 'Penjualan lewat KOL')
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: 'KOL', width: 60 },
+        { header: 'Transaksi', width: 25, align: 'right' },
+        { header: 'Omzet', width: 35, align: 'right' },
+        { header: 'Potongan', width: 30, align: 'right' },
+        { header: 'Komisi (est.)', width: 30, align: 'right' },
+      ],
+      report.byKol.map((k) => [k.name, String(k.transactionCount), formatRupiah(k.revenue), minus(k.discount), formatRupiah(k.commission)]),
+    )
+  }
+
+  if (report.pointsEarnedTotal > 0 || report.pointsRedeemedTotal > 0) {
+    y = sectionTitle(doc, y, 'Member & Poin')
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: '', width: 45 },
+        { header: '', width: 45, align: 'right' },
+        { header: '', width: 45 },
+        { header: '', width: 45, align: 'right' },
+      ],
+      [
+        ['Transaksi Member', String(report.memberTransactionCount), 'Omzet Member', formatRupiah(report.memberRevenue)],
+        ['Poin Diberikan', String(report.pointsEarnedTotal), 'Poin Ditukar', `${report.pointsRedeemedTotal} (${formatRupiah(report.pointsRedeemedValue)})`],
+      ],
+    )
+  }
+
+  const deposit = await depositReportFor(report)
+  if (deposit) {
+    y = sectionTitle(doc, y, 'Saldo Member (titipan, bukan omzet)')
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: '', width: 45 },
+        { header: '', width: 45, align: 'right' },
+        { header: '', width: 45 },
+        { header: '', width: 45, align: 'right' },
+      ],
+      [
+        ['Isi Saldo', formatRupiah(deposit.topUpTotal), 'Dipakai Belanja', formatRupiah(deposit.usedTotal)],
+        ['Saldo Ditarik', formatRupiah(deposit.withdrawnTotal), 'Titipan Saat Ini', formatRupiah(deposit.outstanding)],
+      ],
     )
   }
 

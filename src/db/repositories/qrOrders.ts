@@ -121,7 +121,7 @@ export async function confirmQrOrder(
 
   await db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.syncQueue, db.auditLogs],
+    [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.customers, db.syncQueue, db.auditLogs],
     async () => {
     await db.orders.update(orderId, {
       queueNumber,
@@ -274,7 +274,7 @@ export async function mergeQrOrderIntoTable(
 
   await db.transaction(
     'rw',
-    [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.syncQueue, db.auditLogs],
+    [db.orders, db.orderItems, db.products, db.modifierOptions, db.cafeTables, db.settings, db.customers, db.syncQueue, db.auditLogs],
     async () => {
       const removed = await repriceQrItems(qrOrderId)
       const now = getTrustedNow()

@@ -5,6 +5,7 @@ import { db } from '@/db/schema'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
 import { markAwaitingPayment } from '@/db/repositories/tables'
 import { getSettings } from '@/db/repositories/settings'
+import { depositEnabledFor, getCustomerDeposit } from '@/db/repositories/deposits'
 import { implicitBillId, listOrderBills, unsplitBills } from '@/db/repositories/billing'
 import {
   finalizePayment,
@@ -30,6 +31,7 @@ import { warmUpStationPrinters } from '@/db/repositories/printQueue'
 import { openCashDrawerForPayment } from '@/features/printing/cashDrawer'
 import { featuresForBusinessType, requiresPaymentProof } from '@/lib/businessType'
 import { isOnlineOrder, onlineChannelLabel } from '@/lib/onlineOrders'
+import { discountLinesOf } from '@/lib/promos'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
 import type { Bill, Order, OrderItem, PaymentMethod, User } from '@/types/domain'
@@ -45,6 +47,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   transfer: 'Transfer',
   card: 'Kartu',
   platform: 'Aplikasi Online',
+  deposit: 'Saldo Member',
 }
 
 const DEFAULT_METHODS: PaymentMethod[] = ['cash', 'qris', 'transfer', 'card']
@@ -81,7 +84,13 @@ export function OrderPaymentScreen() {
 
   // Pesanan online: dibayar pelanggan lewat aplikasi (default) — tunai tetap ada untuk COD.
   const online = !!order && isOnlineOrder(order)
-  const paymentMethods: PaymentMethod[] = online ? ['platform', 'cash'] : basePaymentMethods
+  // Saldo member: muncul sebagai metode bayar bila pesanan ber-member & saldonya ada.
+  const depositAvailable =
+    useLiveQuery(
+      async () => (order?.customerId && depositEnabledFor(await getSettings()) ? (await getCustomerDeposit(order.customerId)).balance : 0),
+      [order?.customerId],
+    ) ?? 0
+  const paymentMethods: PaymentMethod[] = online ? ['platform', 'cash'] : depositAvailable > 0 ? [...basePaymentMethods, 'deposit'] : basePaymentMethods
   const platformRef = order && online ? onlineChannelLabel(order) : undefined
 
   if (!order || !orderId) {
@@ -137,6 +146,7 @@ export function OrderPaymentScreen() {
                 midtransEnabled={midtransEnabled}
                 tipsEnabled={tipsEnabled && !online}
                 platformRef={platformRef}
+                depositAvailable={depositAvailable}
                 user={currentUser}
                 onCompleted={() => setCompleted(true)}
               />
@@ -152,6 +162,7 @@ export function OrderPaymentScreen() {
             midtransEnabled={midtransEnabled}
             tipsEnabled={tipsEnabled && !online}
             platformRef={platformRef}
+            depositAvailable={depositAvailable}
             user={currentUser}
             onPartial={() => navigate('/kasir')}
             onCompleted={() => setCompleted(true)}
@@ -177,6 +188,7 @@ function SingleBillPayment({
   midtransEnabled,
   tipsEnabled,
   platformRef,
+  depositAvailable,
   user,
   onPartial,
   onCompleted,
@@ -189,6 +201,7 @@ function SingleBillPayment({
   midtransEnabled: boolean
   tipsEnabled: boolean
   platformRef?: string
+  depositAvailable: number
   user: User
   onPartial: () => void
   onCompleted: () => void
@@ -251,7 +264,9 @@ function SingleBillPayment({
 
       <div className="card mb-6 space-y-1 p-4 text-sm">
         <Row label="Subtotal" value={order.subtotal} />
-        {order.discountAmount > 0 && <Row label="Diskon" value={-order.discountAmount} />}
+        {discountLinesOf(order).map((d) => (
+          <Row key={d.label} label={d.label} value={-d.amount} />
+        ))}
         {order.serviceChargeAmount > 0 && <Row label="Service Charge" value={order.serviceChargeAmount} />}
         {order.taxAmount > 0 && <Row label="Pajak" value={order.taxAmount} />}
         {order.roundingAdjustment !== 0 && <Row label="Pembulatan" value={order.roundingAdjustment} />}
@@ -268,6 +283,7 @@ function SingleBillPayment({
         setActiveModal={setActiveModal}
         methods={paymentMethods}
         platformRef={platformRef}
+        depositAvailable={depositAvailable}
         midtrans={midtransEnabled ? { orderId: order.id, billId: implicitBillId(order.id) } : null}
         addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
         removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
@@ -321,6 +337,7 @@ function BillPayCard({
   midtransEnabled,
   tipsEnabled,
   platformRef,
+  depositAvailable,
   user,
   onCompleted,
 }: {
@@ -332,6 +349,7 @@ function BillPayCard({
   midtransEnabled: boolean
   tipsEnabled: boolean
   platformRef?: string
+  depositAvailable: number
   user: User
   onCompleted: () => void
 }) {
@@ -401,6 +419,7 @@ function BillPayCard({
             setActiveModal={setActiveModal}
             methods={paymentMethods}
             platformRef={platformRef}
+            depositAvailable={depositAvailable}
             midtrans={midtransEnabled ? { orderId: bill.orderId, billId: bill.id } : null}
             addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
@@ -459,6 +478,7 @@ function PayControls({
   setLineTip,
   midtrans,
   platformRef,
+  depositAvailable,
 }: {
   methods: PaymentMethod[]
   remaining: number
@@ -473,23 +493,37 @@ function PayControls({
   midtrans: { orderId: string; billId: string } | null
   /** Label kanal pesanan online (mis. "GoFood #F-123") — jadi referensi pembayaran `platform`. */
   platformRef?: string
+  /** Saldo member yang bisa dipakai (0 = tak ada). */
+  depositAvailable: number
 }) {
+  // Saldo yang belum dialokasikan ke baris pembayaran di layar ini.
+  const depositLeft = Math.max(0, depositAvailable - lines.filter((l) => l.method === 'deposit').reduce((s, l) => s + l.amount + (l.tipAmount ?? 0), 0))
   // QRIS statis sebagai cadangan saat Midtrans/internet bermasalah.
   const [forceStaticQris, setForceStaticQris] = useState(false)
   const [tipLineKey, setTipLineKey] = useState<string | null>(null)
   const tipLine = lines.find((l) => l.key === tipLineKey) ?? null
   return (
     <>
-      <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : methods.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+      <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : methods.length === 3 || methods.length > 4 ? 'grid-cols-3' : 'grid-cols-4'}`}>
         {methods.map((method) => (
           <button
             key={method}
-            disabled={remaining <= 0}
-            // Dibayar di aplikasi: tak ada uang yang diterima kasir — langsung catat sisa tagihan.
-            onClick={() => (method === 'platform' ? addLine({ method: 'platform', amount: remaining, reference: platformRef }) : setActiveModal(method))}
+            disabled={remaining <= 0 || (method === 'deposit' && depositLeft <= 0)}
+            // Dibayar di aplikasi / dari saldo: tak ada uang yang diterima kasir — langsung catat.
+            onClick={() =>
+              method === 'platform'
+                ? addLine({ method: 'platform', amount: remaining, reference: platformRef })
+                : method === 'deposit'
+                  ? addLine({ method: 'deposit', amount: Math.min(remaining, depositLeft) })
+                  : setActiveModal(method)
+            }
             className={`!min-h-[2.75rem] !py-2 text-sm ${method === 'platform' ? 'btn-primary' : 'btn-secondary'}`}
           >
-            {method === 'platform' ? `Dibayar via ${platformRef?.split(' #')[0] ?? 'Aplikasi'}` : METHOD_LABELS[method]}
+            {method === 'platform'
+              ? `Dibayar via ${platformRef?.split(' #')[0] ?? 'Aplikasi'}`
+              : method === 'deposit'
+                ? `Saldo Member (${formatRupiah(depositLeft)})`
+                : METHOD_LABELS[method]}
           </button>
         ))}
       </div>

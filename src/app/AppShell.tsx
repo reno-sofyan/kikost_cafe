@@ -46,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
   { to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
   { to: '/laporan', label: 'Laporan', icon: 'chart', permission: 'reports.view' },
+  { to: '/promo', label: 'Promo', icon: 'star', permission: 'settings.manage', feature: 'promos' },
   { to: '/produk', label: 'Produk', icon: 'coffee', permission: 'settings.manage' },
   { to: '/stok', label: 'Stok', icon: 'box', permission: 'stock.adjust' },
   { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: SHIFT_ROLES },

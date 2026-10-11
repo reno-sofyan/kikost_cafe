@@ -120,6 +120,14 @@ export interface AppSettings {
   qrisProvider?: 'static' | 'midtrans'
   /** Persen komisi tiap platform pesanan online (mis. GoFood 20) — untuk estimasi pendapatan bersih. */
   onlineCommissionPercent?: Partial<Record<OnlinePlatform, number>>
+  /** Aturan promo otomatis & voucher (kafe & restoran). */
+  promos?: Promo[]
+  /** KOL / influencer rekanan (pemilik kode voucher). */
+  kols?: Kol[]
+  /** Riwayat pembayaran komisi ke KOL. Terutang = komisi dari transaksi lunas − total di sini. */
+  kolPayouts?: KolPayout[]
+  /** Program member & poin loyalitas. Kosong = belum diaktifkan. */
+  loyalty?: LoyaltySettings
   /** Kantin: diskon kasir di atas persen ini (dari subtotal) wajib kode Pemilik. Default 10. */
   cashierDiscountMaxPercent?: number
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
@@ -326,6 +334,8 @@ export interface Product {
   /** Deskripsi singkat — ditampilkan di halaman detail produk pesan-mandiri QR. */
   description?: string
   modifierGroupIds: string[]
+  /** Menu paket/combo: daftar produk isi paket. Kosong = produk biasa. */
+  comboItems?: { productId: string; qty: number }[]
   createdAt: number
   updatedAt: number
 }
@@ -559,6 +569,14 @@ export interface Customer {
   name: string
   phone: string
   note: string
+  /** Tanggal lahir "YYYY-MM-DD" — dasar promo ulang tahun. */
+  birthDate?: string | null
+  /** Koreksi poin manual (+/−). Saldo poin = poin didapat − ditukar (dari transaksi lunas) + koreksi ini. */
+  pointsAdjustment?: number
+  /** Rincian bertanggal dari `pointsAdjustment` — dibutuhkan untuk menghitung masa berlaku poin. */
+  pointsLog?: PointsLogEntry[]
+  /** Isi & tarik saldo member. Saldo = jumlah di sini − pembayaran bermetode `deposit` milik pelanggan ini. */
+  depositLog?: DepositEntry[]
   createdAt: number
   updatedAt: number
 }
@@ -626,6 +644,10 @@ export interface OrderItem {
   notes: string
   discountAmount: number
   lineTotal: number
+  /** Snapshot kategori produk saat ditambahkan — dasar promo per kategori. */
+  categoryId?: string | null
+  /** Menu paket: komponen per 1 paket. Stok dipotong per komponen, bukan dari produk paketnya. */
+  comboComponents?: ComboComponent[]
   kitchenStatus: KitchenItemStatus
   /**
    * Item kategori ber-station `direct` (barang siap jual): dibuat langsung `done`,
@@ -659,6 +681,146 @@ export interface OrderItem {
 
 export type DiscountType = 'percent' | 'amount'
 
+/**
+ * Aturan promo (kafe & restoran). Tanpa `voucherCode` = promo OTOMATIS: terpasang
+ * sendiri di kasir saat syaratnya terpenuhi. Dengan `voucherCode` = voucher: hanya
+ * terpasang bila kasir memasukkan kodenya. Disimpan di `AppSettings.promos`.
+ */
+export type PromoKind = DiscountType | 'bxgy'
+
+export interface Promo {
+  id: string
+  name: string
+  active: boolean
+  /** `bxgy` = beli X gratis Y: tiap (buyQty + getQty) item yang cocok, getQty termurah gratis. */
+  kind: PromoKind
+  value: number
+  buyQty?: number
+  getQty?: number
+  /** Hanya untuk pesanan yang sudah dikaitkan dengan pelanggan terdaftar. */
+  memberOnly?: boolean
+  /** Tiap member hanya boleh memakainya sekali (transaksi lunas). */
+  oncePerCustomer?: boolean
+  /** Promo ulang tahun: berlaku di hari / bulan lahir member, sekali per tahun. */
+  birthday?: 'day' | 'month' | null
+  /** Dasar potongan: seluruh pesanan, atau hanya item dari kategori/produk tertentu. */
+  scope: 'order' | 'category' | 'product'
+  targetIds: string[]
+  minSubtotal?: number
+  /** Batas atas potongan (Rp) — berguna untuk promo persen. */
+  maxDiscount?: number
+  /** Hari berlaku (0 = Minggu … 6 = Sabtu). Kosong = setiap hari. */
+  days?: number[]
+  /** Jam berlaku WIB "HH:MM" (happy hour). Keduanya kosong = sepanjang hari. */
+  startTime?: string
+  endTime?: string
+  /** Rentang tanggal berlaku "YYYY-MM-DD" (inklusif). */
+  startDate?: string
+  endDate?: string
+  /** Kosong = dine-in & takeaway. Pesanan online hanya bila dipilih eksplisit. */
+  orderTypes?: OrderType[]
+  voucherCode?: string | null
+  /** Voucher: batas jumlah pemakaian (transaksi lunas). Kosong = tak terbatas. */
+  usageLimit?: number | null
+  /** Voucher milik seorang KOL — pemakaiannya dihitung sebagai penjualan & komisi KOL itu. */
+  kolId?: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * KOL / influencer yang bekerja sama. Tiap KOL punya satu atau lebih kode voucher
+ * (Promo ber-`kolId`); laporan menghitung transaksi, omzet, & komisinya.
+ * Disimpan di `AppSettings.kols`.
+ */
+export interface Kol {
+  id: string
+  name: string
+  /** Mis. "Instagram", "TikTok". */
+  platform: string
+  /** Nama akun, mis. "@kulinerbandung". */
+  handle: string
+  phone: string
+  /** Persen komisi dari penjualan bersih transaksi yang memakai vouchernya. 0 = tanpa komisi. */
+  commissionPercent: number
+  active: boolean
+  note: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** Pembayaran komisi ke seorang KOL (nama di-snapshot agar tetap terbaca setelah KOL dihapus). */
+export interface KolPayout {
+  id: string
+  kolId: string
+  kolName: string
+  amount: number
+  note: string
+  userId: string
+  userName: string
+  createdAt: number
+}
+
+export interface PointsLogEntry {
+  at: number
+  delta: number
+  reason: string
+}
+
+/** Positif = isi saldo, negatif = tarik/koreksi. */
+export interface DepositEntry {
+  id: string
+  at: number
+  amount: number
+  method: PaymentMethod
+  note: string
+  shiftId: string | null
+  userId: string
+  userName: string
+}
+
+/** Promo/voucher yang terpasang di sebuah pesanan (snapshot nama & nilai potongan). */
+export interface AppliedPromo {
+  promoId: string
+  name: string
+  amount: number
+  voucherCode?: string | null
+  /** Snapshot KOL pemilik voucher & persen komisinya saat dipakai. */
+  kolId?: string | null
+  kolName?: string | null
+  kolCommissionPercent?: number
+}
+
+export interface LoyaltyTier {
+  name: string
+  /** Total belanja seumur hidup (Rp) untuk mencapai tier ini. */
+  minSpend: number
+  /** Pengali poin yang didapat, mis. 1.25. */
+  multiplier: number
+}
+
+export interface LoyaltySettings {
+  enabled: boolean
+  /** Tiap sekian rupiah penjualan bersih = 1 poin. */
+  earnPerAmount: number
+  /** Nilai tukar 1 poin (Rp) saat dipakai sebagai potongan. */
+  pointValue: number
+  /** Minimal poin sekali tukar. */
+  minRedeem: number
+  tiers: LoyaltyTier[]
+  /** Poin hangus sekian bulan setelah didapat. 0/kosong = tidak pernah hangus. */
+  expiryMonths?: number
+  /** Saldo member (deposit): pelanggan isi saldo di muka lalu membayar dengan saldo. */
+  depositEnabled?: boolean
+}
+
+/** Isi sebuah menu paket: produk komponen & jumlahnya per 1 paket. */
+export interface ComboComponent {
+  productId: string
+  name: string
+  qty: number
+}
+
 export interface Order {
   id: string
   orderNumber: string
@@ -678,7 +840,18 @@ export interface Order {
   subtotal: number
   discountType: DiscountType | null
   discountValue: number
+  /** TOTAL potongan pesanan: diskon manual + promo/voucher + tukar poin. */
   discountAmount: number
+  /** Promo otomatis & voucher yang terpasang (dihitung ulang selama pesanan masih terbuka). */
+  appliedPromos?: AppliedPromo[]
+  voucherCode?: string | null
+  /** Bagian `discountAmount` yang berasal dari promo, voucher, & tukar poin (bukan diskon manual). */
+  promoDiscountAmount?: number
+  /** Poin member yang ditukar di pesanan ini & nilai tukar per poin saat itu. */
+  pointsRedeemed?: number
+  pointsRedeemValue?: number
+  /** Poin yang didapat pelanggan dari pesanan ini — diisi saat lunas. */
+  pointsEarned?: number
   taxPercent: number
   taxAmount: number
   serviceChargePercent: number
@@ -843,7 +1016,8 @@ export interface OnlinePayment {
 }
 
 /** `platform` = dibayar pelanggan lewat aplikasi pesan-antar; dicairkan platform belakangan (piutang). */
-export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card' | 'platform'
+/** `deposit` = dibayar dari saldo member (uangnya sudah diterima saat isi saldo). */
+export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card' | 'platform' | 'deposit'
 
 export interface PaymentInput {
   method: PaymentMethod
@@ -877,6 +1051,8 @@ export interface Payment {
    * Dua perangkat yang memproses pembayaran yang sama menghasilkan id yang sama → LWW dedup.
    */
   idempotencyKey: string
+  /** Pembayaran `deposit`: pemilik saldo yang dipotong (pembalik ikut menyalinnya). */
+  customerId?: string | null
   /** Diisi bila pembayaran ini adalah pembalik (refund) dari pembayaran lain. */
   reversalOfPaymentId: string | null
   confirmedByUserId: string

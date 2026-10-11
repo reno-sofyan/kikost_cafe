@@ -16,7 +16,7 @@ export async function searchCustomers(query: string): Promise<Customer[]> {
     .toArray()
 }
 
-export async function createCustomer(input: { name: string; phone: string; note: string }): Promise<Customer> {
+export async function createCustomer(input: { name: string; phone: string; note: string; birthDate?: string | null }): Promise<Customer> {
   const now = getTrustedNow()
   const customer: Customer = { ...input, id: newId(), createdAt: now, updatedAt: now }
   await db.transaction('rw', db.customers, db.syncQueue, async () => {
@@ -26,7 +26,7 @@ export async function createCustomer(input: { name: string; phone: string; note:
   return customer
 }
 
-export async function updateCustomer(id: string, patch: Partial<Pick<Customer, 'name' | 'phone' | 'note'>>): Promise<void> {
+export async function updateCustomer(id: string, patch: Partial<Pick<Customer, 'name' | 'phone' | 'note' | 'birthDate'>>): Promise<void> {
   await db.transaction('rw', db.customers, db.syncQueue, async () => {
     await db.customers.update(id, { ...patch, updatedAt: getTrustedNow() })
     const updated = await db.customers.get(id)

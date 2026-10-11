@@ -24,6 +24,7 @@ const QrOrderInbox = lazy(() => import('@/features/qr/QrOrderInbox').then((m) =>
 const HistoryScreen = lazy(() => import('@/features/history/HistoryScreen').then((m) => ({ default: m.HistoryScreen })))
 const CustomersScreen = lazy(() => import('@/features/customers/CustomersScreen').then((m) => ({ default: m.CustomersScreen })))
 const ExpensesScreen = lazy(() => import('@/features/expenses/ExpensesScreen').then((m) => ({ default: m.ExpensesScreen })))
+const PromoScreen = lazy(() => import('@/features/promos/PromoScreen').then((m) => ({ default: m.PromoScreen })))
 const ReportsScreen = lazy(() => import('@/features/reports/ReportsScreen').then((m) => ({ default: m.ReportsScreen })))
 const ProductsScreen = lazy(() => import('@/features/products/ProductsScreen').then((m) => ({ default: m.ProductsScreen })))
 const InventoryScreen = lazy(() => import('@/features/inventory/InventoryScreen').then((m) => ({ default: m.InventoryScreen })))
@@ -112,6 +113,7 @@ export default function App() {
             <Route path="/pengeluaran" element={<ExpensesScreen />} />
             <Route path="/laporan" element={<ReportsScreen />} />
             <Route path="/laporan/:scope" element={<ReportsScreen />} />
+            <Route path="/promo" element={<PromoScreen />} />
             <Route path="/produk" element={<ProductsScreen />} />
             <Route path="/stok" element={<InventoryScreen />} />
             <Route path="/shift" element={<ShiftScreen />} />

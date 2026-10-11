@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { reconcileTransactionSequence } from '@/db/repositories/settings'
 import { playNewOrderChime } from '@/lib/kitchenSound'
 import { DELETABLE_SYNC_ENTITIES, enqueueSync, type DeletableSyncEntity } from '@/sync/outbox'
-import type { OnlinePayment, Order, Payment, SyncEntity } from '@/types/domain'
+import type { Customer, OnlinePayment, Order, Payment, SyncEntity } from '@/types/domain'
 
 const IMMUTABLE_ORDER_STATUSES = new Set(['paid', 'void', 'completed'])
 
@@ -34,6 +34,9 @@ export async function applyRemoteEntities(entities: Partial<Record<SyncEntity, u
       case 'onlinePayments':
         await applyAppendOnly('onlinePayments', rows as { id: string }[])
         await applyOnlinePayments(rows as OnlinePayment[])
+        break
+      case 'customers':
+        await applyCustomers(rows as Customer[])
         break
       default:
         await applyGeneric(entity, rows)
@@ -151,6 +154,44 @@ async function applyAppendOnly(entity: SyncEntity, rows: { id: string }[]): Prom
     for (const row of rows) {
       if (await table.get(row.id)) continue
       await table.put(row)
+    }
+  })
+}
+
+/**
+ * Pelanggan: last-write-wins untuk profilnya, tetapi riwayat isi/tarik saldo dan
+ * koreksi poin DIGABUNG dari kedua sisi — dua tablet yang mengisi saldo pelanggan
+ * yang sama saat offline tak boleh saling menghapus catatan uang. Hasil gabungan
+ * yang berbeda dari kiriman server dikirim balik supaya perangkat lain ikut lengkap.
+ */
+async function applyCustomers(rows: Customer[]): Promise<void> {
+  const pointKey = (e: { at: number; delta: number; reason: string }) => `${e.at}|${e.delta}|${e.reason}`
+  await db.transaction('rw', db.customers, db.syncQueue, async () => {
+    for (const remote of rows) {
+      const local = await db.customers.get(remote.id)
+      if (!local) {
+        await db.customers.put(remote)
+        continue
+      }
+      const base = local.updatedAt > remote.updatedAt ? local : remote
+      const depositLog = [...(remote.depositLog ?? [])]
+      for (const e of local.depositLog ?? []) if (!depositLog.some((x) => x.id === e.id)) depositLog.push(e)
+      const pointsLog = [...(remote.pointsLog ?? [])]
+      for (const e of local.pointsLog ?? []) if (!pointsLog.some((x) => pointKey(x) === pointKey(e))) pointsLog.push(e)
+      const sum = (log: { delta: number }[] | undefined) => (log ?? []).reduce((s, e) => s + e.delta, 0)
+      // Koreksi lama tanpa rincian tanggal ikut pemenang LWW; sisanya = jumlah rincian gabungan.
+      const legacyAdjustment = (base.pointsAdjustment ?? 0) - sum(base.pointsLog)
+      const longerThan = (c: Customer) => depositLog.length > (c.depositLog?.length ?? 0) || pointsLog.length > (c.pointsLog?.length ?? 0)
+      // Server belum punya gabungannya: kiriman kita kurang lengkap, atau antrean lokal masih memuat versi lama.
+      const remoteMissing = longerThan(remote) || (base === local && longerThan(local))
+      const merged: Customer = {
+        ...base,
+        ...(depositLog.length ? { depositLog: depositLog.sort((a, b) => a.at - b.at) } : {}),
+        ...(pointsLog.length ? { pointsLog: pointsLog.sort((a, b) => a.at - b.at), pointsAdjustment: legacyAdjustment + sum(pointsLog) } : {}),
+        updatedAt: remoteMissing ? Math.max(local.updatedAt, remote.updatedAt) + 1 : base.updatedAt,
+      }
+      await db.customers.put(merged)
+      if (remoteMissing) await enqueueSync('customers', merged.id, merged)
     }
   })
 }

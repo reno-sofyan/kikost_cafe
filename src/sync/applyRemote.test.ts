@@ -52,6 +52,36 @@ beforeEach(async () => {
 })
 
 describe('applyRemoteEntities', () => {
+  it('pelanggan: riwayat saldo & koreksi poin dari dua perangkat digabung, bukan saling menimpa', async () => {
+    const entry = (id: string, at: number, amount: number) => ({ id, at, amount, method: 'cash' as const, note: '', shiftId: null, userId: 'u1', userName: 'Kasir' })
+    await db.customers.put({
+      id: 'c1', name: 'Ani', phone: '', note: '', createdAt: 1, updatedAt: 100,
+      depositLog: [entry('d-lokal', 90, 50000)],
+      pointsAdjustment: 5, pointsLog: [{ at: 80, delta: 5, reason: 'bonus' }],
+    })
+    await applyRemoteEntities({
+      customers: [
+        {
+          id: 'c1', name: 'Ani Baru', phone: '', note: '', createdAt: 1, updatedAt: 200,
+          depositLog: [entry('d-remote', 150, 100000)],
+          pointsAdjustment: 3, pointsLog: [{ at: 120, delta: 3, reason: 'promo' }],
+        },
+      ],
+    })
+    const merged = (await db.customers.get('c1'))!
+    expect(merged.name).toBe('Ani Baru')
+    expect(merged.depositLog?.map((e) => e.id)).toEqual(['d-lokal', 'd-remote'])
+    expect(merged.pointsLog).toHaveLength(2)
+    expect(merged.pointsAdjustment).toBe(8)
+    expect(merged.updatedAt).toBeGreaterThan(200)
+    // Gabungan dikirim balik agar server & perangkat lain ikut lengkap.
+    expect((await db.syncQueue.toArray()).some((q) => q.entity === 'customers' && q.entityId === 'c1')).toBe(true)
+
+    // Kiriman yang sama sekali lagi tidak menggandakan apa pun.
+    await applyRemoteEntities({ customers: [merged] })
+    expect((await db.customers.get('c1'))!.depositLog).toHaveLength(2)
+  })
+
   it('menerapkan entitas generik dengan last-write-wins', async () => {
     await db.customers.put({ id: 'c1', name: 'Lama', phone: '', note: '', createdAt: 1, updatedAt: 100 })
     await applyRemoteEntities({

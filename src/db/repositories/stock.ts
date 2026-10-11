@@ -6,6 +6,7 @@ import { convertQty } from '@/lib/units'
 import { getTrustedNow } from '@/lib/clockGuard'
 import type {
   Ingredient,
+  OrderItem,
   Product,
   RecipeItem,
   StockMovement,
@@ -237,6 +238,14 @@ async function hasEnoughIngredientsForOneUnit(items: RecipeItem[]): Promise<bool
 
 /** Memeriksa apakah suatu produk dapat memenuhi qty pesanan berdasarkan resep bahan baku. */
 export async function canFulfillProductQty(product: Product, qty: number): Promise<boolean> {
+  if (product.comboItems?.length) {
+    for (const c of product.comboItems) {
+      const component = await db.products.get(c.productId)
+      // Komponen paket tak boleh paket lagi — cegah rekursi tak berujung.
+      if (!component || component.comboItems?.length || !(await canFulfillProductQty(component, c.qty * qty))) return false
+    }
+    return true
+  }
   if (product.trackOwnStock) return product.stockQty >= qty
   const recipe = await db.recipes.where('productId').equals(product.id).first()
   if (!recipe || recipe.items.length === 0) return true
@@ -259,6 +268,18 @@ interface SaleLine {
 }
 
 /** Nama produk yang stok/bahannya tidak cukup untuk memenuhi seluruh baris. */
+/**
+ * Baris stok dari item pesanan: menu paket dipecah jadi produk komponennya
+ * (stok & resep milik komponen), produk biasa apa adanya.
+ */
+export function saleLinesForItems(items: Pick<OrderItem, 'productId' | 'qty' | 'comboComponents'>[]): SaleLine[] {
+  return items.flatMap((it) =>
+    it.comboComponents?.length
+      ? it.comboComponents.map((c) => ({ productId: c.productId, qty: c.qty * it.qty }))
+      : [{ productId: it.productId, qty: it.qty }],
+  )
+}
+
 export async function findOrderStockShortages(lines: SaleLine[]): Promise<string[]> {
   const ingNeed = new Map<string, number>()
   const prodNeed = new Map<string, number>()

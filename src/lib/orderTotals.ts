@@ -22,6 +22,8 @@ export interface OrderTotalsInput {
   taxPercent: number
   serviceChargePercent: number
   roundingIncrement: number
+  /** Potongan di luar diskon manual: promo, voucher, & tukar poin (Rp). */
+  extraDiscount?: number
 }
 
 export interface OrderTotals {
@@ -43,7 +45,7 @@ export function computeOrderTotals(input: OrderTotalsInput): OrderTotals {
   } else if (input.discountType === 'amount') {
     discountAmount = input.discountValue
   }
-  discountAmount = Math.min(Math.max(0, discountAmount), subtotal)
+  discountAmount = Math.min(Math.max(0, discountAmount) + Math.max(0, input.extraDiscount ?? 0), subtotal)
 
   const base = subtotal - discountAmount
   const serviceChargeAmount = roundHalfUp((base * input.serviceChargePercent) / 100)

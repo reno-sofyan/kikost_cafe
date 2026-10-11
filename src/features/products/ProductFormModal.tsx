@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listCategories } from '@/db/repositories/categories'
 import { listModifierGroups } from '@/db/repositories/modifiers'
-import { createProduct, getRecipeForProduct, saveRecipe, updateProduct } from '@/db/repositories/products'
+import { createProduct, getRecipeForProduct, listProducts, saveRecipe, updateProduct } from '@/db/repositories/products'
 import { listIngredients } from '@/db/repositories/stock'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
@@ -46,6 +46,11 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const [isFavorite, setIsFavorite] = useState(initial?.isFavorite ?? false)
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(initial?.photoDataUrl ?? null)
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>(initial?.modifierGroupIds ?? [])
+  // Menu paket: isi paket = produk lain (bukan paket) beserta jumlahnya.
+  const [comboItems, setComboItems] = useState<{ productId: string; qty: number }[]>(initial?.comboItems ?? [])
+  const comboCandidates = (useLiveQuery(() => listProducts(), []) ?? []).filter((p) => p.id !== initial?.id && !p.comboItems?.length)
+  const comboNormalPrice = comboItems.reduce((s, c) => s + (comboCandidates.find((p) => p.id === c.productId)?.price ?? 0) * c.qty, 0)
+  const comboCost = comboItems.reduce((s, c) => s + (comboCandidates.find((p) => p.id === c.productId)?.costPrice ?? 0) * c.qty, 0)
   const [recipeItems, setRecipeItems] = useState<RecipeItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const recipeLoadedRef = useRef(false)
@@ -104,7 +109,9 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
       costPrice,
       unit,
       photoDataUrl,
-      trackOwnStock: recipeItems.length === 0,
+      // Menu paket tak punya stok sendiri — stok dipotong dari produk isinya.
+      trackOwnStock: recipeItems.length === 0 && comboItems.length === 0,
+      comboItems: comboItems.filter((c) => c.qty > 0),
       stockQty,
       lowStockThreshold,
       isFavorite,
@@ -235,6 +242,64 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
             Favorit
           </label>
         </div>
+
+        {(features.combos || comboItems.length > 0) && (
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-ink-300">Menu Paket / Combo (opsional)</h3>
+            <p className="mb-2 text-xs text-ink-500">
+              Isi paket dijual dengan satu Harga Jual di atas. Stok dipotong dari tiap produk isinya, dan isinya ikut tercetak di tiket dapur & struk.
+            </p>
+            <div className="space-y-2">
+              {comboItems.map((c, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <select
+                    className="input-field flex-1"
+                    aria-label={`Produk isi paket ${index + 1}`}
+                    value={c.productId}
+                    onChange={(e) => setComboItems((list) => list.map((x, i) => (i === index ? { ...x, productId: e.target.value } : x)))}
+                  >
+                    {comboCandidates.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {formatRupiah(p.price)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    className="input-field !w-20"
+                    aria-label={`Jumlah isi paket ${index + 1}`}
+                    value={c.qty}
+                    onChange={(e) => setComboItems((list) => list.map((x, i) => (i === index ? { ...x, qty: Math.max(1, Math.floor(Number(e.target.value) || 1)) } : x)))}
+                  />
+                  <button className="btn-ghost btn-compact !px-3 !text-red-400" aria-label={`Hapus isi paket ${index + 1}`} onClick={() => setComboItems((list) => list.filter((_, i) => i !== index))}>
+                    <Icon name="trash" size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button
+                className="btn-secondary btn-compact !px-3 text-sm"
+                disabled={comboCandidates.length === 0}
+                onClick={() => setComboItems((list) => [...list, { productId: comboCandidates.find((p) => !list.some((x) => x.productId === p.id))?.id ?? comboCandidates[0].id, qty: 1 }])}
+              >
+                + Tambah Isi Paket
+              </button>
+              {comboItems.length > 0 && (
+                <span className="text-xs text-ink-400">
+                  Harga normal isi {formatRupiah(comboNormalPrice)}
+                  {price > 0 && comboNormalPrice > price ? ` • hemat ${formatRupiah(comboNormalPrice - price)}` : ''} • HPP isi {formatRupiah(comboCost)}
+                  {costPrice !== comboCost && (
+                    <button className="ml-2 text-brand-400 underline-offset-2 hover:underline" onClick={() => setCostPrice(comboCost)}>
+                      Pakai sebagai HPP
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Disembunyikan bila tak relevan untuk jenis usaha, kecuali produk ini sudah memakainya. */}
         {(features.modifiers || selectedModifierGroupIds.length > 0) && (

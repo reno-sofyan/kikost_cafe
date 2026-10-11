@@ -164,8 +164,8 @@ export async function markAvailable(id: string): Promise<void> {
 }
 
 /** Memindahkan pesanan aktif dari satu meja ke meja lain. */
-export async function moveTable(fromTableId: string, toTableId: string): Promise<void> {
-  await db.transaction('rw', db.cafeTables, db.orders, db.syncQueue, async () => {
+export async function moveTable(fromTableId: string, toTableId: string, actor?: { userId: string; userName: string }): Promise<void> {
+  await db.transaction('rw', db.cafeTables, db.orders, db.syncQueue, db.auditLogs, async () => {
     const fromTable = await db.cafeTables.get(fromTableId)
     const toTable = await db.cafeTables.get(toTableId)
     if (!fromTable || !toTable) throw new Error('Meja tidak ditemukan')
@@ -191,6 +191,20 @@ export async function moveTable(fromTableId: string, toTableId: string): Promise
     await db.orders.update(fromTable.currentOrderId, { tableId: toTableId, updatedAt: getTrustedNow() })
     const updatedOrder = await db.orders.get(fromTable.currentOrderId)
     if (updatedOrder) await enqueueSync('orders', updatedOrder.id, updatedOrder)
+    for (const id of [fromTableId, toTableId]) {
+      const table = await db.cafeTables.get(id)
+      if (table) await enqueueSync('cafeTables', id, table)
+    }
+    if (actor && updatedOrder) {
+      await recordAuditLog({
+        userId: actor.userId,
+        userName: actor.userName,
+        action: 'table.move',
+        entityType: 'order',
+        entityId: updatedOrder.id,
+        details: `Pesanan ${updatedOrder.orderNumber} dipindah dari ${fromTable.name} ke ${toTable.name}.`,
+      })
+    }
   })
 }
 

@@ -45,7 +45,11 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   rows.push('<hr />')
 
   rows.push(`<div class="row"><span>Subtotal</span><span>${formatRupiah(data.subtotal)}</span></div>`)
-  if (data.discountAmount > 0) rows.push(`<div class="row"><span>Diskon</span><span>-${formatRupiah(data.discountAmount)}</span></div>`)
+  if (data.discountAmount > 0) {
+    for (const d of data.discountLines?.length ? data.discountLines : [{ label: 'Diskon', amount: data.discountAmount }]) {
+      rows.push(`<div class="row"><span>${escapeHtml(d.label)}</span><span>-${formatRupiah(d.amount)}</span></div>`)
+    }
+  }
   if (data.serviceChargeAmount > 0) {
     rows.push(`<div class="row"><span>Service (${data.serviceChargePercent}%)</span><span>${formatRupiah(data.serviceChargeAmount)}</span></div>`)
   }
@@ -80,6 +84,8 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
     rows.push('<hr />')
   }
   if (data.isPreBill) rows.push('<div class="center">Bukan bukti pembayaran.<br />Silakan bayar di kasir.</div>')
+  if (data.pointsEarned && data.pointsEarned > 0) rows.push(`<div class="center">Anda mendapat ${data.pointsEarned} poin member</div>`)
+  if (data.depositBalance != null) rows.push(`<div class="center">Sisa saldo member ${formatRupiah(data.depositBalance)}</div>`)
   if (data.footerNote) rows.push(`<div class="center">${escapeHtml(data.footerNote)}</div>`)
 
   return rows.join('\n')
