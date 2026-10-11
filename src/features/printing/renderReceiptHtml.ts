@@ -11,6 +11,9 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   if (data.isVoided) {
     rows.push('<div class="voided">** TRANSAKSI DIBATALKAN **</div>')
   }
+  if (data.isPreBill) {
+    rows.push('<div class="voided">TAGIHAN SEMENTARA<br />BELUM DIBAYAR</div>')
+  }
   if (data.isReprint) {
     rows.push('<div class="center bold">*** CETAK ULANG ***</div>')
   }
@@ -23,10 +26,13 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   rows.push('<hr />')
   rows.push(`<div>No: ${escapeHtml(data.orderNumber)}</div>`)
   rows.push(`<div>Kasir: ${escapeHtml(data.cashierName)}</div>`)
+  if (data.waiterName) rows.push(`<div>Pelayan: ${escapeHtml(data.waiterName)}</div>`)
   rows.push(`<div>Waktu: ${escapeHtml(data.createdAtLabel)}</div>`)
   if (data.orderTypeLabel) {
     rows.push(`<div>Tipe: ${escapeHtml(data.orderTypeLabel)}${data.tableLabel ? ` (${escapeHtml(data.tableLabel)})` : ''}</div>`)
   }
+  if (data.onlineChannel) rows.push(`<div>Kanal: ${escapeHtml(data.onlineChannel)}</div>`)
+  if (data.guestCount) rows.push(`<div>Tamu: ${data.guestCount} orang</div>`)
   if (data.queueLabel) rows.push(`<div>${escapeHtml(data.queueLabel)}</div>`)
   if (data.customerNote) rows.push(`<div>Pelanggan: ${escapeHtml(data.customerNote)}</div>`)
   rows.push('<hr />')
@@ -52,16 +58,28 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   rows.push(`<div class="row bold big"><span>TOTAL</span><span>${formatRupiah(data.grandTotal)}</span></div>`)
   rows.push('<hr />')
 
-  for (const payment of data.payments) {
-    rows.push(`<div class="row"><span>${escapeHtml(payment.methodLabel)}</span><span>${formatRupiah(payment.amount)}</span></div>`)
-    if (payment.receivedAmount != null) {
-      rows.push(`<div class="row"><span>Bayar</span><span>${formatRupiah(payment.receivedAmount)}</span></div>`)
-    }
-    if (payment.changeAmount != null && payment.changeAmount > 0) {
-      rows.push(`<div class="row"><span>Kembali</span><span>${formatRupiah(payment.changeAmount)}</span></div>`)
-    }
+  if (data.isPreBill && data.payments.length > 0) {
+    const paid = data.payments.reduce((s, p) => s + p.amount, 0)
+    rows.push(`<div class="row"><span>Sudah dibayar</span><span>${formatRupiah(paid)}</span></div>`)
+    rows.push(`<div class="row bold"><span>SISA TAGIHAN</span><span>${formatRupiah(Math.max(0, data.grandTotal - paid))}</span></div>`)
+    rows.push('<hr />')
   }
-  rows.push('<hr />')
+  if (!data.isPreBill) {
+    for (const payment of data.payments) {
+      rows.push(`<div class="row"><span>${escapeHtml(payment.methodLabel)}</span><span>${formatRupiah(payment.amount)}</span></div>`)
+      if (payment.receivedAmount != null) {
+        rows.push(`<div class="row"><span>Bayar</span><span>${formatRupiah(payment.receivedAmount)}</span></div>`)
+      }
+      if (payment.changeAmount != null && payment.changeAmount > 0) {
+        rows.push(`<div class="row"><span>Kembali</span><span>${formatRupiah(payment.changeAmount)}</span></div>`)
+      }
+    }
+    if (data.tipTotal && data.tipTotal > 0) {
+      rows.push(`<div class="row"><span>Tip (terima kasih!)</span><span>${formatRupiah(data.tipTotal)}</span></div>`)
+    }
+    rows.push('<hr />')
+  }
+  if (data.isPreBill) rows.push('<div class="center">Bukan bukti pembayaran.<br />Silakan bayar di kasir.</div>')
   if (data.footerNote) rows.push(`<div class="center">${escapeHtml(data.footerNote)}</div>`)
 
   return rows.join('\n')

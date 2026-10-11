@@ -15,6 +15,7 @@ import { getTrustedNow } from '@/lib/clockGuard'
 import type {
   DiscountType,
   KitchenItemStatus,
+  OnlinePlatform,
   Order,
   OrderItem,
   OrderItemModifierSnapshot,
@@ -75,6 +76,11 @@ export async function startOrder(params: {
   notes?: string
   cashierId: string
   cashierName: string
+  /** Pelayan yang melayani (kafe & restoran). Kosong = tidak dicatat. */
+  waiter?: { id: string; name: string } | null
+  /** Pesanan online (`type: 'delivery'`): platform & nomor pesanan di aplikasinya. */
+  onlinePlatform?: OnlinePlatform
+  onlineOrderRef?: string
   shiftId: string
 }): Promise<Order> {
   // Guard integritas: pesanan wajib terikat ke shift yang benar-benar terbuka —
@@ -85,6 +91,10 @@ export async function startOrder(params: {
   const settings = await getSettings()
   const orderNumber = await nextTransactionNumber()
   const now = getTrustedNow()
+  // Harga di aplikasi pesan-antar sudah final: tanpa service charge, pajak, & pembulatan
+  // tambahan — supaya total POS sama persis dengan total di aplikasi platform.
+  const online = params.type === 'delivery'
+  const platform: OnlinePlatform | null = online ? (params.onlinePlatform ?? 'other') : null
   const order: Order = {
     id: newId(),
     orderNumber,
@@ -100,11 +110,11 @@ export async function startOrder(params: {
     discountType: null,
     discountValue: 0,
     discountAmount: 0,
-    taxPercent: settings.taxPercent,
+    taxPercent: online ? 0 : settings.taxPercent,
     taxAmount: 0,
-    serviceChargePercent: settings.serviceChargePercent,
+    serviceChargePercent: online ? 0 : settings.serviceChargePercent,
     serviceChargeAmount: 0,
-    roundingIncrementSnapshot: settings.roundingIncrement,
+    roundingIncrementSnapshot: online ? 1 : settings.roundingIncrement,
     roundingAdjustment: 0,
     grandTotal: 0,
     shiftId: params.shiftId,
@@ -113,6 +123,15 @@ export async function startOrder(params: {
     source: params.source ?? (params.type === 'takeaway' ? 'takeaway' : params.type === 'delivery' ? 'delivery' : 'cashier'),
     cashierId: params.cashierId,
     cashierName: params.cashierName,
+    waiterId: params.waiter?.id ?? null,
+    waiterName: params.waiter?.name ?? null,
+    ...(platform
+      ? {
+          onlinePlatform: platform,
+          onlineOrderRef: params.onlineOrderRef?.trim() || null,
+          onlineCommissionPercent: Math.min(100, Math.max(0, settings.onlineCommissionPercent?.[platform] ?? 0)),
+        }
+      : {}),
     notes: params.notes?.trim() ?? '',
     idempotencyKey: newIdempotencyKey(),
     parentOrderId: null,
@@ -803,6 +822,54 @@ export async function listActiveKitchenItems(): Promise<OrderItem[]> {
 
 export async function setOrderNotes(orderId: string, notes: string): Promise<void> {
   await db.orders.update(orderId, { notes, updatedAt: getTrustedNow() })
+}
+
+/** Menetapkan / mengganti pelayan sebuah pesanan (`null` = kosongkan). */
+export async function setOrderWaiter(orderId: string, waiter: { id: string; name: string } | null): Promise<void> {
+  await db.transaction('rw', db.orders, db.syncQueue, async () => {
+    await db.orders.update(orderId, {
+      waiterId: waiter?.id ?? null,
+      waiterName: waiter?.name ?? null,
+      updatedAt: getTrustedNow(),
+    })
+    const updated = await db.orders.get(orderId)
+    if (updated) await enqueueSync('orders', orderId, updated)
+  })
+}
+
+/**
+ * Mencatat bahwa tagihan sementara (pre-bill) dicetak: menaikkan hitungan cetak,
+ * menandai meja "menunggu pembayaran", dan menulis audit log — tagihan yang
+ * dicetak berulang kali layak terlihat oleh Pemilik.
+ */
+export async function markBillPrinted(orderId: string, actor: { userId: string; userName: string }): Promise<number> {
+  return db.transaction('rw', db.orders, db.cafeTables, db.syncQueue, db.auditLogs, async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    if (order.status !== 'open') throw new Error('Tagihan hanya bisa dicetak untuk pesanan yang belum dibayar.')
+    const now = getTrustedNow()
+    const count = (order.billPrintCount ?? 0) + 1
+    await db.orders.update(orderId, { billPrintedAt: now, billPrintCount: count, updatedAt: now })
+    const updated = await db.orders.get(orderId)
+    if (updated) await enqueueSync('orders', orderId, updated)
+
+    if (order.tableId) {
+      const table = await db.cafeTables.get(order.tableId)
+      if (table && table.currentOrderId === orderId && table.status === 'occupied') {
+        await db.cafeTables.update(order.tableId, { status: 'awaiting_payment', updatedAt: now })
+        const t = await db.cafeTables.get(order.tableId)
+        if (t) await enqueueSync('cafeTables', order.tableId, t)
+      }
+    }
+    await recordAuditLog({
+      ...actor,
+      action: 'order.bill.print',
+      entityType: 'order',
+      entityId: orderId,
+      details: `Tagihan sementara ${order.orderNumber} dicetak (ke-${count}).`,
+    })
+    return count
+  })
 }
 
 export async function recalcOrderTotals(orderId: string): Promise<void> {

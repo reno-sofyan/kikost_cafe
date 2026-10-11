@@ -2,6 +2,7 @@ import { db } from '@/db/schema'
 import { formatDateTime } from '@/lib/datetime'
 import { businessDisplayName } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
+import { onlineChannelLabel } from '@/lib/onlineOrders'
 import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
 
 export interface ReceiptLine {
@@ -37,15 +38,24 @@ export interface ReceiptData {
   serviceChargeAmount: number
   roundingAdjustment: number
   grandTotal: number
-  payments: { methodLabel: string; amount: number; receivedAmount: number | null; changeAmount: number | null }[]
+  payments: { methodLabel: string; amount: number; receivedAmount: number | null; changeAmount: number | null; tipAmount?: number }[]
   footerNote: string
   isVoided: boolean
+  /** Tagihan sementara (pre-bill): dicetak SEBELUM dibayar — tanpa rincian pembayaran. */
+  isPreBill?: boolean
+  /** Pelayan yang melayani (bila dicatat). */
+  waiterName?: string | null
+  guestCount?: number | null
+  /** Total tip dari semua pembayaran (0/undefined = tak ditampilkan). */
+  tipTotal?: number
+  /** Kanal pesanan online, mis. "GoFood #F-123". */
+  onlineChannel?: string | null
 }
 
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
   dine_in: 'Dine-in',
   takeaway: 'Takeaway',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
 const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
@@ -53,6 +63,7 @@ const PAYMENT_METHOD_LABELS: Record<Payment['method'], string> = {
   qris: 'QRIS',
   transfer: 'Transfer',
   card: 'Kartu',
+  platform: 'Aplikasi Online',
 }
 
 export function buildSampleReceiptData(settings: AppSettings): ReceiptData {
@@ -91,7 +102,7 @@ export function buildSampleReceiptData(settings: AppSettings): ReceiptData {
 export async function buildReceiptData(
   order: Order,
   settings: AppSettings,
-  opts: { isReprint?: boolean } = {},
+  opts: { isReprint?: boolean; preBill?: boolean } = {},
 ): Promise<ReceiptData> {
   const items = await db.orderItems.where('orderId').equals(order.id).toArray()
   const payments = await db.payments.where('orderId').equals(order.id).toArray()
@@ -117,7 +128,7 @@ export async function buildReceiptData(
     paperSize: settings.receiptPaperSize,
     orderNumber: order.orderNumber,
     cashierName: order.cashierName,
-    createdAtLabel: formatDateTime(order.paidAt ?? order.createdAt),
+    createdAtLabel: formatDateTime(opts.preBill ? Date.now() : (order.paidAt ?? order.createdAt)),
     orderTypeLabel: features.orderTypes.length > 1 || table ? ORDER_TYPE_LABELS[order.type] : null,
     tableLabel: table ? table.name : null,
     queueLabel: features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : null,
@@ -132,13 +143,22 @@ export async function buildReceiptData(
     serviceChargeAmount: order.serviceChargeAmount,
     roundingAdjustment: order.roundingAdjustment,
     grandTotal: order.grandTotal,
-    payments: payments.map((p) => ({
-      methodLabel: PAYMENT_METHOD_LABELS[p.method],
-      amount: p.amount,
-      receivedAmount: p.receivedAmount,
-      changeAmount: p.changeAmount,
-    })),
+    // Tagihan sementara tak memuat pembayaran — kecuali yang SUDAH masuk (bayar sebagian).
+    payments: payments
+      .filter((p) => !opts.preBill || p.amount > 0)
+      .map((p) => ({
+        methodLabel: PAYMENT_METHOD_LABELS[p.method],
+        amount: p.amount,
+        receivedAmount: p.receivedAmount,
+        changeAmount: p.changeAmount,
+        tipAmount: p.tipAmount || undefined,
+      })),
     footerNote: settings.receiptFooterNote,
     isVoided: order.status === 'void',
+    isPreBill: opts.preBill ?? false,
+    waiterName: order.waiterName?.trim() || null,
+    onlineChannel: onlineChannelLabel(order) || null,
+    guestCount: order.type === 'dine_in' ? order.guestCount : null,
+    tipTotal: payments.filter((p) => p.amount > 0).reduce((s, p) => s + (p.tipAmount ?? 0), 0),
   }
 }

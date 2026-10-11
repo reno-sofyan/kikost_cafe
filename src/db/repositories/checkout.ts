@@ -29,7 +29,7 @@ export { InsufficientPaymentError, InsufficientStockError, OrderAlreadyFinalized
 export type { PaymentInput, PaymentProofInput }
 
 /**
- * Pembayaran kasir dengan metode di `paymentProofMethods` (kantin: QRIS) WAJIB
+ * Pembayaran kasir dengan metode di `paymentProofMethods` (kantin: QRIS & transfer) WAJIB
  * melampirkan foto bukti. Pembayaran online dari webhook gateway (tanpa kasir)
  * melewati cek ini lewat `skipProofCheck`.
  */
@@ -166,6 +166,10 @@ export async function voidOrder(params: {
         const original = await db.payments.where('orderId').equals(order.id).toArray()
         for (const orig of original.filter((p) => p.amount > 0 && !p.reversalOfPaymentId)) {
           const reversal = await createReversalPayment(order, orig, -orig.amount, params.approverUserId, now)
+          // Transaksi batal → tip tunainya ikut dikembalikan dari laci.
+          if (orig.tipAmount && orig.method === 'cash' && order.shiftId) {
+            await addExpectedCash(order.shiftId, -orig.tipAmount)
+          }
           await createRefundDoc({
             order,
             reversal,

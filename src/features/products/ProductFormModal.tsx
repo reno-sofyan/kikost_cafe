@@ -37,6 +37,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const [sku, setSku] = useState(initial?.sku ?? '')
   const [barcode, setBarcode] = useState(initial?.barcode ?? '')
   const [price, setPrice] = useState(initial?.price ?? 0)
+  const [onlinePrice, setOnlinePrice] = useState(initial?.onlinePrice ?? 0)
   const [costPrice, setCostPrice] = useState(initial?.costPrice ?? 0)
   const [unit, setUnit] = useState<UnitOfMeasure>(initial?.unit ?? 'pcs')
   const [stockQty, setStockQty] = useState(initial?.stockQty ?? 0)
@@ -98,6 +99,8 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
       sku: sku.trim(),
       barcode: barcode.trim() || null,
       price,
+      // 0 = kosong → pesanan online memakai harga jual biasa.
+      onlinePrice: onlinePrice > 0 ? onlinePrice : null,
       costPrice,
       unit,
       photoDataUrl,
@@ -164,6 +167,23 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
             <span className="mb-1 block text-sm text-ink-300">Harga Jual</span>
             <input className="input-field" inputMode="numeric" value={formatRupiah(price)} onChange={(e) => setPrice(parseRupiahInput(e.target.value))} />
           </label>
+          {(features.onlineOrders || onlinePrice > 0) && (
+            <label>
+              <span className="mb-1 block text-sm text-ink-300">Harga Online (opsional)</span>
+              <input
+                className="input-field"
+                inputMode="numeric"
+                placeholder="Sama dengan harga jual"
+                value={onlinePrice > 0 ? formatRupiah(onlinePrice) : ''}
+                onChange={(e) => setOnlinePrice(parseRupiahInput(e.target.value))}
+              />
+              <span className="mt-1 block text-xs text-ink-500">
+                {onlinePrice > 0 && price > 0
+                  ? `Dipakai untuk pesanan GoFood/GrabFood/ShopeeFood — ${onlinePrice >= price ? '+' : ''}${(((onlinePrice - price) / price) * 100).toFixed(0)}% dari harga jual.`
+                  : 'Dipakai untuk pesanan GoFood/GrabFood/ShopeeFood. Kosongkan bila sama.'}
+              </span>
+            </label>
+          )}
           <label>
             <span className="mb-1 block text-sm text-ink-300">HPP (Harga Pokok)</span>
             <input className="input-field" inputMode="numeric" value={formatRupiah(costPrice)} onChange={(e) => setCostPrice(parseRupiahInput(e.target.value))} />

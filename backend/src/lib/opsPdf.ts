@@ -221,7 +221,7 @@ export interface TransactionReport {
   discountValue: number
 }
 
-const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu' }
+const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu', platform: 'Aplikasi Online' }
 const STATUS_LABEL: Record<TransactionRow['status'], string> = { paid: 'Lunas', void: 'Batal', open: 'Belum bayar' }
 
 export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Buffer {

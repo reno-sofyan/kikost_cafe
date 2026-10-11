@@ -71,6 +71,9 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   if (data.isVoided) {
     b.bold(true).line('** TRANSAKSI DIBATALKAN **').bold(false)
   }
+  if (data.isPreBill) {
+    b.bold(true).line('TAGIHAN SEMENTARA').line('BELUM DIBAYAR').bold(false)
+  }
   b.doubleHeight(true).bold(true).line(data.businessName).bold(false).doubleHeight(false)
   if (data.address) b.line(data.address)
   if (data.phone) b.line(data.phone)
@@ -79,8 +82,11 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   b.align('left')
   b.line(`No: ${data.orderNumber}`)
   b.line(`Kasir: ${data.cashierName}`)
+  if (data.waiterName) b.line(`Pelayan: ${data.waiterName}`)
   b.line(`Waktu: ${data.createdAtLabel}`)
   if (data.orderTypeLabel) b.line(`Tipe: ${data.orderTypeLabel}${data.tableLabel ? ` (${data.tableLabel})` : ''}`)
+  if (data.onlineChannel) b.line(`Kanal: ${data.onlineChannel}`)
+  if (data.guestCount) b.line(`Tamu: ${data.guestCount} orang`)
   if (data.queueLabel) b.line(data.queueLabel)
   if (data.customerNote) b.line(`Pelanggan: ${data.customerNote}`)
   if (data.isReprint) b.line('*** CETAK ULANG ***')
@@ -104,16 +110,27 @@ export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
   b.bold(true).line(twoColumns('TOTAL', formatRupiah(data.grandTotal), width)).bold(false)
   b.line(divider(width))
 
-  for (const payment of data.payments) {
-    b.line(twoColumns(payment.methodLabel, formatRupiah(payment.amount), width))
-    if (payment.receivedAmount != null) b.line(twoColumns('Bayar', formatRupiah(payment.receivedAmount), width))
-    if (payment.changeAmount != null && payment.changeAmount > 0) {
-      b.line(twoColumns('Kembali', formatRupiah(payment.changeAmount), width))
+  if (data.isPreBill) {
+    if (data.payments.length > 0) {
+      const paid = data.payments.reduce((s, p) => s + p.amount, 0)
+      b.line(twoColumns('Sudah dibayar', formatRupiah(paid), width))
+      b.bold(true).line(twoColumns('SISA TAGIHAN', formatRupiah(Math.max(0, data.grandTotal - paid)), width)).bold(false)
+      b.line(divider(width))
     }
+  } else {
+    for (const payment of data.payments) {
+      b.line(twoColumns(payment.methodLabel, formatRupiah(payment.amount), width))
+      if (payment.receivedAmount != null) b.line(twoColumns('Bayar', formatRupiah(payment.receivedAmount), width))
+      if (payment.changeAmount != null && payment.changeAmount > 0) {
+        b.line(twoColumns('Kembali', formatRupiah(payment.changeAmount), width))
+      }
+    }
+    if (data.tipTotal && data.tipTotal > 0) b.line(twoColumns('Tip', formatRupiah(data.tipTotal), width))
+    b.line(divider(width))
   }
-  b.line(divider(width))
 
   b.align('center')
+  if (data.isPreBill) b.line('Bukan bukti pembayaran.').line('Silakan bayar di kasir.')
   if (data.footerNote) b.line(data.footerNote)
   b.feed(3).cut()
 

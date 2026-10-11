@@ -20,9 +20,15 @@ describe('featuresForBusinessType', () => {
       paymentMethods: ['cash', 'qris', 'transfer', 'card'],
       paymentProofMethods: [],
       ownerPinCancel: false,
+      ownerCodeOnlineOnly: false,
       payLater: false,
       cashierControls: false,
       shiftReminder: false,
+      preBill: false,
+      tips: false,
+      reservations: false,
+      waiterTracking: false,
+      onlineOrders: false,
     })
   })
 
@@ -40,12 +46,17 @@ describe('featuresForBusinessType', () => {
     expect(f.buyerName).toBe(true)
     expect(f.stackSameItems).toBe(true)
     expect(f.serviceCharge).toBe(false)
-    expect(f.paymentMethods).toEqual(['cash', 'qris'])
-    expect(f.paymentProofMethods).toEqual(['qris'])
+    expect(f.paymentMethods).toEqual(['cash', 'qris', 'transfer'])
+    expect(f.paymentProofMethods).toEqual(['qris', 'transfer'])
     expect(f.shiftReminder).toBe(true)
+    // Layanan meja ala restoran tak relevan di kantin.
+    expect(f).toMatchObject({ preBill: false, tips: false, reservations: false, waiterTracking: false })
+    expect(f.onlineOrders).toBe(false)
+    // Kode pembatalan kantin hanya dari Konsol Pemilik online, bukan dari tablet.
+    expect(f.ownerCodeOnlineOnly).toBe(true)
   })
 
-  it('cafe_resto: semua fitur aktif', () => {
+  it('cafe_resto: semua fitur aktif + kode Pemilik, diskon/retur terkendali, pengingat shift', () => {
     expect(featuresForBusinessType('cafe_resto')).toEqual({
       tables: true,
       kitchen: true,
@@ -59,13 +70,19 @@ describe('featuresForBusinessType', () => {
       buyerName: false,
       stackSameItems: false,
       serviceCharge: true,
-      // Kewajiban/pengingat khusus kantin — bukan menu yang disembunyikan.
       paymentMethods: ['cash', 'qris', 'transfer', 'card'],
+      // Foto bukti & tagihan tertunda tetap khusus kantin.
       paymentProofMethods: [],
-      ownerPinCancel: false,
+      ownerPinCancel: true,
+      ownerCodeOnlineOnly: false,
       payLater: false,
-      cashierControls: false,
-      shiftReminder: false,
+      cashierControls: true,
+      shiftReminder: true,
+      preBill: true,
+      tips: true,
+      reservations: true,
+      waiterTracking: true,
+      onlineOrders: true,
     })
   })
 
@@ -87,9 +104,15 @@ describe('featuresForBusinessType', () => {
       paymentMethods: ['cash', 'qris', 'transfer', 'card'],
       paymentProofMethods: [],
       ownerPinCancel: false,
+      ownerCodeOnlineOnly: false,
       payLater: false,
       cashierControls: false,
       shiftReminder: false,
+      preBill: true,
+      tips: true,
+      reservations: true,
+      waiterTracking: true,
+      onlineOrders: true,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
       tables: true,
@@ -108,9 +131,15 @@ describe('featuresForBusinessType', () => {
       paymentMethods: ['cash', 'qris', 'transfer', 'card'],
       paymentProofMethods: [],
       ownerPinCancel: false,
+      ownerCodeOnlineOnly: false,
       payLater: false,
       cashierControls: false,
       shiftReminder: false,
+      preBill: true,
+      tips: true,
+      reservations: true,
+      waiterTracking: true,
+      onlineOrders: true,
     })
   })
 

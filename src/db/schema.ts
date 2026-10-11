@@ -33,6 +33,7 @@ import type {
   StockMovement,
   StockOpname,
   SyncQueueEntry,
+  Reservation,
   TableCall,
   User,
 } from '@/types/domain'
@@ -69,6 +70,7 @@ export class KioneDatabase extends Dexie {
   printRoutes!: Table<PrintRoute, string>
   printJobs!: Table<PrintJob, string>
   tableCalls!: Table<TableCall, string>
+  reservations!: Table<Reservation, string>
   shifts!: Table<Shift, string>
   cashMovements!: Table<CashMovement, string>
   expenses!: Table<Expense, string>
@@ -494,6 +496,13 @@ export class KioneDatabase extends Dexie {
     // v17: kode pembatalan sekali pakai dari Pemilik (kantin) — lokal, tanpa migrasi data.
     this.version(17).stores({
       cancelCodes: 'id',
+    })
+
+    // v18: reservasi meja (kafe & restoran) — tabel baru, tanpa migrasi data.
+    // Kolom baru opsional di orders (waiterId/waiterName, billPrintedAt) & payments
+    // (tipAmount) tak butuh backfill.
+    this.version(18).stores({
+      reservations: 'id, status, reservedAt, tableId',
     })
   }
 }

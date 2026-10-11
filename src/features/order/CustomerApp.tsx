@@ -826,7 +826,7 @@ interface OrderStatus {
   items: { name: string; qty: number; modifiers: string[]; note: string; lineTotal: number }[]
 }
 
-const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu' }
+const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu', platform: 'Aplikasi Online' }
 
 /** Cermin dari PAYABLE_STATUSES di backend/src/routes/midtransPay.ts — order
  * boleh dibayar online sejak dikirim, tak perlu menunggu konfirmasi kasir. */

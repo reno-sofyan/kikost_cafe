@@ -17,8 +17,9 @@ import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
 import { AboutPanel } from '@/features/settings/AboutPanel'
 import { readFileAsResizedDataUrl } from '@/lib/image'
+import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
-import type { BusinessType, ReceiptPaperSize } from '@/types/domain'
+import type { BusinessType, OnlinePlatform, ReceiptPaperSize } from '@/types/domain'
 
 type Tab =
   | 'profil'
@@ -231,6 +232,7 @@ function FiscalForm() {
   const [blindClose, setBlindClose] = useState(false)
   const [cashVarianceTolerance, setCashVarianceTolerance] = useState(5000)
   const [allowPartialPayment, setAllowPartialPayment] = useState(false)
+  const [onlineCommission, setOnlineCommission] = useState<Partial<Record<OnlinePlatform, number>>>({})
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -245,6 +247,7 @@ function FiscalForm() {
     setBlindClose(settings.blindClose)
     setCashVarianceTolerance(settings.cashVarianceTolerance)
     setAllowPartialPayment(settings.allowPartialPayment)
+    setOnlineCommission(settings.onlineCommissionPercent ?? {})
   }, [settings])
 
   if (!settings) return null
@@ -328,10 +331,37 @@ function FiscalForm() {
         </label>
       </div>
 
+      {featuresForBusinessType(settings.businessType).onlineOrders && (
+        <div className="rounded-xl border border-ink-800 p-3">
+          <p className="text-sm font-semibold text-ink-100">Komisi Platform Pesanan Online (%)</p>
+          <p className="mb-3 mt-0.5 text-xs text-ink-500">
+            Potongan yang diambil platform dari tiap pesanan. Dipakai laporan untuk menghitung estimasi pendapatan bersih — tidak mengubah harga.
+            Pesanan online tidak dikenai pajak, service charge, maupun pembulatan tambahan (harga di aplikasi sudah final).
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {ONLINE_PLATFORMS.map((platform) => (
+              <label key={platform} className="block">
+                <span className="mb-1 block text-sm text-ink-300">{ONLINE_PLATFORM_LABELS[platform]}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  className="input-field"
+                  value={onlineCommission[platform] ?? 0}
+                  onChange={(e) => setOnlineCommission((c) => ({ ...c, [platform]: Math.min(100, Math.max(0, Number(e.target.value) || 0)) }))}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <button
         className="btn-primary"
         onClick={async () => {
           await updateSettings({
+            onlineCommissionPercent: onlineCommission,
             taxPercent,
             serviceChargePercent,
             roundingIncrement,

@@ -24,6 +24,7 @@ export const SYNC_ENTITIES = [
   'printers',
   'printRoutes',
   'tableCalls',
+  'reservations',
   'products',
   'ingredients',
   'recipes',

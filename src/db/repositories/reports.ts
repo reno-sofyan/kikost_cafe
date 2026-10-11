@@ -1,6 +1,8 @@
 import { db } from '@/db/schema'
 import { listLowStockIngredients, listLowStockProducts } from '@/db/repositories/stock'
-import type { PaymentMethod } from '@/types/domain'
+import { jakartaDateKey } from '@/lib/datetime'
+import { isOnlineOrder, onlineCommissionOf, onlinePlatformOf } from '@/lib/onlineOrders'
+import type { OnlinePlatform, OrderType, PaymentMethod } from '@/types/domain'
 
 export interface DateRange {
   from: number
@@ -15,8 +17,21 @@ export interface ProductSalesRow {
   costTotal: number
 }
 
+/**
+ * Cakupan laporan penjualan: `offline` = dine-in & takeaway, `online` = pesanan
+ * online (GoFood/GrabFood/ShopeeFood/…), `all` = gabungan keduanya.
+ */
+export type ReportScope = 'offline' | 'online' | 'all'
+
+export const REPORT_SCOPE_LABELS: Record<ReportScope, string> = {
+  offline: 'Dine-in & Takeaway',
+  online: 'Pesanan Online',
+  all: 'Keseluruhan',
+}
+
 export interface SalesReport {
   range: DateRange
+  scope: ReportScope
   revenue: number
   transactionCount: number
   averageTransaction: number
@@ -29,16 +44,61 @@ export interface SalesReport {
   grossProfit: number
   byCategory: { categoryName: string; revenue: number }[]
   byCashier: { cashierName: string; revenue: number; transactionCount: number }[]
-  byPaymentMethod: { method: PaymentMethod; amount: number }[]
+  byPaymentMethod: { method: PaymentMethod; amount: number; count: number }[]
   topProducts: ProductSalesRow[]
   allProductSales: ProductSalesRow[]
+
+  // ---- Rincian laba-rugi sederhana ----
+  /** Penjualan kotor: jumlah harga item sebelum diskon, pajak, & service charge. */
+  grossSales: number
+  /** Penjualan bersih = kotor − diskon − retur. Dasar perhitungan margin. */
+  netSales: number
+  costOfGoodsSold: number
+  /** Laba kotor = penjualan bersih − HPP (pajak & service charge TIDAK dihitung laba). */
+  grossMargin: number
+  /** Persen laba kotor terhadap penjualan bersih (0 bila tak ada penjualan). */
+  grossMarginPercent: number
+  /** Laba operasional (estimasi) = laba kotor − komisi platform − pengeluaran. */
+  operatingProfit: number
+
+  // ---- Pesanan online ----
+  /** Omzet & jumlah transaksi tiap kanal — untuk perbandingan di laporan gabungan. */
+  channelSplit: { offline: { revenue: number; transactionCount: number }; online: { revenue: number; transactionCount: number } }
+  /** Estimasi komisi yang dipotong platform (dari persen komisi saat pesanan dibuat). */
+  onlineCommissionTotal: number
+  /** Omzet online − komisi = perkiraan yang benar-benar dicairkan platform. */
+  onlineNetReceived: number
+  byPlatform: { platform: OnlinePlatform; revenue: number; transactionCount: number; commission: number; net: number }[]
+  roundingTotal: number
+  itemsSold: number
+
+  // ---- Tamu & layanan ----
+  guestCount: number
+  /** Penjualan bersih per tamu dine-in yang tercatat (0 bila tak ada tamu). */
+  averagePerGuest: number
+  byOrderType: { type: OrderType; revenue: number; transactionCount: number }[]
+  /** Kosong bila tak ada pesanan yang mencatat pelayan dalam rentang ini. */
+  byWaiter: { waiterName: string; revenue: number; transactionCount: number; guestCount: number; tips: number }[]
+  /** Tip (bukan omzet) yang diterima dalam rentang ini. */
+  tipTotal: number
+  tipsByMethod: { method: PaymentMethod; amount: number }[]
+
+  // ---- Pola waktu (zona Asia/Jakarta) ----
+  /** 24 baris, jam 0..23. */
+  byHour: { hour: number; revenue: number; transactionCount: number }[]
+  /** Satu baris per hari yang ADA transaksinya, urut naik. */
+  byDay: { dateKey: string; revenue: number; transactionCount: number }[]
 }
 
-export async function buildSalesReport(range: DateRange): Promise<SalesReport> {
+export const UNASSIGNED_WAITER = 'Tanpa pelayan'
+const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000
+
+export async function buildSalesReport(range: DateRange, scope: ReportScope = 'all'): Promise<SalesReport> {
+  const inScope = (o: { type: OrderType }) => scope === 'all' || (scope === 'online') === isOnlineOrder(o)
   const orders = await db.orders
     .where('createdAt')
     .between(range.from, range.to, true, true)
-    .filter((o) => o.status === 'paid' || o.status === 'completed')
+    .filter((o) => (o.status === 'paid' || o.status === 'completed') && inScope(o))
     .toArray()
 
   const orderIds = orders.map((o) => o.id)
@@ -49,9 +109,10 @@ export async function buildSalesReport(range: DateRange): Promise<SalesReport> {
   const voidOrdersInRange = await db.orders
     .where('createdAt')
     .between(range.from, range.to, true, true)
-    .filter((o) => o.status === 'void')
+    .filter((o) => o.status === 'void' && inScope(o))
     .count()
-  const expenses = await db.expenses.where('createdAt').between(range.from, range.to, true, true).toArray()
+  // Pengeluaran operasional tak bisa dibagi per kanal — hanya masuk laporan gabungan.
+  const expenses = scope === 'all' ? await db.expenses.where('createdAt').between(range.from, range.to, true, true).toArray() : []
 
   const products = await db.products.toArray()
   const categories = await db.categories.toArray()
@@ -110,14 +171,96 @@ export async function buildSalesReport(range: DateRange): Promise<SalesReport> {
     .map(([cashierName, stats]) => ({ cashierName, ...stats }))
     .sort((a, b) => b.revenue - a.revenue)
 
-  const methodTotals = new Map<PaymentMethod, number>()
+  const methodTotals = new Map<PaymentMethod, { amount: number; count: number }>()
+  const tipByMethod = new Map<PaymentMethod, number>()
+  const tipByOrder = new Map<string, number>()
   for (const payment of payments) {
-    methodTotals.set(payment.method, (methodTotals.get(payment.method) ?? 0) + payment.amount)
+    const m = methodTotals.get(payment.method) ?? { amount: 0, count: 0 }
+    m.amount += payment.amount
+    if (payment.amount > 0) m.count += 1
+    methodTotals.set(payment.method, m)
+    if (payment.amount > 0 && payment.tipAmount) {
+      tipByMethod.set(payment.method, (tipByMethod.get(payment.method) ?? 0) + payment.tipAmount)
+      tipByOrder.set(payment.orderId, (tipByOrder.get(payment.orderId) ?? 0) + payment.tipAmount)
+    }
   }
-  const byPaymentMethod = Array.from(methodTotals.entries()).map(([method, amount]) => ({ method, amount }))
+  const byPaymentMethod = Array.from(methodTotals.entries())
+    .map(([method, v]) => ({ method, ...v }))
+    .sort((a, b) => b.amount - a.amount)
+  const tipsByMethod = Array.from(tipByMethod.entries()).map(([method, amount]) => ({ method, amount }))
+  const tipTotal = tipsByMethod.reduce((s, t) => s + t.amount, 0)
+
+  const grossSales = orders.reduce((s, o) => s + o.subtotal, 0)
+  const netSales = grossSales - discountTotal - returnTotal
+  const grossMargin = netSales - costOfGoodsSold
+  const guestCount = orders.reduce((s, o) => s + (o.type === 'dine_in' ? (o.guestCount ?? 0) : 0), 0)
+  const dineInNet = orders.filter((o) => o.type === 'dine_in' && o.guestCount).reduce((s, o) => s + o.subtotal - o.discountAmount, 0)
+
+  const channelSplit = { offline: { revenue: 0, transactionCount: 0 }, online: { revenue: 0, transactionCount: 0 } }
+  const platformStats = new Map<OnlinePlatform, { revenue: number; transactionCount: number; commission: number }>()
+  for (const order of orders) {
+    const channel = isOnlineOrder(order) ? channelSplit.online : channelSplit.offline
+    channel.revenue += order.grandTotal
+    channel.transactionCount += 1
+    const platform = onlinePlatformOf(order)
+    if (platform) {
+      const p = platformStats.get(platform) ?? { revenue: 0, transactionCount: 0, commission: 0 }
+      p.revenue += order.grandTotal
+      p.transactionCount += 1
+      p.commission += onlineCommissionOf(order)
+      platformStats.set(platform, p)
+    }
+  }
+  const byPlatform = Array.from(platformStats.entries())
+    .map(([platform, s]) => ({ platform, ...s, net: s.revenue - s.commission }))
+    .sort((a, b) => b.revenue - a.revenue)
+  const onlineCommissionTotal = byPlatform.reduce((s, p) => s + p.commission, 0)
+
+  const typeStats = new Map<OrderType, { revenue: number; transactionCount: number }>()
+  const waiterStats = new Map<string, { revenue: number; transactionCount: number; guestCount: number; tips: number }>()
+  const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour, revenue: 0, transactionCount: 0 }))
+  const dayStats = new Map<string, { revenue: number; transactionCount: number }>()
+  for (const order of orders) {
+    const t = typeStats.get(order.type) ?? { revenue: 0, transactionCount: 0 }
+    t.revenue += order.grandTotal
+    t.transactionCount += 1
+    typeStats.set(order.type, t)
+
+    const wName = order.waiterName?.trim() || UNASSIGNED_WAITER
+    const w = waiterStats.get(wName) ?? { revenue: 0, transactionCount: 0, guestCount: 0, tips: 0 }
+    w.revenue += order.grandTotal
+    w.transactionCount += 1
+    w.guestCount += order.type === 'dine_in' ? (order.guestCount ?? 0) : 0
+    w.tips += tipByOrder.get(order.id) ?? 0
+    waiterStats.set(wName, w)
+
+    const h = byHour[new Date(order.createdAt + JAKARTA_OFFSET_MS).getUTCHours()]
+    h.revenue += order.grandTotal
+    h.transactionCount += 1
+
+    const key = jakartaDateKey(order.createdAt)
+    const d = dayStats.get(key) ?? { revenue: 0, transactionCount: 0 }
+    d.revenue += order.grandTotal
+    d.transactionCount += 1
+    dayStats.set(key, d)
+  }
+  const byOrderType = Array.from(typeStats.entries())
+    .map(([type, stats]) => ({ type, ...stats }))
+    .sort((a, b) => b.revenue - a.revenue)
+  // Hanya tampil bila ada pesanan yang benar-benar mencatat pelayan.
+  const hasWaiters = Array.from(waiterStats.keys()).some((n) => n !== UNASSIGNED_WAITER)
+  const byWaiter = hasWaiters
+    ? Array.from(waiterStats.entries())
+        .map(([waiterName, stats]) => ({ waiterName, ...stats }))
+        .sort((a, b) => b.revenue - a.revenue)
+    : []
+  const byDay = Array.from(dayStats.entries())
+    .map(([dateKey, stats]) => ({ dateKey, ...stats }))
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
 
   return {
     range,
+    scope,
     revenue,
     transactionCount: orders.length,
     averageTransaction: orders.length > 0 ? revenue / orders.length : 0,
@@ -133,7 +276,33 @@ export async function buildSalesReport(range: DateRange): Promise<SalesReport> {
     byPaymentMethod,
     topProducts,
     allProductSales,
+    grossSales,
+    netSales,
+    costOfGoodsSold,
+    grossMargin,
+    grossMarginPercent: netSales > 0 ? (grossMargin / netSales) * 100 : 0,
+    operatingProfit: grossMargin - onlineCommissionTotal - expenseTotal,
+    channelSplit,
+    onlineCommissionTotal,
+    onlineNetReceived: channelSplit.online.revenue - onlineCommissionTotal,
+    byPlatform,
+    roundingTotal: orders.reduce((s, o) => s + o.roundingAdjustment, 0),
+    itemsSold: activeItems.reduce((s, i) => s + i.qty, 0),
+    guestCount,
+    averagePerGuest: guestCount > 0 ? dineInNet / guestCount : 0,
+    byOrderType,
+    byWaiter,
+    tipTotal,
+    tipsByMethod,
+    byHour,
+    byDay,
   }
+}
+
+/** Rentang sebelumnya dengan panjang yang sama — untuk pembanding "vs periode lalu". */
+export function previousRange(range: DateRange): DateRange {
+  const length = range.to - range.from
+  return { from: range.from - length - 1, to: range.from - 1 }
 }
 
 export interface StockReportRow {

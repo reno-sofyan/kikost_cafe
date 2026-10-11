@@ -64,12 +64,12 @@ test('laporan Hari Ini: omzet, jumlah transaksi, laba kotor (HPP), produk terlar
   await page.getByRole('link', { name: 'Laporan' }).click()
   await page.getByRole('button', { name: 'Hari Ini' }).click()
 
-  // Nilai StatCard = <p.text-xs>label</p> lalu <p.text-lg>value</p>.
+  // Nilai kartu KPI = <p.text-xs>label</p> lalu <p>value</p>.
   const statValue = (label: string) =>
     page.locator('p.text-xs', { hasText: new RegExp(`^${label}$`) }).locator('xpath=following-sibling::p[1]')
 
   await expect(statValue('Omzet')).toContainText(/\d/)
-  await expect(statValue('Jumlah Transaksi')).toHaveText('1')
+  await expect(statValue('Transaksi')).toHaveText('1')
 
   const omzet = Number((await statValue('Omzet').innerText()).replace(/\D/g, ''))
   const laba = Number((await statValue('Laba Kotor').innerText()).replace(/\D/g, ''))
@@ -79,7 +79,7 @@ test('laporan Hari Ini: omzet, jumlah transaksi, laba kotor (HPP), produk terlar
   // Kentang Goreng terjual (Produk Terlaris) dengan qty 1x.
   await expect(page.getByRole('heading', { name: 'Produk Terlaris' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Kentang Goreng' }).first()).toBeVisible()
-  await expect(page.getByRole('cell', { name: '1x' }).first()).toBeVisible()
+  await expect(page.getByRole('cell', { name: '1×' }).first()).toBeVisible()
 
   // Laporan Stok ter-render (tak crash — regresi indeks Dexie).
   await expect(page.getByRole('heading', { name: 'Laporan Stok' })).toBeVisible()

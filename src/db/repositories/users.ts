@@ -57,6 +57,17 @@ export async function listActiveUsers(): Promise<User[]> {
   return db.users.filter((u) => u.active).toArray()
 }
 
+/** Pengguna aktif yang bisa dicatat sebagai pelayan — pramusaji dulu, lalu sisanya (kecuali dapur). */
+export async function listWaiterCandidates(): Promise<User[]> {
+  const users = (await listActiveUsers()).filter((u) => u.role !== 'dapur')
+  return users.sort((a, b) => Number(b.role === 'pramusaji') - Number(a.role === 'pramusaji') || a.name.localeCompare(b.name))
+}
+
+/** Pramusaji yang membuka pesanan sendiri otomatis tercatat sebagai pelayannya. */
+export function defaultWaiterFor(user: Pick<User, 'id' | 'name' | 'role'>, waiterTracking: boolean): { id: string; name: string } | null {
+  return waiterTracking && user.role === 'pramusaji' ? { id: user.id, name: user.name } : null
+}
+
 export async function setUserActive(userId: string, active: boolean, actor: Actor): Promise<void> {
   await db.transaction('rw', db.users, db.syncQueue, db.auditLogs, async () => {
     const user = await db.users.get(userId)

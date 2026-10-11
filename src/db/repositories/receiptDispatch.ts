@@ -3,6 +3,7 @@ import { getSettings } from '@/db/repositories/settings'
 import { activePrinterForStation } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
 import { buildReceiptData } from '@/features/printing/receiptData'
+import { markBillPrinted } from '@/db/repositories/orders'
 
 /**
  * Mengantre cetak nota kasir untuk sebuah order ke station 'cashier'.
@@ -41,6 +42,38 @@ export async function enqueueReceiptForOrder(
 
   // Tidak ditunggu: pembayaran/kasir tak boleh tertahan oleh printer yang lambat
   // menyambung. Hasil cetak (atau kegagalannya) terlihat di antrean cetak.
+  void processPrintQueue()
+  const printer = await activePrinterForStation('cashier')
+  return { enqueued: true, noPrinter: !printer }
+}
+
+/**
+ * Mengantre cetak TAGIHAN SEMENTARA (pre-bill) ke printer kasir — untuk diantar
+ * ke meja sebelum tamu membayar. Tiap cetakan punya kunci sendiri (boleh dicetak
+ * lagi setelah tamu menambah pesanan) dan tercatat lewat `markBillPrinted`.
+ */
+export async function enqueuePreBillForOrder(
+  orderId: string,
+  actor: { userId: string; userName: string },
+): Promise<{ enqueued: boolean; noPrinter: boolean }> {
+  const order = await db.orders.get(orderId)
+  if (!order) return { enqueued: false, noPrinter: false }
+  const settings = await getSettings()
+  const data = await buildReceiptData(order, settings, { preBill: true })
+  const count = await markBillPrinted(orderId, actor)
+
+  await db.transaction('rw', [db.printJobs, db.printers, db.syncQueue, db.auditLogs], async () => {
+    await enqueuePrintJob({
+      kind: 'receipt',
+      station: 'cashier',
+      payload: data,
+      title: `Tagihan ${order.orderNumber}${count > 1 ? ` (ke-${count})` : ''}`,
+      orderId,
+      idempotencyKey: `pb_${orderId}_${count}`,
+      requestedBy: actor.userId,
+      requestedByName: actor.userName,
+    })
+  })
   void processPrintQueue()
   const printer = await activePrinterForStation('cashier')
   return { enqueued: true, noPrinter: !printer }

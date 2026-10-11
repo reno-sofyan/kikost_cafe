@@ -44,8 +44,8 @@ const pay = (orderId: string, withProof: boolean) =>
   })
 
 describe('fitur bukti pembayaran per jenis usaha', () => {
-  it('hanya kantin yang mewajibkan (khusus QRIS)', () => {
-    expect(featuresForBusinessType('kantin').paymentProofMethods).toEqual(['qris'])
+  it('hanya kantin yang mewajibkan (QRIS & transfer)', () => {
+    expect(featuresForBusinessType('kantin').paymentProofMethods).toEqual(['qris', 'transfer'])
     for (const t of ['cafe_resto', 'minimarket', 'lainnya'] as const) expect(featuresForBusinessType(t).paymentProofMethods).toEqual([])
   })
 })
@@ -68,6 +68,14 @@ describe('kantin: foto bukti wajib untuk QRIS', () => {
         payments: [{ method: 'cash', amount: 2000 }, { method: 'qris', amount: 3000 }],
         confirmedByUserId: 'u1',
       }),
+    ).rejects.toThrow(PaymentProofRequiredError)
+    expect(await db.payments.count()).toBe(0)
+  })
+
+  it('transfer juga wajib foto', async () => {
+    const order = await openOrder()
+    await expect(
+      finalizePayment({ orderId: order.id, payments: [{ method: 'transfer', amount: 5000 }], confirmedByUserId: 'u1' }),
     ).rejects.toThrow(PaymentProofRequiredError)
     expect(await db.payments.count()).toBe(0)
   })

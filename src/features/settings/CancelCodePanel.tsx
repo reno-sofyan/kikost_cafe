@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { generateCancelCode, getActiveCancelCode, revokeCancelCode } from '@/db/repositories/cancelCodes'
 import { getSettings, updateSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT } from '@/db/repositories/orders'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { useSessionStore } from '@/state/sessionStore'
@@ -28,6 +29,8 @@ export function CancelCodePanel() {
   const [shownCode, setShownCode] = useState<string | null>(null)
   const savedMax = useLiveQuery(async () => (await getSettings()).cashierDiscountMaxPercent ?? DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT, [])
   const [maxDraft, setMaxDraft] = useState<string | null>(null)
+  // Kantin: kode hanya dibuat di Konsol Pemilik online — tablet tak menyediakan tombolnya.
+  const onlineOnly = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).ownerCodeOnlineOnly, [])
 
   async function saveDiscountMax() {
     const v = Number(maxDraft)
@@ -72,39 +75,67 @@ export function CancelCodePanel() {
         <h2 className="mb-1 text-lg font-bold text-ink-50">Kode Pembatalan</h2>
         <p className="mb-4 text-sm text-ink-400">
           Setiap pembatalan pesanan butuh kode dari Pemilik. Kode hanya tampil sekali saat dibuat dan langsung hangus setelah dipakai
-          untuk satu pembatalan — kasir yang pernah melihatnya tak bisa memakainya lagi. Membuat kode baru membatalkan kode lama yang belum terpakai.
+          untuk satu pembatalan — kasir yang pernah melihatnya tak bisa memakainya lagi.
+          {!onlineOnly && ' Membuat kode baru membatalkan kode lama yang belum terpakai.'}
         </p>
 
-        <div className="mb-4 rounded-xl bg-ink-800 px-4 py-3 text-sm">
-          {active === undefined ? (
-            <span className="text-ink-400">Memuat…</span>
-          ) : active ? (
-            <span className="text-ink-200">
-              Ada 1 kode aktif, dibuat {formatDateTime(active.createdAt)} oleh {active.createdByName}. Belum terpakai.
-            </span>
-          ) : (
-            <span className="text-ink-400">Tidak ada kode aktif — kasir belum bisa membatalkan pesanan.</span>
-          )}
-        </div>
+        {onlineOnly === undefined ? null : onlineOnly ? (
+          <>
+            <div className="rounded-xl bg-ink-800 px-4 py-3 text-sm text-ink-200">
+              Kode pembatalan dibuat lewat <span className="font-semibold">Konsol Pemilik online</span> (tautan khusus Pemilik), bukan dari tablet ini.
+              Tablet perlu terhubung internet saat kasir memasukkan kodenya.
+            </div>
+            {active && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-ink-300">
+                <span>Masih ada 1 kode lama buatan tablet ini ({formatDateTime(active.createdAt)}).</span>
+                <button
+                  className="btn-ghost !text-red-400"
+                  onClick={() =>
+                    void revokeCancelCode(currentUser).then(
+                      () => toast.success('Kode pembatalan dihapus.'),
+                      (e) => toast.error(e instanceof Error ? e.message : 'Gagal menghapus kode'),
+                    )
+                  }
+                >
+                  Hapus Kode Lama
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-4 rounded-xl bg-ink-800 px-4 py-3 text-sm">
+              {active === undefined ? (
+                <span className="text-ink-400">Memuat…</span>
+              ) : active ? (
+                <span className="text-ink-200">
+                  Ada 1 kode aktif, dibuat {formatDateTime(active.createdAt)} oleh {active.createdByName}. Belum terpakai.
+                </span>
+              ) : (
+                <span className="text-ink-400">Tidak ada kode aktif — kasir belum bisa membatalkan pesanan.</span>
+              )}
+            </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" onClick={() => setAskPin(true)}>
-            {active ? 'Buat Kode Baru' : 'Buat Kode'}
-          </button>
-          {active && (
-            <button
-              className="btn-ghost !text-red-400"
-              onClick={() =>
-                void revokeCancelCode(currentUser).then(
-                  () => toast.success('Kode pembatalan dihapus.'),
-                  (e) => toast.error(e instanceof Error ? e.message : 'Gagal menghapus kode'),
-                )
-              }
-            >
-              Hapus Kode Aktif
-            </button>
-          )}
-        </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-primary" onClick={() => setAskPin(true)}>
+                {active ? 'Buat Kode Baru' : 'Buat Kode'}
+              </button>
+              {active && (
+                <button
+                  className="btn-ghost !text-red-400"
+                  onClick={() =>
+                    void revokeCancelCode(currentUser).then(
+                      () => toast.success('Kode pembatalan dihapus.'),
+                      (e) => toast.error(e instanceof Error ? e.message : 'Gagal menghapus kode'),
+                    )
+                  }
+                >
+                  Hapus Kode Aktif
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card p-5">

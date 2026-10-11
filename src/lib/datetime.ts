@@ -75,3 +75,20 @@ export function durationSince(startTimestamp: number, nowTimestamp: number): str
   if (hours > 0) return `${hours}j ${minutes}m`
   return `${minutes}m`
 }
+
+/** Jam:menit (HH:MM, 24 jam) dalam zona waktu Asia/Jakarta — untuk `<input type="time">`. */
+export function jakartaTimeKey(timestamp: number): string {
+  const d = new Date(timestamp + JAKARTA_UTC_OFFSET_MS)
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * Gabungkan tanggal (YYYY-MM-DD) + jam (HH:MM) WIB menjadi epoch ms — tak bergantung
+ * zona waktu perangkat. Mengembalikan NaN bila masukan tak valid.
+ */
+export function jakartaDateTimeToEpoch(dateKey: string, timeKey: string): number {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const [hour, minute] = timeKey.split(':').map(Number)
+  if (![year, month, day, hour, minute].every((n) => Number.isFinite(n))) return NaN
+  return Date.UTC(year as number, (month as number) - 1, day as number, hour as number, minute as number) - JAKARTA_UTC_OFFSET_MS
+}

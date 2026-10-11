@@ -6,6 +6,11 @@ import { formatRupiah } from '@/lib/currency'
 import { durationSince } from '@/lib/datetime'
 import { useEmptyOrderCancel } from '@/features/pos/useEmptyOrderCancel'
 import { Modal } from '@/components/ui/Modal'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
+import { prepareReceiptData } from '@/features/printing/printReceipt'
+import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
+import type { ReceiptData } from '@/features/printing/receiptData'
 import type { CafeTable } from '@/types/domain'
 
 interface Props {
@@ -20,6 +25,8 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
   const orderItems = useLiveQuery(() => (order ? listOrderItems(order.id) : []), [order?.id]) ?? []
   const allTables = useLiveQuery(() => listTables(), []) ?? []
   const orderIsEmpty = !!order && orderItems.filter((i) => !i.removed && !i.voided).length === 0
+  const preBillEnabled = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).preBill, []) ?? false
+  const [preBill, setPreBill] = useState<ReceiptData | null>(null)
 
   // Alur bersama: pesanan yang PERNAH berisi item butuh alasan (+ kode Pemilik di kafe/kantin).
   const cancelEmpty = useEmptyOrderCancel(() => onClose())
@@ -46,11 +53,20 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
                 {order.orderNumber} • {formatRupiah(order.grandTotal)}
               </p>
             )}
+            {order?.waiterName && <p className="text-sm text-ink-400">Pelayan: {order.waiterName}</p>}
+            {order?.billPrintCount ? (
+              <p className="text-sm font-semibold text-yellow-400">Tagihan sudah dicetak{order.billPrintCount > 1 ? ` ${order.billPrintCount}×` : ''}</p>
+            ) : null}
 
             <div className="flex flex-col gap-2 pt-2">
               {order && (
                 <button className="btn-primary" onClick={() => onOpenInCashier(order.id)}>
                   Buka di Kasir
+                </button>
+              )}
+              {order && preBillEnabled && !orderIsEmpty && order.status === 'open' && (
+                <button className="btn-secondary" onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}>
+                  {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
                 </button>
               )}
               {(table.status === 'occupied' || table.status === 'awaiting_payment') && (
@@ -147,6 +163,7 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
           </div>
         )}
         {cancelEmpty.dialogs}
+        {preBill && order && <PrintPreviewModal data={preBill} orderId={order.id} onClose={() => setPreBill(null)} />}
     </Modal>
   )
 }

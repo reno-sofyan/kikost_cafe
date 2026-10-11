@@ -1,19 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { issueQrToken, listTables, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
 import { startOrder } from '@/db/repositories/orders'
 import { getOpenShift } from '@/db/repositories/shifts'
+import { getSettings } from '@/db/repositories/settings'
+import { defaultWaiterFor } from '@/db/repositories/users'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { useSessionStore } from '@/state/sessionStore'
 import { usePosStore } from '@/state/posStore'
-import { durationSince } from '@/lib/datetime'
+import { durationSince, formatTime } from '@/lib/datetime'
+import { heldReservationsByTable, seatReservation } from '@/db/repositories/reservations'
+import { ReservationsPanel } from '@/features/tables/ReservationsPanel'
+import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { toast } from '@/state/toastStore'
 import { Icon } from '@/components/ui/Icon'
 import { TableDetailModal } from '@/features/tables/TableDetailModal'
 import { TableQrModal } from '@/features/tables/TableQrModal'
 import { NewTableModal } from '@/features/tables/NewTableModal'
 import { FloorPlanCanvas } from '@/features/tables/FloorPlanCanvas'
 import { STATUS_COLORS, STATUS_DOT } from '@/features/tables/tableStatusStyles'
-import type { CafeTable, TableStatus } from '@/types/domain'
+import type { CafeTable, Reservation, TableStatus } from '@/types/domain'
 
 export function TablesScreen() {
   const navigate = useNavigate()
@@ -21,10 +28,23 @@ export function TablesScreen() {
   const setActiveOrderId = usePosStore((s) => s.setActiveOrderId)
   const tables = useLiveQuery(() => listTables(), []) ?? []
   const openShift = useLiveQuery(() => getOpenShift(), [])
+  const settings = useLiveQuery(() => getSettings(), [])
+  const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const [selected, setSelected] = useState<CafeTable | null>(null)
   const [qrTable, setQrTable] = useState<CafeTable | null>(null)
   const [showNewTable, setShowNewTable] = useState(false)
   const [arranging, setArranging] = useState(false)
+  const [view, setView] = useState<'floor' | 'reservations'>('floor')
+  const { confirm, dialog: confirmDialog } = useConfirmDialog()
+  // Penanda "Dipesan" bergantung waktu — segarkan tiap menit.
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const heldByTable =
+    useLiveQuery(() => (features.reservations ? heldReservationsByTable(nowTick) : new Map<string, Reservation>()), [features.reservations, nowTick]) ??
+    new Map<string, Reservation>()
 
   const areas = Array.from(new Set(tables.map((t) => t.area)))
 
@@ -39,10 +59,47 @@ export function TablesScreen() {
       guestCount: 2,
       cashierId: currentUser.id,
       cashierName: currentUser.name,
+      waiter: defaultWaiterFor(currentUser, features.waiterTracking),
       shiftId: openShift.id,
     })
     setActiveOrderId(order.id)
     navigate('/kasir')
+  }
+
+  async function seat(reservation: Reservation, tableId: string) {
+    if (!openShift) {
+      navigate('/shift')
+      return
+    }
+    const order = await seatReservation(reservation.id, {
+      tableId,
+      cashierId: currentUser.id,
+      cashierName: currentUser.name,
+      waiter: defaultWaiterFor(currentUser, features.waiterTracking),
+      shiftId: openShift.id,
+    })
+    setActiveOrderId(order.id)
+    navigate('/kasir')
+  }
+
+  /** Meja kosong yang sedang ditahan reservasi: tanya dulu sebelum dipakai tamu lain. */
+  async function handleAvailableTap(table: CafeTable) {
+    const held = heldByTable.get(table.id)
+    if (!held) return quickStart(table)
+    const seatIt = await confirm({
+      title: `${table.name} dipesan ${formatTime(held.reservedAt)}`,
+      description: `Reservasi atas nama ${held.customerName} (${held.guestCount} tamu). Dudukkan tamu reservasi ini sekarang?`,
+      confirmLabel: 'Dudukkan Reservasi',
+      cancelLabel: 'Bukan, Tamu Lain',
+    })
+    if (seatIt) return seat(held, table.id).catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Gagal mendudukkan tamu'))
+    const useAnyway = await confirm({
+      title: 'Pakai meja untuk tamu lain?',
+      description: `${held.customerName} dijadwalkan ${formatTime(held.reservedAt)}. Reservasinya tetap tersimpan — pindahkan ke meja lain bila perlu.`,
+      confirmLabel: 'Ya, Pakai Meja',
+      tone: 'danger',
+    })
+    if (useAnyway) await quickStart(table)
   }
 
   const counts = tables.reduce(
@@ -54,14 +111,31 @@ export function TablesScreen() {
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-ink-50">Denah Meja</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-ink-50">{view === 'floor' ? 'Denah Meja' : 'Reservasi'}</h1>
+            {features.reservations && (
+              <div className="flex gap-1 rounded-xl bg-ink-900 p-1">
+                {(['floor', 'reservations'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium ${view === v ? 'bg-brand-600 text-white' : 'text-ink-300 hover:text-ink-50'}`}
+                  >
+                    {v === 'floor' ? 'Denah' : 'Reservasi'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <p className="mt-0.5 text-sm text-ink-300">
-            {arranging
+            {view === 'reservations'
+              ? 'Catat booking meja; ketuk "Dudukkan" saat tamu datang untuk langsung membuka pesanan.'
+              : arranging
               ? 'Geser meja untuk menyusun denah sesuai tata letak kafe. Ketuk meja untuk lihat/ubah QR.'
               : 'Ketuk meja kosong untuk memulai pesanan · ketuk meja terisi untuk kelola · ikon QR untuk cetak.'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+        <div className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 ${view === 'reservations' ? 'hidden' : ''}`}>
           {(['available', 'occupied', 'awaiting_payment', 'needs_cleaning'] as TableStatus[]).map((s) => (
             <span key={s} className="flex items-center gap-1.5 text-xs font-medium text-ink-300">
               <span className={`h-2 w-2 rounded-full ${STATUS_DOT[s]}`} />
@@ -85,7 +159,9 @@ export function TablesScreen() {
         </div>
       </div>
 
-      {tables.length === 0 && (
+      {view === 'reservations' && <ReservationsPanel onSeat={seat} />}
+
+      {view === 'floor' && tables.length === 0 && (
         <div className="mt-16 flex flex-col items-center gap-3 text-center text-sm text-ink-300">
           <p>Belum ada meja.</p>
           <button className="btn-primary" onClick={() => setShowNewTable(true)}>
@@ -95,7 +171,7 @@ export function TablesScreen() {
         </div>
       )}
 
-      {areas.map((area) => (
+      {view === 'floor' && areas.map((area) => (
         <div key={area} className="mb-8">
           {area && <h2 className="eyebrow mb-3">{area}</h2>}
           {arranging ? (
@@ -107,7 +183,7 @@ export function TablesScreen() {
                 .map((table) => (
                   <div key={table.id} className="relative">
                     <button
-                      onClick={() => (table.status === 'available' ? void quickStart(table) : setSelected(table))}
+                      onClick={() => (table.status === 'available' ? void handleAvailableTap(table) : setSelected(table))}
                       className={`flex w-full flex-col items-center gap-1 rounded-2xl border px-4 pb-4 pt-7 transition-all active:scale-[0.97] ${STATUS_COLORS[table.status]}`}
                     >
                       <span className="line-clamp-1 font-display text-lg font-semibold leading-none">{table.name}</span>
@@ -115,6 +191,11 @@ export function TablesScreen() {
                         <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[table.status]}`} />
                         {TABLE_STATUS_LABELS[table.status]}
                       </span>
+                      {heldByTable.get(table.id) && (
+                        <span className="mt-0.5 line-clamp-1 rounded-full bg-accent-500/20 px-2 py-0.5 text-[0.65rem] font-semibold text-accent-500">
+                          Dipesan {formatTime(heldByTable.get(table.id)!.reservedAt)} · {heldByTable.get(table.id)!.customerName}
+                        </span>
+                      )}
                       {table.guestCount ? <span className="text-[0.7rem] opacity-90">{table.guestCount} tamu</span> : null}
                       {table.occupiedSince ? (
                         <span className="text-[0.7rem] opacity-75">{durationSince(table.occupiedSince, Date.now())}</span>
@@ -146,6 +227,7 @@ export function TablesScreen() {
         />
       )}
 
+      {confirmDialog}
       {qrTable && <TableQrModal table={qrTable} onClose={() => setQrTable(null)} />}
 
       {showNewTable && (

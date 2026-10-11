@@ -1,3 +1,4 @@
+import { onlineChannelLabel } from '@/lib/onlineOrders'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
@@ -14,7 +15,7 @@ import type { KitchenItemStatus, Order, OrderItem } from '@/types/domain'
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
   dine_in: 'Dine-in',
   takeaway: 'Takeaway',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
 const STATUS_TABS: { value: KitchenItemStatus | 'all'; label: string }[] = [
@@ -140,7 +141,7 @@ export function KitchenDisplayScreen() {
                   ) : null
                 )}
                 <div className="mb-3 text-sm text-ink-400">
-                  {ORDER_TYPE_LABELS[order.type]}
+                  {onlineChannelLabel(order) || ORDER_TYPE_LABELS[order.type]}
                   {table ? ` • ${table.name}` : ''}
                   {order.queueNumber ? ` • Antrean #${order.queueNumber}` : ''}
                   {order.notes ? <span className="ml-1 font-medium text-ink-200">• {order.notes}</span> : null}

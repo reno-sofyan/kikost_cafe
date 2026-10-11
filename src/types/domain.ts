@@ -118,6 +118,8 @@ export interface AppSettings {
    * lunas otomatis saat Midtrans mengonfirmasi. Kosong = data lama → static.
    */
   qrisProvider?: 'static' | 'midtrans'
+  /** Persen komisi tiap platform pesanan online (mis. GoFood 20) — untuk estimasi pendapatan bersih. */
+  onlineCommissionPercent?: Partial<Record<OnlinePlatform, number>>
   /** Kantin: diskon kasir di atas persen ini (dari subtotal) wajib kode Pemilik. Default 10. */
   cashierDiscountMaxPercent?: number
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
@@ -307,6 +309,9 @@ export interface Product {
   sku: string
   barcode: string | null
   price: number
+  /** Harga jual khusus pesanan online (biasanya dinaikkan untuk menutup komisi platform).
+   *  Kosong/0 = sama dengan `price`. */
+  onlinePrice?: number | null
   costPrice: number
   unit: UnitOfMeasure
   photoDataUrl: string | null
@@ -514,6 +519,30 @@ export interface CafeTable {
   updatedAt: number
 }
 
+export type ReservationStatus = 'booked' | 'seated' | 'cancelled' | 'no_show'
+
+/**
+ * Reservasi meja (kafe & restoran). `tableId` boleh kosong — meja bisa ditentukan
+ * belakangan. Saat tamu datang ("Dudukkan") reservasi menjadi `seated` dan
+ * `orderId` menunjuk pesanan yang dibuka untuknya.
+ */
+export interface Reservation {
+  id: string
+  customerName: string
+  phone: string
+  guestCount: number
+  /** Waktu kedatangan yang dipesan (epoch ms). */
+  reservedAt: number
+  tableId: string | null
+  note: string
+  status: ReservationStatus
+  orderId: string | null
+  createdByUserId: string
+  createdByName: string
+  createdAt: number
+  updatedAt: number
+}
+
 /** Permintaan ringan dari pelanggan lewat halaman status QR (panggil waiter / minta tagihan). */
 export interface TableCall {
   id: string
@@ -534,7 +563,10 @@ export interface Customer {
   updatedAt: number
 }
 
+/** `delivery` = pesanan ONLINE (GoFood/GrabFood/ShopeeFood/dll.) — di UI berlabel "Online". */
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery'
+
+export type OnlinePlatform = 'gofood' | 'grabfood' | 'shopeefood' | 'other'
 export type OrderSource = 'cashier' | 'qr_table' | 'takeaway' | 'delivery'
 
 /**
@@ -664,6 +696,18 @@ export interface Order {
   source: OrderSource
   cashierId: string
   cashierName: string
+  /** Pesanan online (`type: 'delivery'`): platform asal & nomor pesanan di aplikasinya. */
+  onlinePlatform?: OnlinePlatform | null
+  onlineOrderRef?: string | null
+  /** Snapshot persen komisi platform saat pesanan dibuat — dasar estimasi "diterima bersih". */
+  onlineCommissionPercent?: number
+  /** Pelayan yang melayani pesanan ini (kafe & restoran) — nama di-snapshot karena
+   *  data pengguna tidak disinkronkan. Kosong = tidak dicatat. */
+  waiterId?: string | null
+  waiterName?: string | null
+  /** Tagihan sementara (pre-bill) terakhir dicetak & berapa kali — sebelum dibayar. */
+  billPrintedAt?: number | null
+  billPrintCount?: number
   notes: string
   idempotencyKey: string
   parentOrderId: string | null
@@ -798,13 +842,16 @@ export interface OnlinePayment {
   createdAt: number
 }
 
-export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card'
+/** `platform` = dibayar pelanggan lewat aplikasi pesan-antar; dicairkan platform belakangan (piutang). */
+export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'card' | 'platform'
 
 export interface PaymentInput {
   method: PaymentMethod
   amount: number
   receivedAmount?: number
   reference?: string
+  /** Tip dari tamu yang ikut dibayar lewat metode ini — DI LUAR `amount`. */
+  tipAmount?: number
   /** Dikonfirmasi gateway (QRIS dinamis Midtrans) — bukti = transaksi gateway, tak perlu foto. */
   gateway?: 'midtrans'
 }
@@ -820,6 +867,11 @@ export interface Payment {
   receivedAmount: number | null
   changeAmount: number | null
   reference: string | null
+  /**
+   * Tip (gratuity) yang diterima bersama pembayaran ini. BUKAN omzet dan TIDAK
+   * termasuk `amount`; tip tunai ikut masuk laci (kas seharusnya). Kosong = 0.
+   */
+  tipAmount?: number
   /**
    * Kunci idempotensi bisnis — deterministik dari (orderId, method, amount, urutan).
    * Dua perangkat yang memproses pembayaran yang sama menghasilkan id yang sama → LWW dedup.
@@ -934,6 +986,7 @@ export type SyncEntity =
   | 'printers'
   | 'printRoutes'
   | 'tableCalls'
+  | 'reservations'
   | 'products'
   | 'ingredients'
   | 'recipes'

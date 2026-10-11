@@ -9,7 +9,7 @@ const MAX_PHOTOS = 3
  * Ambil foto bukti pembayaran (layar QRIS sukses di HP pembeli, uang tunai, dsb.)
  * lewat kamera tablet. `capture="environment"` membuka kamera belakang langsung;
  * foto dikecilkan dulu supaya ringan disimpan & disinkronkan. Untuk metode wajib
- * (QRIS kantin) foto tidak bisa dilewati; untuk tunai foto opsional.
+ * (QRIS & transfer kantin) foto tidak bisa dilewati; untuk tunai foto opsional.
  */
 export function PaymentProofCapture({
   draft,
@@ -74,7 +74,7 @@ export function PaymentProofCapture({
         </div>
       ) : (
         <p className="text-xs text-ink-500">
-          {required ? 'Foto layar QRIS berhasil di HP pembeli — pembayaran QRIS tidak bisa diselesaikan tanpa foto.' : 'Boleh dilewati untuk pembayaran tunai.'}
+          {required ? 'Foto layar QRIS/transfer berhasil di HP pembeli — pembayaran QRIS & transfer tidak bisa diselesaikan tanpa foto.' : 'Boleh dilewati untuk pembayaran tunai.'}
         </p>
       )}
     </div>

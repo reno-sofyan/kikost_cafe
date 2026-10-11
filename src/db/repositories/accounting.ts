@@ -11,6 +11,7 @@ import type { PaymentMethod } from '@/types/domain'
 export const ACCOUNTS = {
   CASH: '1-10001 Kas',
   BANK: '1-10002 Bank / QRIS / Kartu',
+  PLATFORM_RECEIVABLE: '1-10201 Piutang Platform Online',
   INVENTORY: '1-10301 Persediaan Bahan',
   TAX_PAYABLE: '2-20001 Utang Pajak (PB1/PPN)',
   SALES: '4-40001 Pendapatan Penjualan',
@@ -49,7 +50,9 @@ function ymd(ts: number): string {
   return new Date(ts + 7 * 3600_000).toISOString().slice(0, 10)
 }
 
-const accountForMethod = (m: PaymentMethod) => (m === 'cash' ? ACCOUNTS.CASH : ACCOUNTS.BANK)
+// Pembayaran via aplikasi pesan-antar belum jadi uang di bank — dicatat sebagai piutang platform.
+const accountForMethod = (m: PaymentMethod) =>
+  m === 'cash' ? ACCOUNTS.CASH : m === 'platform' ? ACCOUNTS.PLATFORM_RECEIVABLE : ACCOUNTS.BANK
 
 export async function buildAccountingExport(range: DateRange): Promise<AccountingExport> {
   const lines: JournalLine[] = []

@@ -54,9 +54,10 @@ async function approvalFrom(owner: User): Promise<OwnerApproval> {
 }
 
 describe('flag kantin', () => {
-  it('ownerPinCancel & payLater hanya untuk kantin (kafe ditunda)', () => {
+  it('ownerPinCancel untuk kantin & kafe; payLater hanya kantin', () => {
     expect(featuresForBusinessType('kantin')).toMatchObject({ ownerPinCancel: true, payLater: true })
-    for (const t of ['cafe_resto', 'minimarket', 'lainnya'] as const) {
+    expect(featuresForBusinessType('cafe_resto')).toMatchObject({ ownerPinCancel: true, payLater: false })
+    for (const t of ['minimarket', 'lainnya'] as const) {
       expect(featuresForBusinessType(t)).toMatchObject({ ownerPinCancel: false, payLater: false })
     }
   })

@@ -111,6 +111,7 @@ export default function App() {
             <Route path="/pelanggan" element={<CustomersScreen />} />
             <Route path="/pengeluaran" element={<ExpensesScreen />} />
             <Route path="/laporan" element={<ReportsScreen />} />
+            <Route path="/laporan/:scope" element={<ReportsScreen />} />
             <Route path="/produk" element={<ProductsScreen />} />
             <Route path="/stok" element={<InventoryScreen />} />
             <Route path="/shift" element={<ShiftScreen />} />

@@ -188,6 +188,8 @@ export async function payBill(params: {
           created.push(existing)
           continue
         }
+        // Tip di luar `amount`: tak ikut melunasi tagihan & bukan omzet.
+        const tip = Math.max(0, Math.round(p.tipAmount ?? 0))
         const payment: Payment = {
           id: key,
           orderId: order.id,
@@ -195,8 +197,9 @@ export async function payBill(params: {
           method: p.method,
           amount: p.amount,
           receivedAmount: p.receivedAmount ?? null,
-          changeAmount: p.receivedAmount != null ? Math.max(0, p.receivedAmount - p.amount) : null,
+          changeAmount: p.receivedAmount != null ? Math.max(0, p.receivedAmount - p.amount - tip) : null,
           reference: p.reference ?? null,
+          ...(tip > 0 ? { tipAmount: tip } : {}),
           idempotencyKey: key,
           reversalOfPaymentId: null,
           confirmedByUserId: params.confirmedByUserId,
@@ -206,7 +209,8 @@ export async function payBill(params: {
         await enqueueSync('payments', payment.id, payment)
         created.push(payment)
         addedThisCall += p.amount
-        if (p.method === 'cash' && order.shiftId) await addExpectedCash(order.shiftId, p.amount)
+        // Tip tunai ikut masuk laci sampai dibagikan (dicatat lewat Kas Keluar).
+        if (p.method === 'cash' && order.shiftId) await addExpectedCash(order.shiftId, p.amount + tip)
       }
 
       // Hanya saat ada pembayaran BARU — percobaan ulang yang idempoten tak menggandakan foto.

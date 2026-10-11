@@ -1,3 +1,4 @@
+import { onlineChannelLabel } from '@/lib/onlineOrders'
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listOpenOrders, listOrderItems } from '@/db/repositories/orders'
@@ -11,7 +12,7 @@ import type { Order } from '@/types/domain'
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
   dine_in: 'Dine-in',
   takeaway: 'Takeaway',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
 interface Props {
@@ -86,7 +87,7 @@ function OpenBillRow({ order, onSelect, onCancel }: { order: Order; onSelect: ()
           <span className="text-xs text-ink-400">{durationSince(order.createdAt, Date.now())} lalu</span>
         </div>
         <div className="mt-1 text-sm text-ink-300">
-          {ORDER_TYPE_LABELS[order.type]}
+          {onlineChannelLabel(order) || ORDER_TYPE_LABELS[order.type]}
           {order.queueNumber ? ` • Antrean #${order.queueNumber}` : ''}
           {order.notes ? ` • ${order.notes}` : ''}
           {isEmpty ? ' • Kosong' : ''}

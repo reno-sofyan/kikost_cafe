@@ -26,7 +26,7 @@ export function printShiftReport(summary: ShiftSummary): void {
   ${row('Modal Awal', formatRupiah(shift.openingCash))}
   ${row('Penjualan Tunai', formatRupiah(summary.cashSales))}
   ${row('Penjualan Non-Tunai', formatRupiah(summary.nonCashSales))}
-  ${row('Total Penjualan', formatRupiah(summary.totalSales))}
+${summary.platformSales > 0 ? `  ${row('  via Aplikasi Online', formatRupiah(summary.platformSales))}\n` : ''}  ${row('Total Penjualan', formatRupiah(summary.totalSales))}
   ${row('Jumlah Transaksi', String(summary.transactionCount))}
   <hr />
   ${row('Kas Masuk', formatRupiah(summary.cashIn))}
@@ -38,7 +38,14 @@ export function printShiftReport(summary: ShiftSummary): void {
   ${row('Service Charge', formatRupiah(summary.serviceChargeTotal))}
   ${row('Retur', formatRupiah(summary.returnTotal))}
   ${row('Pembatalan', String(summary.voidCount))}
-  <hr />
+  <hr />${
+    summary.tipsCash + summary.tipsNonCash > 0
+      ? `
+  ${row('Tip Tunai (di laci)', formatRupiah(summary.tipsCash))}
+  ${row('Tip Non-Tunai', formatRupiah(summary.tipsNonCash))}
+  <hr />`
+      : ''
+  }
   <div class="row bold"><span>Kas Seharusnya</span><span>${formatRupiah(shift.expectedCash)}</span></div>
   <div class="row bold"><span>Kas Aktual</span><span>${formatRupiah(shift.closingCashActual ?? 0)}</span></div>
   <div class="row bold"><span>Selisih</span><span>${formatRupiah(shift.variance ?? 0)}</span></div>

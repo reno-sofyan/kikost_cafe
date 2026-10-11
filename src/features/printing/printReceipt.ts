@@ -21,7 +21,7 @@ async function resolveCashierPrinterDriver(): Promise<PrinterDriver> {
   return resolvePrinterDriver(printer)
 }
 
-export async function prepareReceiptData(order: Order, opts: { isReprint?: boolean } = {}): Promise<ReceiptData> {
+export async function prepareReceiptData(order: Order, opts: { isReprint?: boolean; preBill?: boolean } = {}): Promise<ReceiptData> {
   const settings = await getSettings()
   return buildReceiptData(order, settings, opts)
 }
@@ -62,7 +62,7 @@ export async function saveReceiptAsPdf(data: ReceiptData): Promise<void> {
     doc.text(line, widthMm / 2, y, { align: 'center', maxWidth: widthMm - 6 })
     y += lineHeight
   }
-  await saveFile(`struk-${data.orderNumber}.pdf`, doc.output('blob'))
+  await saveFile(`${data.isPreBill ? 'tagihan' : 'struk'}-${data.orderNumber}.pdf`, doc.output('blob'))
 }
 
 function htmlToPlainLines(html: string): string[] {

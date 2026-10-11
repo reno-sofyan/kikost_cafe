@@ -10,11 +10,14 @@ interface Props {
   initialQty?: number
   initialNotes?: string
   initialModifiers?: OrderItemModifierSnapshot[]
+  /** Harga dasar yang berlaku (mis. harga online). Default: harga jual produk. */
+  basePrice?: number
   onCancel: () => void
   onConfirm: (params: { qty: number; notes: string; modifiers: OrderItemModifierSnapshot[] }) => void
 }
 
-export function ModifierPickerModal({ product, initialQty, initialNotes, initialModifiers, onCancel, onConfirm }: Props) {
+export function ModifierPickerModal({ product, initialQty, initialNotes, initialModifiers, basePrice, onCancel, onConfirm }: Props) {
+  const price = basePrice ?? product.price
   const [groups, setGroups] = useState<ModifierGroup[]>([])
   const [optionsByGroup, setOptionsByGroup] = useState<Record<string, ModifierOption[]>>({})
   const [selected, setSelected] = useState<Record<string, string[]>>({})
@@ -100,7 +103,7 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
     <Modal onClose={onCancel} align="bottom" className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-t-2xl bg-ink-900 sm:rounded-2xl">
         <div className="flex-none border-b border-ink-800 px-5 py-4">
           <h2 className="text-lg font-bold text-ink-50">{product.name}</h2>
-          <p className="text-sm text-ink-400">{formatRupiah(product.price)}</p>
+          <p className="text-sm text-ink-400">{formatRupiah(price)}</p>
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
@@ -164,7 +167,7 @@ export function ModifierPickerModal({ product, initialQty, initialNotes, initial
             Batal
           </button>
           <button className="btn-primary flex-[2]" onClick={handleConfirm}>
-            Tambah • {formatRupiah((product.price + addOnTotal) * qty)}
+            Tambah • {formatRupiah((price + addOnTotal) * qty)}
           </button>
         </div>
     </Modal>

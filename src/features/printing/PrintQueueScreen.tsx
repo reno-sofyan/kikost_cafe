@@ -71,7 +71,7 @@ export function PrintQueueScreen() {
                     Retry
                   </button>
                 )}
-                {canReprint && job.status === 'PRINTED' && job.kind === 'receipt' && job.orderId && (
+                {canReprint && job.status === 'PRINTED' && job.kind === 'receipt' && job.orderId && !job.id.startsWith('pb_') && (
                   <button
                     className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs"
                     onClick={() => void enqueueReceiptForOrder(job.orderId!, actor, { isReprint: true })}

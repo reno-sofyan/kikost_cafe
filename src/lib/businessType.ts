@@ -59,6 +59,11 @@ export interface BusinessFeatures {
    */
   ownerPinCancel: boolean
   /**
+   * Kode pembatalan HANYA dibuat di Konsol Pemilik online (/owner) — tablet tak bisa
+   * membuatnya walau login sebagai Pemilik. Kode dicocokkan ke server (butuh internet).
+   */
+  ownerCodeOnlineOnly: boolean
+  /**
    * "Tagihan Tertunda": pesanan internal dicatat & diteruskan ke dapur sekarang,
    * dibayar nanti. Tidak menghalangi tutup shift; pelunasannya masuk ke shift
    * yang sedang buka saat dibayar.
@@ -72,6 +77,16 @@ export interface BusinessFeatures {
   cashierControls: boolean
   /** Notifikasi saat shift dibuka + popup tiap 21.00 WIB "lanjutkan atau tutup shift?". */
   shiftReminder: boolean
+  /** Cetak tagihan sementara (pre-bill) untuk diantar ke meja sebelum tamu membayar. */
+  preBill: boolean
+  /** Tip/gratuity dicatat saat pembayaran — terpisah dari omzet. */
+  tips: boolean
+  /** Reservasi meja (butuh `tables`). */
+  reservations: boolean
+  /** Pelayan dicatat per pesanan + laporan penjualan per pelayan. */
+  waiterTracking: boolean
+  /** Pesanan online (GoFood/GrabFood/ShopeeFood/…): harga online, platform, laporan terpisah. */
+  onlineOrders: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -90,10 +105,19 @@ const ALL_FEATURES: BusinessFeatures = {
   paymentMethods: ['cash', 'qris', 'transfer', 'card'],
   paymentProofMethods: [],
   ownerPinCancel: false,
+  ownerCodeOnlineOnly: false,
   payLater: false,
   cashierControls: false,
   shiftReminder: false,
+  preBill: true,
+  tips: true,
+  reservations: true,
+  waiterTracking: true,
+  onlineOrders: true,
 }
+
+/** Fitur layanan meja ala restoran — tak relevan untuk kantin & minimarket. */
+const NO_TABLE_SERVICE = { preBill: false, tips: false, reservations: false, waiterTracking: false } as const
 
 /**
  * Fitur yang relevan per jenis usaha. Ini HANYA mengatur apa yang TERLIHAT di
@@ -122,9 +146,12 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         paymentMethods: ['cash', 'qris', 'transfer', 'card'],
         paymentProofMethods: [],
         ownerPinCancel: false,
+        ownerCodeOnlineOnly: false,
         payLater: false,
         cashierControls: false,
         shiftReminder: false,
+        ...NO_TABLE_SERVICE,
+        onlineOrders: false,
       }
     case 'kantin':
       return {
@@ -134,17 +161,26 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         buyerName: true,
         stackSameItems: true,
         serviceCharge: false,
-        paymentMethods: ['cash', 'qris'],
-        paymentProofMethods: ['qris'],
+        paymentMethods: ['cash', 'qris', 'transfer'],
+        paymentProofMethods: ['qris', 'transfer'],
         ownerPinCancel: true,
+        ownerCodeOnlineOnly: true,
         payLater: true,
         cashierControls: true,
         shiftReminder: true,
+        ...NO_TABLE_SERVICE,
+        onlineOrders: false,
       }
     case 'cafe_resto':
-      // Pengaman kas kantin (QRIS wajib foto, kode Pemilik, tagihan tertunda) DITUNDA
-      // untuk kafe atas permintaan pemilik (2026-10-07) — cukup ubah di sini bila jadi.
-      return ALL_FEATURES
+      // Pengaman kas kantin dipasang sebagian ke kafe (2026-10-11): kode Pemilik untuk
+      // pembatalan/koreksi, diskon/retur terkendali, pengingat shift. QRIS/transfer wajib
+      // foto & tagihan tertunda tetap TIDAK dipasang atas pilihan pemilik.
+      return {
+        ...ALL_FEATURES,
+        ownerPinCancel: true,
+        cashierControls: true,
+        shiftReminder: true,
+      }
     case 'lainnya':
     default:
       return ALL_FEATURES

@@ -4,6 +4,8 @@ import { CANCEL_CODE_LENGTH, getActiveCancelCode, hasActiveOwner, verifyCancelCo
 import { PinPad } from '@/components/ui/PinPad'
 import { Modal } from '@/components/ui/Modal'
 import { isBackendConfigured } from '@/sync/client'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 
 interface Props {
   title: string
@@ -18,13 +20,16 @@ interface Props {
  * dibuat Pemilik di Pengaturan → Kode Pembatalan. Berbeda dengan
  * `SupervisorPinModal`, tak pernah menyetujui otomatis atas nama pengguna yang
  * sedang login — Pemilik pun harus membuat kode, supaya PIN-nya tak perlu
- * diketik di depan kasir. Kode juga bisa dibuat Pemilik dari konsol online
+ * diketik di depan kasir. Di kantin (`ownerCodeOnlineOnly`) kode tak bisa dibuat
+ * di tablet sama sekali — hanya dari Konsol Pemilik online (/owner). Kode juga bisa dibuat Pemilik dari konsol online
  * (/ops) — dicocokkan ke server, jadi tetap bisa dimasukkan walau tablet ini
  * tak punya kode lokal aktif.
  */
 export function OwnerCancelCodeModal({ title, description, onCancel, onApproved }: Props) {
   const ownerExists = useLiveQuery(() => hasActiveOwner(), [])
   const activeCode = useLiveQuery(() => getActiveCancelCode(), [])
+  // Kantin: kode hanya dari Konsol Pemilik online — jangan arahkan ke Pengaturan tablet.
+  const onlineOnly = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).ownerCodeOnlineOnly, []) ?? false
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -53,7 +58,9 @@ export function OwnerCancelCodeModal({ title, description, onCancel, onApproved 
     : !ownerExists
       ? 'Belum ada akun berperan Pemilik. Administrator perlu menambahkannya di Pengaturan → Pengguna.'
       : !activeCode && !isBackendConfigured()
-        ? 'Belum ada kode pembatalan aktif. Minta Pemilik membuat kode di Pengaturan → Kode Pembatalan.'
+        ? onlineOnly
+          ? 'Tablet ini belum terhubung ke server, jadi kode dari Konsol Pemilik online tak bisa dicek. Hubungkan di Pengaturan → Sinkronisasi.'
+          : 'Belum ada kode pembatalan aktif. Minta Pemilik membuat kode di Pengaturan → Kode Pembatalan.'
         : null
 
   return (
@@ -64,7 +71,9 @@ export function OwnerCancelCodeModal({ title, description, onCancel, onApproved 
         <p className="mb-3 rounded-lg bg-yellow-900/20 p-3 text-sm text-yellow-300">{blocker}</p>
       ) : (
         <>
-          <p className="mb-3 text-xs text-ink-500">Masukkan kode pembatalan {CANCEL_CODE_LENGTH} digit dari Pemilik (sekali pakai)</p>
+          <p className="mb-3 text-xs text-ink-500">
+            Masukkan kode pembatalan {CANCEL_CODE_LENGTH} digit dari Pemilik (sekali pakai){onlineOnly ? ' — dibuat di Konsol Pemilik online' : ''}
+          </p>
           <div className="mb-3 flex justify-center gap-2" aria-label={`${code.length} dari ${CANCEL_CODE_LENGTH} digit`}>
             {Array.from({ length: CANCEL_CODE_LENGTH }, (_, i) => (
               <span key={i} className={`h-3 w-3 rounded-full ${i < code.length ? 'bg-brand-500' : 'bg-ink-700'}`} />

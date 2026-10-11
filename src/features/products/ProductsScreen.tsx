@@ -184,6 +184,7 @@ export function ProductsScreen() {
                   <p className="truncate text-sm font-semibold text-ink-50">{product.name}</p>
                   <p className="text-xs text-ink-500">{product.sku}</p>
                   <p className="mt-1 font-bold text-brand-400">{formatRupiah(product.price)}</p>
+                  {product.onlinePrice ? <p className="text-xs text-ink-400">Online {formatRupiah(product.onlinePrice)}</p> : null}
 
                   {view === 'arsip' ? (
                     <div className="mt-3 flex gap-2">

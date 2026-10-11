@@ -17,6 +17,7 @@ import {
   markOrderPayLater,
   removeOrderItem,
   setOrderDiscount,
+  setOrderWaiter,
   discountRequirements,
   DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT,
   updateOrderItemQty,
@@ -24,6 +25,11 @@ import {
   voidOrderItem,
 } from '@/db/repositories/orders'
 import { canFulfillProductQty } from '@/db/repositories/stock'
+import { defaultWaiterFor } from '@/db/repositories/users'
+import { prepareReceiptData } from '@/features/printing/printReceipt'
+import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
+import { WaiterPickerModal } from '@/features/pos/WaiterPickerModal'
+import type { ReceiptData } from '@/features/printing/receiptData'
 import { sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { voidOrder } from '@/db/repositories/checkout'
 import { ITEM_CORRECTION_REASONS, ORDER_CANCEL_REASONS } from '@/lib/orderState'
@@ -32,6 +38,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah } from '@/lib/currency'
 import { roleHasPermission } from '@/lib/permissions'
 import { featuresForBusinessType } from '@/lib/businessType'
+import { isOnlineOrder, onlineChannelLabel, productPriceFor } from '@/lib/onlineOrders'
 import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
 import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
@@ -45,12 +52,12 @@ import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { toast } from '@/state/toastStore'
-import type { DiscountType, OrderItem, OrderType, Product, User } from '@/types/domain'
+import type { DiscountType, OnlinePlatform, OrderItem, OrderType, Product, User } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   dine_in: 'Dine-in',
   takeaway: 'Takeaway',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
 export function CashierScreen() {
@@ -65,6 +72,8 @@ export function CashierScreen() {
   const [showOpenBills, setShowOpenBills] = useState(false)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showPayLater, setShowPayLater] = useState(false)
+  const [showWaiterPicker, setShowWaiterPicker] = useState(false)
+  const [preBill, setPreBill] = useState<ReceiptData | null>(null)
   const [discountOwner, setDiscountOwner] = useState<{ type: DiscountType; value: number; reason: string; percent: number } | null>(null)
   /** Kantin: kurangi/hapus item butuh alasan. `nextQty` 0 = hapus. */
   const [itemCorrection, setItemCorrection] = useState<{ item: OrderItem; nextQty: number } | null>(null)
@@ -98,6 +107,8 @@ export function CashierScreen() {
   const quickStartRef = useRef<Promise<string> | null>(null)
 
   const activeItems = useMemo(() => (items ?? []).filter((i) => !i.voided && !i.removed), [items])
+  // Pesanan online memakai Harga Online produk (bila diisi).
+  const orderIsOnline = !!order && !!activeOrderId && isOnlineOrder(order)
 
   if (!openShift) {
     return (
@@ -112,13 +123,26 @@ export function CashierScreen() {
     )
   }
 
-  async function handleStartOrder(params: { type: OrderType; customerId?: string; guestCount?: number; notes?: string; tableId?: string }) {
+  async function handleStartOrder(params: {
+    type: OrderType
+    customerId?: string
+    guestCount?: number
+    notes?: string
+    tableId?: string
+    waiter?: { id: string; name: string } | null
+    onlinePlatform?: OnlinePlatform
+    onlineOrderRef?: string
+  }) {
     const newOrder = await startOrder({
+      onlinePlatform: params.onlinePlatform,
+      onlineOrderRef: params.onlineOrderRef,
       type: params.type,
       customerId: params.customerId,
       guestCount: params.guestCount,
       notes: params.notes,
       tableId: params.tableId,
+      // `undefined` = jalur cepat tanpa modal → pramusaji otomatis jadi pelayannya.
+      waiter: params.waiter === undefined ? defaultWaiterFor(currentUser, features.waiterTracking) : params.waiter,
       cashierId: currentUser.id,
       cashierName: currentUser.name,
       shiftId: openShift!.id,
@@ -184,7 +208,7 @@ export function CashierScreen() {
       orderId,
       productId: product.id,
       productName: product.name,
-      unitPrice: product.price,
+      unitPrice: productPriceFor(product, orderIsOnline),
       qty: 1,
       modifiers: [],
       notes: '',
@@ -380,7 +404,7 @@ export function CashierScreen() {
         orderId: activeOrderId,
         productId: pickerProduct.id,
         productName: pickerProduct.name,
-        unitPrice: pickerProduct.price,
+        unitPrice: productPriceFor(pickerProduct, orderIsOnline),
         qty: params.qty,
         modifiers: params.modifiers,
         notes: params.notes,
@@ -472,7 +496,8 @@ export function CashierScreen() {
                   )}
                 </div>
                 <span className="line-clamp-2 text-sm font-semibold text-ink-50">{product.name}</span>
-                <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(product.price)}</span>
+                <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(productPriceFor(product, orderIsOnline))}</span>
+                {orderIsOnline && product.onlinePrice ? <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
                 {!product.isAvailable && <span className="mt-1 text-xs text-red-400">Habis</span>}
                 {product.isFavorite && (
                   <span className="absolute right-2 top-2 text-accent-500">
@@ -510,6 +535,25 @@ export function CashierScreen() {
                 {order.type === 'dine_in' && order.guestCount ? <span>• {order.guestCount} tamu</span> : null}
                 {order.notes ? <span className="text-ink-300">• {order.notes}</span> : null}
               </div>
+              {isOnlineOrder(order) && (
+                <div className="mt-2 rounded-lg bg-brand-600/12 px-2 py-1 text-xs font-semibold text-brand-400">
+                  Pesanan Online • {onlineChannelLabel(order)}
+                </div>
+              )}
+              {((features.waiterTracking && !isOnlineOrder(order)) || order.waiterName) && (
+                <button
+                  className="mt-1 flex items-center gap-1 text-sm text-ink-300 underline-offset-2 hover:underline"
+                  onClick={() => setShowWaiterPicker(true)}
+                >
+                  <Icon name="user" size={13} />
+                  {order.waiterName ? `Pelayan: ${order.waiterName}` : 'Pilih pelayan'}
+                </button>
+              )}
+              {order.billPrintCount ? (
+                <div className="mt-2 rounded-lg bg-yellow-900/25 px-2 py-1 text-xs font-semibold text-yellow-400">
+                  Tagihan sudah dicetak{order.billPrintCount > 1 ? ` ${order.billPrintCount}×` : ''} — menunggu pembayaran
+                </div>
+              ) : null}
               {order.payLater && (
                 <div className="mt-2 rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500">
                   Tagihan Tertunda • {order.payLater.name}
@@ -608,6 +652,16 @@ export function CashierScreen() {
                   Kirim ke Dapur / Bar
                 </button>
               )}
+              {features.preBill && (
+                <button
+                  className="btn-secondary w-full"
+                  disabled={activeItems.length === 0}
+                  onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}
+                >
+                  <Icon name="receipt" size={15} className="mr-1 inline" />
+                  {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
+                </button>
+              )}
               <button
                 className="btn-primary w-full"
                 disabled={activeItems.length === 0}
@@ -633,6 +687,8 @@ export function CashierScreen() {
           orderTypes={features.orderTypes}
           showTables={features.tables}
           requireBuyerName={features.buyerName}
+          showWaiter={features.waiterTracking}
+          defaultWaiterId={defaultWaiterFor(currentUser, features.waiterTracking)?.id ?? null}
           onCancel={() => setShowNewOrder(false)}
           onConfirm={(p) => void handleStartOrder(p)}
         />
@@ -653,6 +709,7 @@ export function CashierScreen() {
           initialQty={editingItem?.qty}
           initialNotes={editingItem?.notes}
           initialModifiers={editingItem?.modifiers}
+          basePrice={productPriceFor(pickerProduct, orderIsOnline)}
           onCancel={() => {
             setPickerProduct(null)
             setEditingItem(null)
@@ -790,6 +847,17 @@ export function CashierScreen() {
           onApproved={(approval) => void handleClearApproved(clearFlow.reason, approval)}
         />
       )}
+      {showWaiterPicker && order && (
+        <WaiterPickerModal
+          currentWaiterId={order.waiterId ?? null}
+          onCancel={() => setShowWaiterPicker(false)}
+          onPick={(waiter) => {
+            setShowWaiterPicker(false)
+            void setOrderWaiter(order.id, waiter)
+          }}
+        />
+      )}
+      {preBill && order && <PrintPreviewModal data={preBill} orderId={order.id} onClose={() => setPreBill(null)} />}
       {cancelEmpty.dialogs}
       {confirmDialog}
     </div>

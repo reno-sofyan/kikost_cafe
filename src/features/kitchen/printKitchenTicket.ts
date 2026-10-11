@@ -4,7 +4,7 @@ import type { Order, OrderItem } from '@/types/domain'
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
   dine_in: 'Dine-in',
   takeaway: 'Takeaway',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
 export function printKitchenTicket(order: Order, items: OrderItem[], tableName?: string): void {

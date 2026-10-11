@@ -1,3 +1,4 @@
+import { onlineChannelLabel } from '@/lib/onlineOrders'
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
@@ -11,7 +12,7 @@ const SOURCE_LABELS: Record<string, string> = {
   cashier: 'Kasir',
   qr_table: 'QR Meja',
   takeaway: 'Bawa Pulang',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
 function toLine(item: OrderItem): KitchenTicketLine {
@@ -91,7 +92,7 @@ export async function sendOrderToKitchen(
           customerName: order.notes || '',
           orderedAtLabel: formatTime(order.createdAt),
           cashierName: order.cashierName,
-          source: SOURCE_LABELS[order.source] ?? order.source,
+          source: onlineChannelLabel(order) || (SOURCE_LABELS[order.source] ?? order.source),
           ticketLabel: seq > 1 ? `ORDER — TAMBAHAN #${seq}` : `ORDER ${station.toUpperCase()}`,
           paperSize: settings.receiptPaperSize,
           lines: stationItems.map(toLine),
@@ -143,7 +144,7 @@ export async function reprintKitchenTicket(
         customerName: order.notes || '',
         orderedAtLabel: formatTime(order.createdAt),
         cashierName: order.cashierName,
-        source: SOURCE_LABELS[order.source] ?? order.source,
+        source: onlineChannelLabel(order) || (SOURCE_LABELS[order.source] ?? order.source),
         ticketLabel: `*** CETAK ULANG *** TIKET #${ticket.sequenceNo}`,
         paperSize: settings.receiptPaperSize,
         lines: items.filter((i) => !i.voided).map(toLine),

@@ -21,6 +21,7 @@ import { CashPaymentModal } from '@/features/payments/CashPaymentModal'
 import { QrisPaymentModal } from '@/features/payments/QrisPaymentModal'
 import { MidtransQrisModal } from '@/features/payments/MidtransQrisModal'
 import { ReferencePaymentModal } from '@/features/payments/ReferencePaymentModal'
+import { TipModal } from '@/features/payments/TipModal'
 import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
 import { SplitBillModal } from '@/features/payments/SplitBillModal'
 import { PaymentProofCapture } from '@/features/payments/PaymentProofCapture'
@@ -28,6 +29,7 @@ import { EMPTY_PROOF, isProofComplete, type PaymentProofDraft } from '@/features
 import { warmUpStationPrinters } from '@/db/repositories/printQueue'
 import { openCashDrawerForPayment } from '@/features/printing/cashDrawer'
 import { featuresForBusinessType, requiresPaymentProof } from '@/lib/businessType'
+import { isOnlineOrder, onlineChannelLabel } from '@/lib/onlineOrders'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
 import type { Bill, Order, OrderItem, PaymentMethod, User } from '@/types/domain'
@@ -42,6 +44,7 @@ const METHOD_LABELS: Record<PaymentMethod, string> = {
   qris: 'QRIS',
   transfer: 'Transfer',
   card: 'Kartu',
+  platform: 'Aplikasi Online',
 }
 
 const DEFAULT_METHODS: PaymentMethod[] = ['cash', 'qris', 'transfer', 'card']
@@ -56,8 +59,9 @@ export function OrderPaymentScreen() {
   const items = useLiveQuery(() => (orderId ? listOrderItems(orderId) : []), [orderId]) ?? []
   const allowPartial = useLiveQuery(async () => (await getSettings()).allowPartialPayment, []) ?? false
   const features = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType), [])
-  const paymentMethods = features?.paymentMethods ?? DEFAULT_METHODS
+  const basePaymentMethods = features?.paymentMethods ?? DEFAULT_METHODS
   const proofMethods = features?.paymentProofMethods ?? NO_METHODS
+  const tipsEnabled = features?.tips ?? false
   const midtransEnabled = useLiveQuery(async () => (await getSettings()).qrisProvider === 'midtrans', []) ?? false
   const bills = useLiveQuery(() => (orderId ? listOrderBills(orderId) : []), [orderId]) ?? []
 
@@ -74,6 +78,11 @@ export function OrderPaymentScreen() {
   useEffect(() => {
     void warmUpStationPrinters(['cashier']).catch(() => {})
   }, [])
+
+  // Pesanan online: dibayar pelanggan lewat aplikasi (default) — tunai tetap ada untuk COD.
+  const online = !!order && isOnlineOrder(order)
+  const paymentMethods: PaymentMethod[] = online ? ['platform', 'cash'] : basePaymentMethods
+  const platformRef = order && online ? onlineChannelLabel(order) : undefined
 
   if (!order || !orderId) {
     return <div className="flex h-full items-center justify-center text-ink-400">Memuat pesanan...</div>
@@ -97,6 +106,7 @@ export function OrderPaymentScreen() {
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-ink-50">Pembayaran • {order.orderNumber}</h1>
+            {online && <p className="text-sm font-semibold text-brand-400">Pesanan Online • {platformRef}</p>}
             <p className="text-ink-400">{activeItems.length} item · Total {formatRupiah(order.grandTotal)}</p>
           </div>
           {!isSplit && activeItems.length > 1 && (
@@ -125,6 +135,8 @@ export function OrderPaymentScreen() {
                 paymentMethods={paymentMethods}
                 proofMethods={proofMethods}
                 midtransEnabled={midtransEnabled}
+                tipsEnabled={tipsEnabled && !online}
+                platformRef={platformRef}
                 user={currentUser}
                 onCompleted={() => setCompleted(true)}
               />
@@ -138,6 +150,8 @@ export function OrderPaymentScreen() {
             paymentMethods={paymentMethods}
             proofMethods={proofMethods}
             midtransEnabled={midtransEnabled}
+            tipsEnabled={tipsEnabled && !online}
+            platformRef={platformRef}
             user={currentUser}
             onPartial={() => navigate('/kasir')}
             onCompleted={() => setCompleted(true)}
@@ -161,6 +175,8 @@ function SingleBillPayment({
   paymentMethods,
   proofMethods,
   midtransEnabled,
+  tipsEnabled,
+  platformRef,
   user,
   onPartial,
   onCompleted,
@@ -171,6 +187,8 @@ function SingleBillPayment({
   paymentMethods: PaymentMethod[]
   proofMethods: PaymentMethod[]
   midtransEnabled: boolean
+  tipsEnabled: boolean
+  platformRef?: string
   user: User
   onPartial: () => void
   onCompleted: () => void
@@ -196,7 +214,7 @@ function SingleBillPayment({
     try {
       const res = await finalizePayment({
         orderId: order.id,
-        payments: lines.map(({ method, amount, receivedAmount, reference, gateway }) => ({ method, amount, receivedAmount, reference, gateway })),
+        payments: lines.map(({ method, amount, receivedAmount, reference, gateway, tipAmount }) => ({ method, amount, receivedAmount, reference, gateway, tipAmount })),
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
@@ -249,9 +267,11 @@ function SingleBillPayment({
         activeModal={activeModal}
         setActiveModal={setActiveModal}
         methods={paymentMethods}
+        platformRef={platformRef}
         midtrans={midtransEnabled ? { orderId: order.id, billId: implicitBillId(order.id) } : null}
         addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
         removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
+        setLineTip={tipsEnabled ? (k, tip) => setLines((p) => p.map((l) => (l.key === k ? { ...l, tipAmount: tip || undefined } : l))) : undefined}
       />
 
       {priorPaid > 0 && (
@@ -299,6 +319,8 @@ function BillPayCard({
   paymentMethods,
   proofMethods,
   midtransEnabled,
+  tipsEnabled,
+  platformRef,
   user,
   onCompleted,
 }: {
@@ -308,6 +330,8 @@ function BillPayCard({
   paymentMethods: PaymentMethod[]
   proofMethods: PaymentMethod[]
   midtransEnabled: boolean
+  tipsEnabled: boolean
+  platformRef?: string
   user: User
   onCompleted: () => void
 }) {
@@ -328,7 +352,7 @@ function BillPayCard({
     try {
       const res = await payOrderBill({
         billId: bill.id,
-        payments: lines.map(({ method, amount, receivedAmount, reference, gateway }) => ({ method, amount, receivedAmount, reference, gateway })),
+        payments: lines.map(({ method, amount, receivedAmount, reference, gateway, tipAmount }) => ({ method, amount, receivedAmount, reference, gateway, tipAmount })),
         confirmedByUserId: userId,
         allowPartial,
         allowNegativeStock,
@@ -376,9 +400,11 @@ function BillPayCard({
             activeModal={activeModal}
             setActiveModal={setActiveModal}
             methods={paymentMethods}
+            platformRef={platformRef}
             midtrans={midtransEnabled ? { orderId: bill.orderId, billId: bill.id } : null}
             addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
             removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
+            setLineTip={tipsEnabled ? (k, tip) => setLines((p) => p.map((l) => (l.key === k ? { ...l, tipAmount: tip || undefined } : l))) : undefined}
           />
           {(proofMethods.length > 0 || isProofComplete(proof)) && lines.length > 0 && (
             <PaymentProofCapture draft={proof} onChange={setProof} required={requireProof} />
@@ -430,7 +456,9 @@ function PayControls({
   setActiveModal,
   addLine,
   removeLine,
+  setLineTip,
   midtrans,
+  platformRef,
 }: {
   methods: PaymentMethod[]
   remaining: number
@@ -439,17 +467,29 @@ function PayControls({
   setActiveModal: (m: PaymentMethod | null) => void
   addLine: (l: Omit<PaymentLine, 'key' | 'methodLabel'>) => void
   removeLine: (key: string) => void
+  /** Diisi bila usaha mencatat tip — menampilkan tombol "Tip" per baris pembayaran. */
+  setLineTip?: (key: string, tipAmount: number) => void
   /** QRIS dinamis Midtrans aktif → tombol QRIS membuka QR Midtrans untuk bill ini. */
   midtrans: { orderId: string; billId: string } | null
+  /** Label kanal pesanan online (mis. "GoFood #F-123") — jadi referensi pembayaran `platform`. */
+  platformRef?: string
 }) {
   // QRIS statis sebagai cadangan saat Midtrans/internet bermasalah.
   const [forceStaticQris, setForceStaticQris] = useState(false)
+  const [tipLineKey, setTipLineKey] = useState<string | null>(null)
+  const tipLine = lines.find((l) => l.key === tipLineKey) ?? null
   return (
     <>
-      <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
+      <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : methods.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
         {methods.map((method) => (
-          <button key={method} disabled={remaining <= 0} onClick={() => setActiveModal(method)} className="btn-secondary !min-h-[2.75rem] !py-2 text-sm">
-            {METHOD_LABELS[method]}
+          <button
+            key={method}
+            disabled={remaining <= 0}
+            // Dibayar di aplikasi: tak ada uang yang diterima kasir — langsung catat sisa tagihan.
+            onClick={() => (method === 'platform' ? addLine({ method: 'platform', amount: remaining, reference: platformRef }) : setActiveModal(method))}
+            className={`!min-h-[2.75rem] !py-2 text-sm ${method === 'platform' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            {method === 'platform' ? `Dibayar via ${platformRef?.split(' #')[0] ?? 'Aplikasi'}` : METHOD_LABELS[method]}
           </button>
         ))}
       </div>
@@ -461,9 +501,15 @@ function PayControls({
               <span className="text-ink-200">
                 {line.methodLabel}
                 {line.gateway && <span className="ml-2 text-xs font-semibold text-success-500">Lunas via Midtrans</span>}
+                {line.tipAmount ? <span className="ml-2 text-xs font-semibold text-accent-500">+ Tip {formatRupiah(line.tipAmount)}</span> : null}
               </span>
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-ink-50">{formatRupiah(line.amount)}</span>
+                {setLineTip && !line.gateway && (
+                  <button className="btn-ghost !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => setTipLineKey(line.key)}>
+                    {line.tipAmount ? 'Ubah Tip' : '+ Tip'}
+                  </button>
+                )}
                 {!line.gateway && (
                 <button
                   className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-red-400 hover:bg-ink-700"
@@ -479,6 +525,19 @@ function PayControls({
         </div>
       )}
 
+      {tipLine && setLineTip && (
+        <TipModal
+          methodLabel={tipLine.methodLabel}
+          baseAmount={tipLine.amount}
+          initial={tipLine.tipAmount ?? 0}
+          cashChange={tipLine.method === 'cash' && tipLine.receivedAmount != null ? Math.max(0, tipLine.receivedAmount - tipLine.amount) : null}
+          onCancel={() => setTipLineKey(null)}
+          onConfirm={(tip) => {
+            setLineTip(tipLine.key, tip)
+            setTipLineKey(null)
+          }}
+        />
+      )}
       {activeModal === 'cash' && (
         <CashPaymentModal
           remaining={remaining}

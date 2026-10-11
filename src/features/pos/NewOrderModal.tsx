@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { searchCustomers } from '@/db/repositories/customers'
 import { listTables, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
+import { listWaiterCandidates } from '@/db/repositories/users'
 import { Modal } from '@/components/ui/Modal'
-import type { Customer, OrderType } from '@/types/domain'
+import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
+import type { Customer, OnlinePlatform, OrderType } from '@/types/domain'
 
 interface Props {
   /** Jenis pesanan yang relevan untuk jenis usaha; elemen pertama = default. */
@@ -12,6 +14,9 @@ interface Props {
   showTables: boolean
   /** Kantin: "Nama Pembeli" wajib diisi & tampil paling atas (dipakai memanggil antrean). */
   requireBuyerName?: boolean
+  /** Kafe & restoran: tampilkan pilihan pelayan untuk pesanan dine-in. */
+  showWaiter?: boolean
+  defaultWaiterId?: string | null
   onCancel: () => void
   onConfirm: (params: {
     type: OrderType
@@ -19,22 +24,30 @@ interface Props {
     guestCount?: number
     notes?: string
     tableId?: string
+    waiter?: { id: string; name: string } | null
+    onlinePlatform?: OnlinePlatform
+    onlineOrderRef?: string
   }) => void
 }
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   dine_in: 'Dine-in',
   takeaway: 'Takeaway',
-  delivery: 'Delivery',
+  delivery: 'Online',
 }
 
-export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false, onCancel, onConfirm }: Props) {
+export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false, showWaiter = false, defaultWaiterId = null, onCancel, onConfirm }: Props) {
   const [type, setType] = useState<OrderType>(orderTypes[0] ?? 'dine_in')
   const [guestCount, setGuestCount] = useState(1)
   const [notes, setNotes] = useState('')
   const [customerQuery, setCustomerQuery] = useState('')
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [tableId, setTableId] = useState<string | null>(null)
+  const [waiterId, setWaiterId] = useState<string | null>(defaultWaiterId)
+  const [platform, setPlatform] = useState<OnlinePlatform>('gofood')
+  const [onlineRef, setOnlineRef] = useState('')
+  const isOnline = type === 'delivery'
+  const waiters = useLiveQuery(() => (showWaiter ? listWaiterCandidates() : []), [showWaiter]) ?? []
 
   const customerResults = useLiveQuery(() => searchCustomers(customerQuery), [customerQuery]) ?? []
   const tables = useLiveQuery(() => listTables(), []) ?? []
@@ -50,6 +63,12 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
       guestCount: showTables && type === 'dine_in' ? guestCount : undefined,
       notes: notes.trim() || undefined,
       tableId: showTables && type === 'dine_in' && tableId ? tableId : undefined,
+      waiter: (() => {
+        const w = showWaiter && !isOnline ? waiters.find((u) => u.id === waiterId) : undefined
+        return w ? { id: w.id, name: w.name } : null
+      })(),
+      onlinePlatform: isOnline ? platform : undefined,
+      onlineOrderRef: isOnline ? onlineRef.trim() || undefined : undefined,
     })
   }
 
@@ -86,6 +105,32 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
                 {ORDER_TYPE_LABELS[value]}
               </button>
             ))}
+          </div>
+        )}
+
+        {isOnline && (
+          <div className="mb-4 rounded-xl border border-ink-700 p-3">
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">Platform</h3>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {ONLINE_PLATFORMS.map((p) => (
+                <button key={p} onClick={() => setPlatform(p)} className={`btn btn-compact text-sm ${platform === p ? 'btn-primary' : 'btn-secondary'}`}>
+                  {ONLINE_PLATFORM_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-sm text-ink-300">No. Pesanan di Aplikasi (opsional)</span>
+              <input
+                className="input-field"
+                placeholder='mis. "F-123456" atau 4 digit terakhir'
+                maxLength={40}
+                value={onlineRef}
+                onChange={(e) => setOnlineRef(e.target.value)}
+              />
+            </label>
+            <p className="mt-2 text-xs text-ink-500">
+              Memakai Harga Online tiap produk (bila diisi). Tanpa pajak, service charge, & pembulatan — total mengikuti aplikasi.
+            </p>
           </div>
         )}
 
@@ -135,9 +180,32 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
           </>
         )}
 
+        {showWaiter && !isOnline && waiters.length > 0 && (
+          <div className="mb-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">Pelayan (opsional)</h3>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={`btn btn-compact !px-3 text-sm ${waiterId === null ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setWaiterId(null)}
+              >
+                Tidak dicatat
+              </button>
+              {waiters.map((u) => (
+                <button
+                  key={u.id}
+                  className={`btn btn-compact !px-3 text-sm ${waiterId === u.id ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setWaiterId(u.id)}
+                >
+                  {u.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {!requireBuyerName && (
           <div className="mb-4">
-            <h3 className="mb-2 text-sm font-semibold text-ink-300">Catatan / Nama Pelanggan (opsional)</h3>
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">{isOnline ? 'Nama Pelanggan / Driver (opsional)' : 'Catatan / Nama Pelanggan (opsional)'}</h3>
             <input
               className="input-field"
               placeholder='mis. "Budi" atau "cewe jaket merah"'

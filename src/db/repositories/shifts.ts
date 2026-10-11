@@ -172,6 +172,11 @@ export interface ShiftSummary {
   serviceChargeTotal: number
   returnTotal: number
   voidCount: number
+  /** Tip yang diterima shift ini — bukan omzet. Tip tunai sudah termasuk "kas seharusnya". */
+  tipsCash: number
+  tipsNonCash: number
+  /** Bagian dari `nonCashSales` yang dibayar via aplikasi pesanan online (belum cair ke rekening). */
+  platformSales: number
 }
 
 export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> {
@@ -186,6 +191,8 @@ export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> 
   const payments = orderIds.length ? await db.payments.where('orderId').anyOf(orderIds).toArray() : []
   const cashSales = payments.filter((p) => p.method === 'cash').reduce((s, p) => s + p.amount, 0)
   const nonCashSales = payments.filter((p) => p.method !== 'cash').reduce((s, p) => s + p.amount, 0)
+  const tipsCash = payments.filter((p) => p.method === 'cash').reduce((s, p) => s + (p.tipAmount ?? 0), 0)
+  const tipsNonCash = payments.filter((p) => p.method !== 'cash').reduce((s, p) => s + (p.tipAmount ?? 0), 0)
 
   const movements = await listCashMovements(shiftId)
   const cashIn = movements.filter((m) => m.type === 'in').reduce((s, m) => s + m.amount, 0)
@@ -213,5 +220,8 @@ export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> 
     serviceChargeTotal: paidOrders.reduce((s, o) => s + o.serviceChargeAmount, 0),
     returnTotal,
     voidCount: voidOrders.length,
+    tipsCash,
+    tipsNonCash,
+    platformSales: payments.filter((p) => p.method === 'platform').reduce((s, p) => s + p.amount, 0),
   }
 }
