@@ -10,6 +10,7 @@ import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah } from '@/lib/currency'
 import { prepareReceiptData } from '@/features/printing/printReceipt'
 import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
+import { SendReceiptModal } from '@/features/payments/SendReceiptModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
@@ -41,6 +42,8 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [flow, setFlow] = useState<null | 'void-reason' | 'void-pin' | 'void-owner' | 'return-select' | 'return-reason' | 'return-pin' | 'return-owner'>(null)
   const ownerPinCancel = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).ownerPinCancel, []) ?? false
+  const proTools = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).proTools, []) ?? false
+  const [sendingReceipt, setSendingReceipt] = useState(false)
   const cashierControls = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).cashierControls, []) ?? false
   const [reason, setReason] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
@@ -289,6 +292,11 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
           <button className="btn-primary" onClick={() => void openPrintPreview()}>
             Reprint Struk
           </button>
+          {proTools && (order.status === 'paid' || order.status === 'completed') && (
+            <button className="btn-secondary" onClick={() => setSendingReceipt(true)}>
+              Kirim Struk via WhatsApp
+            </button>
+          )}
           {order.status === 'paid' && activeItems.length > 0 && (
             <button className="btn-secondary" onClick={() => setFlow('return-select')}>
               Retur
@@ -303,6 +311,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
     </Modal>
 
       {showPrint && receipt && <PrintPreviewModal data={receipt} orderId={order.id} onClose={() => setShowPrint(false)} />}
+      {sendingReceipt && <SendReceiptModal order={order} actor={{ userId: currentUser.id, userName: currentUser.name }} onClose={() => setSendingReceipt(false)} />}
       {viewProof && (
         <Modal onClose={() => setViewProof(null)} className="max-h-[90vh] max-w-[90vw] rounded-2xl bg-ink-900 p-3">
           <img src={viewProof} alt="Bukti pembayaran" className="max-h-[80vh] max-w-full rounded-lg object-contain" />

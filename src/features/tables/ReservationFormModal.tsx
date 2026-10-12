@@ -11,6 +11,8 @@ interface Props {
   /** Diisi = ubah reservasi; kosong = reservasi baru. */
   reservation?: Reservation
   onClose: () => void
+  /** Dipanggil setelah tersimpan, dengan jam reservasinya — supaya daftar bisa pindah ke tab yang memuatnya. */
+  onSaved?: (reservedAt: number) => void
 }
 
 /** Default: hari ini, dibulatkan ke jam penuh berikutnya. */
@@ -19,7 +21,7 @@ function defaultReservedAt(): number {
   return Math.ceil((Date.now() + 15 * 60 * 1000) / hour) * hour
 }
 
-export function ReservationFormModal({ reservation, onClose }: Props) {
+export function ReservationFormModal({ reservation, onClose, onSaved }: Props) {
   const currentUser = useSessionStore((s) => s.currentUser)!
   const tables = useLiveQuery(() => listTables(), []) ?? []
   const initialAt = reservation?.reservedAt ?? defaultReservedAt()
@@ -50,6 +52,7 @@ export function ReservationFormModal({ reservation, onClose }: Props) {
     try {
       if (reservation) await updateReservation(reservation.id, input)
       else await createReservation(input, { userId: currentUser.id, userName: currentUser.name })
+      onSaved?.(input.reservedAt)
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal menyimpan reservasi')

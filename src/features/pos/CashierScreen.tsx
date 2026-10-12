@@ -56,6 +56,8 @@ import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { toast } from '@/state/toastStore'
+import { productTagsOf } from '@/lib/productTags'
+import { publishCustomerDisplay } from '@/lib/customerDisplay'
 import type { DiscountType, OnlinePlatform, OrderItem, OrderType, Product, User } from '@/types/domain'
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
@@ -96,6 +98,10 @@ export function CashierScreen() {
   const categories = useLiveQuery(() => listCategories(), []) ?? []
   const products = useLiveQuery(() => searchProducts(search, categoryId), [search, categoryId]) ?? []
   const order = useLiveQuery(() => (activeOrderId ? getOrder(activeOrderId) : undefined), [activeOrderId])
+  // Layar pelanggan (jendela kedua) mengikuti pesanan yang sedang dikerjakan kasir.
+  useEffect(() => {
+    publishCustomerDisplay({ orderId: activeOrderId, stage: 'order' })
+  }, [activeOrderId])
   const items = useLiveQuery(() => (activeOrderId ? listOrderItems(activeOrderId) : []), [activeOrderId])
 
   const settings = useLiveQuery(() => getSettings(), [])
@@ -506,6 +512,15 @@ export function CashierScreen() {
                 <span className="line-clamp-2 text-sm font-semibold text-ink-50">{product.name}</span>
                 <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(productPriceFor(product, orderIsOnline, orderPlatform))}</span>
                 {orderIsOnline && productPriceFor(product, true, orderPlatform) !== product.price ? <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
+                {productTagsOf(product.tags).length > 0 && (
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {productTagsOf(product.tags).map((t) => (
+                      <span key={t.id} title={t.label} className={`rounded px-1 py-0.5 text-[10px] font-semibold ${t.allergen ? 'bg-yellow-900/40 text-yellow-300' : 'bg-ink-800 text-ink-200'}`}>
+                        {t.short}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 {!product.isAvailable && <span className="mt-1 text-xs text-red-400">Habis</span>}
                 {product.isFavorite && (
                   <span className="absolute right-2 top-2 text-accent-500">

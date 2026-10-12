@@ -4,6 +4,7 @@ import { buildSalesReport, type ProductSalesRow } from '@/db/repositories/report
 import { getSettings, updateSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { buildFeedbackReport } from '@/db/repositories/feedback'
+import { buildKitchenSpeedReport, buildTableTurnover, STATION_LABELS } from '@/db/repositories/serviceInsights'
 import { formatNumber, formatRupiah, parseRupiahInput } from '@/lib/currency'
 import { formatDateTime, jakartaDateKey, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { buildMenuEngineering, MENU_CLASS_INFO, type MenuClass } from '@/lib/menuEngineering'
@@ -229,6 +230,138 @@ export function FeedbackSection({ range }: { range: { from: number; to: number }
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="card p-4">
+      <p className="text-xs text-ink-300">{label}</p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${tone ?? 'text-ink-50'}`}>{value}</p>
+    </div>
+  )
+}
+
+/** Kecepatan dapur: ketepatan terhadap batas menit, per stasiun, dan menu yang paling sering terlambat. */
+export function KitchenSpeedSection({ range }: { range: { from: number; to: number } }) {
+  const speed = useLiveQuery(() => buildKitchenSpeedReport(range), [range.from, range.to])
+  if (!speed || speed.overall.count === 0) return null
+  const hasTarget = speed.targetMinutes > 0
+  const tone = (pct: number) => (pct >= 90 ? 'text-success-400' : pct >= 75 ? 'text-yellow-400' : 'text-red-400')
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-semibold text-ink-100">Kecepatan Dapur</h3>
+        <p className="text-xs text-ink-300">
+          {hasTarget ? `Batas ${speed.targetMinutes} menit sejak dikirim ke dapur sampai siap` : 'Batas waktu dimatikan'} • atur di Pengaturan → Operasional
+        </p>
+      </div>
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Item disiapkan" value={formatNumber(speed.overall.count)} />
+        <Stat label="Rata-rata penyiapan" value={`${speed.overall.avgMinutes} mnt`} />
+        {hasTarget && <Stat label="Tepat waktu" value={`${speed.overall.onTimePercent.toFixed(0)}%`} tone={tone(speed.overall.onTimePercent)} />}
+        {hasTarget && <Stat label="Terlambat" value={formatNumber(speed.overall.lateCount)} tone={speed.overall.lateCount > 0 ? 'text-red-400' : undefined} />}
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-ink-800 text-left text-ink-300">
+              <tr>
+                <th className="px-4 py-2">Stasiun</th>
+                <th className="px-4 py-2 text-right">Item</th>
+                <th className="px-4 py-2 text-right">Rata-rata</th>
+                {hasTarget && <th className="px-4 py-2 text-right">Tepat waktu</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {speed.byStation.map((s) => (
+                <tr key={s.key} className="border-t border-ink-800">
+                  <td className="px-4 py-2 text-ink-50">{STATION_LABELS[s.key] ?? s.key}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(s.count)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-ink-100">{s.avgMinutes} mnt</td>
+                  {hasTarget && <td className={`px-4 py-2 text-right font-semibold tabular-nums ${tone(s.onTimePercent)}`}>{s.onTimePercent.toFixed(0)}%</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {hasTarget && (
+          <div className="card max-h-64 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-ink-800 text-left text-ink-300">
+                <tr>
+                  <th className="px-4 py-2">Menu paling sering terlambat</th>
+                  <th className="px-4 py-2 text-right">Terlambat</th>
+                  <th className="px-4 py-2 text-right">Rata-rata</th>
+                </tr>
+              </thead>
+              <tbody>
+                {speed.lateProducts.map((p) => (
+                  <tr key={p.key} className="border-t border-ink-800">
+                    <td className="px-4 py-2 text-ink-50">{p.key}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-red-400">
+                      {formatNumber(p.lateCount)} dari {formatNumber(p.count)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-ink-100">{p.avgMinutes} mnt</td>
+                  </tr>
+                ))}
+                {speed.lateProducts.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-6 text-center text-ink-400">
+                      Tidak ada menu yang melewati batas pada periode ini.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Perputaran meja: lama duduk rata-rata & berapa kali meja terisi. */
+export function TableTurnoverSection({ range }: { range: { from: number; to: number } }) {
+  const turnover = useLiveQuery(() => buildTableTurnover(range), [range.from, range.to])
+  if (!turnover || turnover.visits === 0) return null
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-semibold text-ink-100">Perputaran Meja</h3>
+        <p className="text-xs text-ink-300">Dihitung dari pesanan makan di tempat: sejak pesanan dibuka sampai dibayar</p>
+      </div>
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Kunjungan meja" value={formatNumber(turnover.visits)} />
+        <Stat label="Rata-rata lama duduk" value={`${formatNumber(turnover.avgMinutes)} mnt`} />
+        <Stat label="Perputaran per meja per hari" value={`${turnover.turnsPerTablePerDay.toFixed(1)}×`} />
+        {turnover.longStayMinutes > 0 && <Stat label={`Duduk lebih dari ${turnover.longStayMinutes} mnt`} value={formatNumber(turnover.longStayCount)} tone={turnover.longStayCount > 0 ? 'text-yellow-400' : undefined} />}
+      </div>
+      <div className="card max-h-80 overflow-auto">
+        <table className="w-full min-w-[480px] text-sm">
+          <thead className="sticky top-0 bg-ink-800 text-left text-ink-300">
+            <tr>
+              <th className="px-4 py-2">Meja</th>
+              <th className="px-4 py-2 text-right">Terisi</th>
+              <th className="px-4 py-2 text-right">Tamu</th>
+              <th className="px-4 py-2 text-right">Rata-rata duduk</th>
+              <th className="px-4 py-2 text-right">Omzet</th>
+            </tr>
+          </thead>
+          <tbody>
+            {turnover.rows.map((r) => (
+              <tr key={r.tableId} className="border-t border-ink-800">
+                <td className="px-4 py-2 text-ink-50">{r.tableName}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(r.visits)}×</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(r.guests)}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(r.avgMinutes)} mnt</td>
+                <td className="px-4 py-2 text-right font-semibold tabular-nums text-ink-50">{formatRupiah(r.revenue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )

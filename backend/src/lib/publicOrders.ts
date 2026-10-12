@@ -30,6 +30,8 @@ interface CatalogProduct {
   photoDataUrl: string | null
   isAvailable: boolean
   modifierGroupIds: string[]
+  /** Label menu & info alergen (id baku dari aplikasi kasir, mis. `spicy`, `nuts`). */
+  tags: string[]
 }
 
 interface CatalogCategory {
@@ -142,6 +144,7 @@ export async function loadCatalog(client: PoolClient, tenantId: string): Promise
       photoDataUrl: typeof p.photoDataUrl === 'string' ? p.photoDataUrl : null,
       isAvailable: p.isAvailable !== false,
       modifierGroupIds: Array.isArray(p.modifierGroupIds) ? p.modifierGroupIds.map(String) : [],
+      tags: Array.isArray(p.tags) ? p.tags.filter((t): t is string => typeof t === 'string').slice(0, 20) : [],
     })),
     categories: categories.map((c) => ({
       id: String(c.id),
@@ -193,6 +196,7 @@ export interface MenuResponse {
     description: string
     price: number
     photoDataUrl: string | null
+    tags: string[]
     modifierGroups: {
       id: string
       name: string
@@ -222,6 +226,7 @@ export function buildMenu(catalog: Catalog, table: ResolvedToken): MenuResponse 
       description: p.description,
       price: p.price,
       photoDataUrl: p.photoDataUrl,
+      tags: p.tags,
       modifierGroups: p.modifierGroupIds
         .map((gid) => groupById.get(gid))
         .filter((g): g is CatalogModifierGroup => !!g)

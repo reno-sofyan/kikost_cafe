@@ -40,6 +40,22 @@ if (window.location.pathname.startsWith('/order/')) {
       </React.StrictMode>,
     )
   })
+} else if (window.location.pathname.startsWith('/layar-pelanggan')) {
+  // Layar pelanggan: jendela kedua di perangkat kasir. Hanya MEMBACA database lokal —
+  // tanpa login, sinkronisasi, atau mesin cetak (semua itu tetap milik jendela kasir).
+  document.body.classList.add('customer-view')
+  void Promise.all([import('@/features/display/CustomerDisplayScreen'), import('@/db/repositories/settings')]).then(
+    ([{ CustomerDisplayScreen }, { ensureDefaultSettings }]) =>
+      ensureDefaultSettings().finally(() => {
+        ReactDOM.createRoot(rootEl).render(
+          <React.StrictMode>
+            <ErrorBoundary scope="layar pelanggan">
+              <CustomerDisplayScreen />
+            </ErrorBoundary>
+          </React.StrictMode>,
+        )
+      }),
+  )
 } else {
   void Promise.all([import('@/App'), import('@/db/repositories/settings')]).then(
     ([{ default: App }, { ensureDefaultSettings }]) =>

@@ -20,7 +20,9 @@ import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { featuresForBusinessType, type BusinessFeatures } from '@/lib/businessType'
 import { ShiftReminder } from '@/features/shifts/ShiftReminder'
-import { formatTime } from '@/lib/datetime'
+import { formatTime, startOfJakartaDay } from '@/lib/datetime'
+import { listLateKitchenOrders } from '@/db/repositories/serviceInsights'
+import { countDuePreOrders } from '@/db/repositories/preOrders'
 import type { Role } from '@/types/domain'
 
 interface NavItem {
@@ -70,6 +72,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     }, []) ?? 0
   const pendingQr = useLiveQuery(() => countPendingQrOrders(), []) ?? 0
   const settings = useLiveQuery(() => getSettings(), [])
+  // Lencana menu: pesanan dapur yang lewat batas & pesanan terjadwal yang perlu disiapkan.
+  const proTools = featuresForBusinessType(settings?.businessType ?? 'lainnya').proTools
+  const [alertTick, setAlertTick] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setAlertTick(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const lateKitchen = useLiveQuery(async () => (proTools ? (await listLateKitchenOrders(alertTick)).length : 0), [proTools, alertTick]) ?? 0
+  const duePreOrders = useLiveQuery(() => (proTools ? countDuePreOrders(alertTick, startOfJakartaDay(0)) : 0), [proTools, alertTick]) ?? 0
+  const navBadges: Record<string, { count: number; title: string }> = {
+    '/dapur': { count: lateKitchen, title: 'pesanan melewati batas waktu dapur' },
+    '/meja': { count: duePreOrders, title: 'pesanan terjadwal perlu disiapkan' },
+  }
   const businessName = businessDisplayName(settings)
 
   // Pengingat backup (hanya relevan bila TIDAK pakai sinkronisasi server sebagai backup).
@@ -146,6 +161,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Icon name={item.icon} size={21} />
             <span className="leading-none">{item.label}</span>
+            {(navBadges[item.to]?.count ?? 0) > 0 && (
+              <span
+                className="absolute right-1.5 top-1 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] text-white"
+                title={`${navBadges[item.to].count} ${navBadges[item.to].title}`}
+                aria-label={`${navBadges[item.to].count} ${navBadges[item.to].title}`}
+              >
+                {navBadges[item.to].count}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

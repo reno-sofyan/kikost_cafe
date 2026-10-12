@@ -9,6 +9,8 @@ import { reprintKitchenTicket } from '@/db/repositories/kitchenDispatch'
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
 import { durationSince } from '@/lib/datetime'
+import { featuresForBusinessType } from '@/lib/businessType'
+import { kitchenTargetMinutesOf, waitingMinutesOf } from '@/lib/kitchenSpeed'
 import { Icon } from '@/components/ui/Icon'
 import type { KitchenItemStatus, Order, OrderItem } from '@/types/domain'
 
@@ -49,6 +51,12 @@ export function KitchenDisplayScreen() {
   const orders = useLiveQuery(() => db.orders.where('id').anyOf(orderIds.length ? orderIds : ['-']).toArray(), [orderIds])
   const tables = useLiveQuery(() => db.cafeTables.toArray(), []) ?? []
   const pagerConnectionType = useLiveQuery(async () => (await getSettings()).pagerConfig.connectionType, [])
+  // Batas menit penyiapan (0 = tanpa batas / fitur tak aktif untuk jenis usaha ini).
+  const targetMinutes =
+    useLiveQuery(async () => {
+      const s = await getSettings()
+      return featuresForBusinessType(s.businessType).proTools ? kitchenTargetMinutesOf(s) : 0
+    }, []) ?? 0
   const pagerEnabled = pagerConnectionType != null && pagerConnectionType !== 'none'
   const pagerIsManual = pagerConnectionType === 'manual'
   const ticketsRaw = useLiveQuery(
@@ -111,11 +119,16 @@ export function KitchenDisplayScreen() {
             if (!order) return null
             const table = order.tableId ? tables.find((t) => t.id === order.tableId) : undefined
             const oldestCreatedAt = Math.min(...orderItems.map((i) => i.createdAt))
+            // Terlambat: ada item yang belum siap & menunggu lebih lama dari batas.
+            const cooking = orderItems.filter((i) => !i.voided && (i.kitchenStatus === 'new' || i.kitchenStatus === 'in_progress'))
+            const longestWait = cooking.length ? Math.max(...cooking.map((i) => waitingMinutesOf(i, now))) : 0
+            const late = targetMinutes > 0 && longestWait > targetMinutes
             return (
-              <div key={order.id} className="card flex flex-col p-4">
-                <div className="mb-2 flex items-center justify-between">
+              <div key={order.id} className={`card flex flex-col p-4 ${late ? 'ring-2 ring-red-500' : ''}`}>
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="font-bold text-ink-50">{order.orderNumber}</span>
-                  <span className="text-xs text-ink-400">{durationSince(oldestCreatedAt, now)}</span>
+                  {late && <span className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Terlambat {longestWait} mnt</span>}
+                  <span className={`text-xs ${late ? 'font-semibold text-red-400' : 'text-ink-400'}`}>{durationSince(oldestCreatedAt, now)}</span>
                 </div>
                 {pagerEnabled && order.lifecycleStatus === 'READY' && (
                   order.pagerNumber != null ? (

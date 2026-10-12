@@ -5,7 +5,8 @@ import { db } from '@/db/schema'
 import { getOrder, listOrderItems } from '@/db/repositories/orders'
 import { markAwaitingPayment } from '@/db/repositories/tables'
 import { getSettings } from '@/db/repositories/settings'
-import { depositEnabledFor, getCustomerDeposit, listGiftCards } from '@/db/repositories/deposits'
+import { depositEnabledFor, findGiftCard, getCustomerDeposit, listGiftCards } from '@/db/repositories/deposits'
+import { publishCustomerDisplay } from '@/lib/customerDisplay'
 import { GiftCardPaymentModal } from '@/features/payments/GiftCardPaymentModal'
 import { implicitBillId, listOrderBills, unsplitBills } from '@/db/repositories/billing'
 import {
@@ -290,6 +291,8 @@ function SingleBillPayment({
         methods={paymentMethods}
         platformRef={platformRef}
         depositAvailable={depositAvailable}
+        prepaidCode={order.prepaidCode}
+        displayOrderId={order.id}
         midtrans={midtransEnabled ? { orderId: order.id, billId: implicitBillId(order.id) } : null}
         addLine={(l) => setLines((p) => [...p, { ...l, key: randomUUID(), methodLabel: METHOD_LABELS[l.method] }])}
         removeLine={(k) => setLines((p) => p.filter((l) => l.key !== k))}
@@ -485,6 +488,8 @@ function PayControls({
   midtrans,
   platformRef,
   depositAvailable,
+  prepaidCode,
+  displayOrderId,
 }: {
   methods: PaymentMethod[]
   remaining: number
@@ -501,7 +506,18 @@ function PayControls({
   platformRef?: string
   /** Saldo member yang bisa dipakai (0 = tak ada). */
   depositAvailable: number
+  /** Pesanan terjadwal: kode voucher uang muka tamu — ditawarkan sebagai pembayaran sekali ketuk. */
+  prepaidCode?: string | null
+  /** Pesanan yang sedang dibayar — untuk memberi tahu layar pelanggan saat QRIS ditampilkan. */
+  displayOrderId?: string
 }) {
+  const prepaidBalance = useLiveQuery(async () => (prepaidCode ? ((await findGiftCard(prepaidCode))?.balance ?? 0) : 0), [prepaidCode]) ?? 0
+  const prepaidLeft = Math.max(0, prepaidBalance - lines.filter((l) => l.method === 'giftcard' && l.reference === prepaidCode).reduce((s, l) => s + l.amount + (l.tipAmount ?? 0), 0))
+  // Layar pelanggan: tampilkan QRIS selama jendela QRIS statis terbuka di kasir.
+  useEffect(() => {
+    if (!displayOrderId) return
+    publishCustomerDisplay(activeModal === 'qris' ? { orderId: displayOrderId, stage: 'qris', amount: remaining } : { orderId: displayOrderId, stage: 'payment' })
+  }, [displayOrderId, activeModal, remaining])
   // Saldo yang belum dialokasikan ke baris pembayaran di layar ini.
   const depositLeft = Math.max(0, depositAvailable - lines.filter((l) => l.method === 'deposit').reduce((s, l) => s + l.amount + (l.tipAmount ?? 0), 0))
   // QRIS statis sebagai cadangan saat Midtrans/internet bermasalah.
@@ -510,6 +526,17 @@ function PayControls({
   const tipLine = lines.find((l) => l.key === tipLineKey) ?? null
   return (
     <>
+      {prepaidCode && prepaidLeft > 0 && remaining > 0 && (
+        <button
+          className="mb-3 flex w-full items-center justify-between rounded-xl border border-success-500/40 bg-success-600/15 px-4 py-3 text-left text-sm"
+          onClick={() => addLine({ method: 'giftcard', amount: Math.min(remaining, prepaidLeft), reference: prepaidCode })}
+        >
+          <span className="text-ink-100">
+            Tamu sudah membayar uang muka <span className="font-semibold text-success-400">{formatRupiah(prepaidLeft)}</span>
+          </span>
+          <span className="font-semibold text-success-400">Pakai Uang Muka</span>
+        </button>
+      )}
       <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : methods.length === 3 || methods.length > 4 ? 'grid-cols-3' : 'grid-cols-4'}`}>
         {methods.map((method) => (
           <button

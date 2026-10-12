@@ -80,6 +80,21 @@ export interface AuditLogEntry {
 
 export type ReceiptPaperSize = '58mm' | '80mm'
 
+/** Tarif gaji: `hourly` = per jam kerja tercatat, `daily` = per hari hadir. Nama di-snapshot
+ *  karena data pengguna tidak disinkronkan. */
+export interface StaffPay {
+  name: string
+  type: 'hourly' | 'daily'
+  rate: number
+}
+
+/** Jadwal mingguan berulang. Kunci `days` = hari 0 (Minggu) … 6 (Sabtu); jam "HH:MM" WIB.
+ *  Hari tanpa entri = libur. `end` lebih kecil dari `start` = shift melewati tengah malam. */
+export interface StaffRoster {
+  name: string
+  days: Partial<Record<number, { start: string; end: string }>>
+}
+
 /**
  * Jenis usaha — menentukan fitur mana yang relevan ditampilkan (Meja, Dapur,
  * Pesanan QR, Pager). Lihat `src/lib/businessType.ts` untuk pemetaan lengkapnya.
@@ -130,6 +145,16 @@ export interface AppSettings {
   salesTargets?: { daily?: number; monthly?: number }
   /** Program member & poin loyalitas. Kosong = belum diaktifkan. */
   loyalty?: LoyaltySettings
+  /** Batas menit penyiapan dapur/bar — lewat dari ini pesanan ditandai terlambat. 0 = tanpa batas. Default 15. */
+  kitchenTargetMinutes?: number
+  /** Batas menit tamu menempati meja sebelum ditandai "lama" di denah. 0 = tanpa batas. Default 90. */
+  tableLongStayMinutes?: number
+  /** Nomor WhatsApp pemilik — tujuan ringkasan harian saat tutup shift. */
+  ownerWhatsapp?: string
+  /** Tarif gaji per karyawan (kunci = id pengguna) — dasar rekap gaji dari absensi. */
+  staffPay?: Record<string, StaffPay>
+  /** Jadwal kerja mingguan per karyawan (kunci = id pengguna). */
+  staffRoster?: Record<string, StaffRoster>
   /** Kantin: diskon kasir di atas persen ini (dari subtotal) wajib kode Pemilik. Default 10. */
   cashierDiscountMaxPercent?: number
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
@@ -340,6 +365,8 @@ export interface Product {
   modifierGroupIds: string[]
   /** Menu paket/combo: daftar produk isi paket. Kosong = produk biasa. */
   comboItems?: { productId: string; qty: number }[]
+  /** Label menu & info alergen (lihat `lib/productTags.ts`), mis. `spicy`, `nuts`. */
+  tags?: string[]
   createdAt: number
   updatedAt: number
 }
@@ -552,11 +579,30 @@ export interface Reservation {
   status: ReservationStatus
   /** Tamu datang langsung & menunggu meja (daftar tunggu) — `reservedAt` = saat didaftarkan. */
   walkIn?: boolean
+  /** Pesanan terjadwal/katering: daftar menu untuk `reservedAt`, dengan atau tanpa uang muka. */
+  preOrder?: PreOrderInfo
   orderId: string | null
   createdByUserId: string
   createdByName: string
   createdAt: number
   updatedAt: number
+}
+
+export interface PreOrderLine {
+  productId: string
+  name: string
+  qty: number
+  /** Harga saat dipesan — hanya perkiraan; harga final mengikuti menu saat pesanan diproses. */
+  unitPrice: number
+  note: string
+}
+
+export interface PreOrderInfo {
+  lines: PreOrderLine[]
+  fulfillment: 'dine_in' | 'takeaway'
+  /** Uang muka disimpan sebagai voucher hadiah (titipan) berkode ini; dipakai saat pelunasan. */
+  depositCode?: string | null
+  depositAmount?: number
 }
 
 /** Permintaan ringan dari pelanggan lewat halaman status QR (panggil waiter / minta tagihan). */
@@ -888,6 +934,8 @@ export interface Order {
   onlineOrderRef?: string | null
   /** Snapshot persen komisi platform saat pesanan dibuat — dasar estimasi "diterima bersih". */
   onlineCommissionPercent?: number
+  /** Pesanan terjadwal: kode voucher uang muka yang sudah dibayar tamu — ditawarkan di layar bayar. */
+  prepaidCode?: string | null
   /** Pelayan yang melayani pesanan ini (kafe & restoran) — nama di-snapshot karena
    *  data pengguna tidak disinkronkan. Kosong = tidak dicatat. */
   waiterId?: string | null

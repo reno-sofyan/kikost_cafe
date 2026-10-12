@@ -10,6 +10,8 @@ import {
   openShift,
 } from '@/db/repositories/shifts'
 import { getSettings } from '@/db/repositories/settings'
+import { buildDailySummaryMessage, getLastClosedShift } from '@/db/repositories/dailySummary'
+import { waLink } from '@/lib/whatsapp'
 import { useSessionStore } from '@/state/sessionStore'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
 import { formatDateTime, formatTime } from '@/lib/datetime'
@@ -33,6 +35,10 @@ export function ShiftScreen() {
   const [showCashMovement, setShowCashMovement] = useState<'in' | 'out' | null>(null)
   const [showCloseForm, setShowCloseForm] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const proTools = featuresForBusinessType(settings?.businessType ?? 'lainnya').proTools
+  // Ringkasan untuk pemilik: muncul otomatis setelah tutup shift, bisa dibuka lagi dari shift terakhir.
+  const [summaryShiftId, setSummaryShiftId] = useState<string | null>(null)
+  const lastClosed = useLiveQuery(() => (proTools ? getLastClosedShift() : null), [proTools, openShiftData?.id])
 
   if (openShiftData === undefined) {
     return <div className="flex h-full items-center justify-center text-ink-400">Memuat...</div>
@@ -49,6 +55,11 @@ export function ShiftScreen() {
           <button className="btn-primary w-full" onClick={() => setShowOpenForm(true)}>
             Buka Shift
           </button>
+          {proTools && lastClosed && (
+            <button className="btn-ghost mt-2 w-full text-sm" onClick={() => setSummaryShiftId(lastClosed.id)}>
+              Ringkasan shift terakhir ({formatDateTime(lastClosed.closedAt ?? lastClosed.openedAt)})
+            </button>
+          )}
         </div>
       ) : (
         <div className="mx-auto max-w-lg space-y-4">
@@ -135,8 +146,13 @@ export function ShiftScreen() {
           blindClose={blindClose}
           onClose={() => setShowCloseForm(false)}
           onError={setError}
+          onClosed={(id) => {
+            if (proTools) setSummaryShiftId(id)
+          }}
         />
       )}
+
+      {summaryShiftId && <OwnerSummaryModal shiftId={summaryShiftId} ownerWhatsapp={settings?.ownerWhatsapp ?? ''} onClose={() => setSummaryShiftId(null)} />}
     </div>
   )
 }
@@ -202,12 +218,14 @@ function CloseShiftModal({
   blindClose,
   onClose,
   onError,
+  onClosed,
 }: {
   shiftId: string
   expectedCash: number
   blindClose: boolean
   onClose: () => void
   onError: (message: string | null) => void
+  onClosed: (shiftId: string) => void
 }) {
   const [actualCash, setActualCash] = useState(0)
   const [entered, setEntered] = useState(!blindClose)
@@ -221,6 +239,7 @@ function CloseShiftModal({
     try {
       const closed = await closeShift({ shiftId, closingCashActual: actualCash, notes, varianceApprover: approver })
       printShiftReport(await buildShiftSummary(closed.id))
+      onClosed(closed.id)
       onClose()
     } catch (e) {
       if (e instanceof CashVarianceApprovalRequiredError) {
@@ -305,5 +324,44 @@ function CloseShiftModal({
         />
       )}
     </>
+  )
+}
+
+/** Ringkasan shift untuk pemilik: teks siap kirim ke WhatsApp (bisa disalin bila nomor belum diatur). */
+function OwnerSummaryModal({ shiftId, ownerWhatsapp, onClose }: { shiftId: string; ownerWhatsapp: string; onClose: () => void }) {
+  const message = useLiveQuery(() => buildDailySummaryMessage(shiftId), [shiftId])
+  const link = message ? waLink(ownerWhatsapp, message) : null
+
+  async function copy() {
+    if (!message) return
+    try {
+      await navigator.clipboard.writeText(message)
+      toast.success('Ringkasan disalin.')
+    } catch {
+      toast.error('Tidak bisa menyalin otomatis — tekan lama teksnya untuk menyalin.')
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <h2 className="mb-1 text-lg font-bold text-ink-50">Ringkasan untuk Pemilik</h2>
+      <p className="mb-3 text-sm text-ink-400">
+        {link ? 'WhatsApp terbuka dengan ringkasan ini siap dikirim ke pemilik.' : 'Nomor WhatsApp pemilik belum diatur (Pengaturan → Operasional). Salin teksnya untuk dikirim manual.'}
+      </p>
+      <pre className="mb-3 max-h-72 select-text overflow-auto whitespace-pre-wrap rounded-xl bg-ink-800 p-3 text-xs text-ink-200">{message ?? 'Menyusun ringkasan…'}</pre>
+      <div className="flex gap-3">
+        <button className="btn-ghost flex-1" onClick={onClose}>
+          Tutup
+        </button>
+        <button className="btn-secondary flex-1" disabled={!message} onClick={() => void copy()}>
+          Salin
+        </button>
+        {link && (
+          <a className="btn-primary flex-[2] whitespace-nowrap text-center !px-3 text-sm" href={link} target="_blank" rel="noreferrer" onClick={onClose}>
+            Kirim ke WhatsApp
+          </a>
+        )}
+      </div>
+    </Modal>
   )
 }

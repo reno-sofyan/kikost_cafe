@@ -10,6 +10,7 @@ import { CancelCodePanel } from '@/features/settings/CancelCodePanel'
 import { BackupManager } from '@/features/settings/BackupManager'
 import { PrinterSettings } from '@/features/settings/PrinterSettings'
 import { QueueSettings } from '@/features/settings/QueueSettings'
+import { OperationsSettings } from '@/features/settings/OperationsSettings'
 import { PagerSettings } from '@/features/settings/PagerSettings'
 import { TableQrSettings } from '@/features/settings/TableQrSettings'
 import { OutletSettings } from '@/features/settings/OutletSettings'
@@ -25,6 +26,7 @@ type Tab =
   | 'profil'
   | 'outlet'
   | 'pajak'
+  | 'operasional'
   | 'antrean'
   | 'qris'
   | 'printer'
@@ -41,6 +43,7 @@ const TAB_KEYS: Tab[] = [
   'profil',
   'outlet',
   'pajak',
+  'operasional',
   'antrean',
   'qris',
   'printer',
@@ -69,6 +72,7 @@ export function SettingsScreen() {
     { key: 'profil', label: 'Profil Usaha', visible: true },
     { key: 'outlet', label: 'Outlet', visible: roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'pajak', label: 'Pajak & Struk', visible: true },
+    { key: 'operasional', label: 'Operasional', visible: features.proTools && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'antrean', label: 'Antrean', visible: features.queueNumbers && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
@@ -101,6 +105,7 @@ export function SettingsScreen() {
         {tab === 'profil' && <ProfileForm />}
         {tab === 'outlet' && <OutletSettings />}
         {tab === 'pajak' && <FiscalForm />}
+        {tab === 'operasional' && <OperationsSettings />}
         {tab === 'antrean' && <QueueSettings />}
         {tab === 'qris' && <QrisForm />}
         {tab === 'printer' && <PrinterSettings />}

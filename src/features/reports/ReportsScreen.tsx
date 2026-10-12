@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { NavLink, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { buildDepositReport } from '@/db/repositories/deposits'
-import { FeedbackSection, MenuEngineeringSection, SalesTargetCard } from '@/features/reports/ReportExtras'
+import { FeedbackSection, KitchenSpeedSection, MenuEngineeringSection, SalesTargetCard, TableTurnoverSection } from '@/features/reports/ReportExtras'
 import { roleHasPermission } from '@/lib/permissions'
 import { useSessionStore } from '@/state/sessionStore'
 import {
@@ -393,6 +393,8 @@ export function ReportsScreen() {
 
           <MenuEngineeringSection sales={report.allProductSales} />
           {isAll && <FeedbackSection range={range} />}
+          {isAll && features.proTools && features.kitchen && <KitchenSpeedSection range={range} />}
+          {isAll && features.proTools && features.tables && <TableTurnoverSection range={range} />}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ShareTable

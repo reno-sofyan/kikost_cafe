@@ -13,6 +13,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { db } from '@/db/schema'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
+import { normalizeProductTags, PRODUCT_TAGS } from '@/lib/productTags'
 import type { OnlinePlatform, Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
 
 const PRICED_PLATFORMS: OnlinePlatform[] = ['gofood', 'grabfood', 'shopeefood']
@@ -48,6 +49,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const [lowStockThreshold, setLowStockThreshold] = useState(initial?.lowStockThreshold ?? 10)
   const [isAvailable, setIsAvailable] = useState(initial?.isAvailable ?? true)
   const [isFavorite, setIsFavorite] = useState(initial?.isFavorite ?? false)
+  const [tags, setTags] = useState<string[]>(normalizeProductTags(initial?.tags))
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(initial?.photoDataUrl ?? null)
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>(initial?.modifierGroupIds ?? [])
   // Menu paket: isi paket = produk lain (bukan paket) beserta jumlahnya.
@@ -123,6 +125,7 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
       lowStockThreshold,
       isFavorite,
       isAvailable,
+      tags: normalizeProductTags(tags),
       modifierGroupIds: selectedModifierGroupIds,
     }
     let productId = initial?.id
@@ -269,6 +272,28 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
             Favorit
           </label>
         </div>
+
+        {(features.proTools || tags.length > 0) && (
+          <div className="mt-4">
+            <span className="mb-2 block text-sm text-ink-300">Label menu & info alergen (tampil di kasir dan halaman pesan QR)</span>
+            <div className="flex flex-wrap gap-2">
+              {PRODUCT_TAGS.map((t) => {
+                const on = tags.includes(t.id)
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setTags((current) => (on ? current.filter((x) => x !== t.id) : [...current, t.id]))}
+                    className={`rounded-full border px-3 py-1.5 text-sm ${on ? (t.allergen ? 'border-yellow-500 bg-yellow-900/30 text-yellow-300' : 'border-brand-500 bg-brand-600/20 text-brand-300') : 'border-ink-700 text-ink-300'}`}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {(features.combos || comboItems.length > 0) && (
           <div className="mt-4">

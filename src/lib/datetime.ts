@@ -59,12 +59,12 @@ export function startOfJakartaDay(offsetDays = 0): number {
   return utcMidnight - offsetDays * 24 * 60 * 60 * 1000
 }
 
-/** Awal bulan berjalan (00:00 WIB tanggal 1) dalam epoch ms. */
-export function startOfJakartaMonth(): number {
+/** Awal bulan (00:00 WIB tanggal 1) dalam epoch ms; `offsetMonths` -1 = bulan lalu. */
+export function startOfJakartaMonth(offsetMonths = 0): number {
   const key = jakartaDateKey(Date.now())
   const parts = key.split('-').map(Number)
   const [year, month] = parts as [number, number, number]
-  return Date.UTC(year, month - 1, 1) - JAKARTA_UTC_OFFSET_MS
+  return Date.UTC(year, month - 1 + offsetMonths, 1) - JAKARTA_UTC_OFFSET_MS
 }
 
 export function durationSince(startTimestamp: number, nowTimestamp: number): string {

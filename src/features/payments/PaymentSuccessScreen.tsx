@@ -13,6 +13,8 @@ import { formatRupiah } from '@/lib/currency'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
 import { GuestRating } from '@/features/payments/GuestRating'
+import { SendReceiptModal } from '@/features/payments/SendReceiptModal'
+import { publishCustomerDisplay } from '@/lib/customerDisplay'
 import type { Order, PrintJob } from '@/types/domain'
 import type { ReceiptData } from '@/features/printing/receiptData'
 
@@ -25,6 +27,8 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   const [autoPrinted, setAutoPrinted] = useState(false)
   const [showQueue, setShowQueue] = useState(false)
   const [showRating, setShowRating] = useState(false)
+  const [proTools, setProTools] = useState(false)
+  const [sendingReceipt, setSendingReceipt] = useState(false)
   const currentUser = useSessionStore((s) => s.currentUser)
   // Struk otomatis (lihat enqueueReceiptForOrder) — undefined = memuat, null = tak ada printer kasir.
   const receiptJob = useLiveQuery(async () => (await db.printJobs.get(`rc_${orderId}`)) ?? null, [orderId])
@@ -40,12 +44,18 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
       const settings = await getSettings()
       setShowQueue(featuresForBusinessType(settings.businessType).queueNumbers)
       setShowRating(featuresForBusinessType(settings.businessType).promos)
+      setProTools(featuresForBusinessType(settings.businessType).proTools)
       if (settings.printerConfig.autoPrintOnPayment && !autoPrinted) {
         setAutoPrinted(true)
         setShowPreview(true)
       }
     })()
   }, [orderId, autoPrinted])
+
+  // Layar pelanggan: tampilkan ucapan terima kasih.
+  useEffect(() => {
+    publishCustomerDisplay({ orderId, stage: 'paid' })
+  }, [orderId])
 
   function handleNewTransaction() {
     setActiveOrderId(null)
@@ -87,10 +97,17 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         >
           {receiptJob ? 'Cetak Ulang / Bagikan Struk' : 'Cetak / Pratinjau Struk'}
         </button>
+        {proTools && currentUser && (
+          <button className="btn-secondary" onClick={() => setSendingReceipt(true)}>
+            Kirim Struk via WhatsApp
+          </button>
+        )}
         <button className="btn-secondary" onClick={handleNewTransaction}>
           Transaksi Baru
         </button>
       </div>
+
+      {sendingReceipt && currentUser && <SendReceiptModal order={order} actor={{ userId: currentUser.id, userName: currentUser.name }} onClose={() => setSendingReceipt(false)} />}
 
       {showPreview && <PrintPreviewModal data={receipt} orderId={order.id} onClose={() => setShowPreview(false)} />}
     </div>

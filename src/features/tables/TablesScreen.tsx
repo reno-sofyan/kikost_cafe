@@ -11,7 +11,9 @@ import { useSessionStore } from '@/state/sessionStore'
 import { usePosStore } from '@/state/posStore'
 import { durationSince, formatTime } from '@/lib/datetime'
 import { heldReservationsByTable, seatReservation } from '@/db/repositories/reservations'
+import { startPreOrder } from '@/db/repositories/preOrders'
 import { ReservationsPanel } from '@/features/tables/ReservationsPanel'
+import { tableLongStayMinutesOf } from '@/db/repositories/serviceInsights'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { toast } from '@/state/toastStore'
 import { Icon } from '@/components/ui/Icon'
@@ -47,6 +49,9 @@ export function TablesScreen() {
     new Map<string, Reservation>()
 
   const areas = Array.from(new Set(tables.map((t) => t.area)))
+  // Batas menit "tamu terlalu lama" (0 = tanpa penanda).
+  const longStayMinutes = features.proTools ? tableLongStayMinutesOf(settings) : 0
+  const isLongStay = (t: CafeTable) => longStayMinutes > 0 && t.occupiedSince != null && nowTick - t.occupiedSince > longStayMinutes * 60_000
 
   async function quickStart(table: CafeTable) {
     if (!openShift) {
@@ -78,6 +83,24 @@ export function TablesScreen() {
       waiter: defaultWaiterFor(currentUser, features.waiterTracking),
       shiftId: openShift.id,
     })
+    setActiveOrderId(order.id)
+    navigate('/kasir')
+  }
+
+  /** Pesanan terjadwal tiba waktunya: buka pesanan berisi menunya lalu lanjut ke kasir. */
+  async function startScheduled(reservation: Reservation, tableId: string | null) {
+    if (!openShift) {
+      navigate('/shift')
+      return
+    }
+    const { order, skipped } = await startPreOrder(reservation.id, {
+      tableId,
+      cashierId: currentUser.id,
+      cashierName: currentUser.name,
+      waiter: defaultWaiterFor(currentUser, features.waiterTracking),
+      shiftId: openShift.id,
+    })
+    if (skipped.length) toast.error(`Menu ini sudah tidak dijual dan dilewati: ${skipped.join(', ')}`)
     setActiveOrderId(order.id)
     navigate('/kasir')
   }
@@ -159,7 +182,7 @@ export function TablesScreen() {
         </div>
       </div>
 
-      {view === 'reservations' && <ReservationsPanel onSeat={seat} />}
+      {view === 'reservations' && <ReservationsPanel onSeat={seat} onStartPreOrder={features.proTools ? startScheduled : undefined} />}
 
       {view === 'floor' && tables.length === 0 && (
         <div className="mt-16 flex flex-col items-center gap-3 text-center text-sm text-ink-300">
@@ -198,7 +221,13 @@ export function TablesScreen() {
                       )}
                       {table.guestCount ? <span className="text-[0.7rem] opacity-90">{table.guestCount} tamu</span> : null}
                       {table.occupiedSince ? (
-                        <span className="text-[0.7rem] opacity-75">{durationSince(table.occupiedSince, Date.now())}</span>
+                        isLongStay(table) ? (
+                          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[0.65rem] font-bold text-white" title={`Lebih dari ${longStayMinutes} menit`}>
+                            Lama · {durationSince(table.occupiedSince, nowTick)}
+                          </span>
+                        ) : (
+                          <span className="text-[0.7rem] opacity-75">{durationSince(table.occupiedSince, nowTick)}</span>
+                        )
                       ) : null}
                     </button>
                     <button

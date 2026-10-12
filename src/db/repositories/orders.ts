@@ -88,6 +88,8 @@ export async function startOrder(params: {
   /** Pesanan online (`type: 'delivery'`): platform & nomor pesanan di aplikasinya. */
   onlinePlatform?: OnlinePlatform
   onlineOrderRef?: string
+  /** Pesanan terjadwal: kode voucher uang muka yang sudah dibayar tamu. */
+  prepaidCode?: string | null
   shiftId: string
 }): Promise<Order> {
   // Guard integritas: pesanan wajib terikat ke shift yang benar-benar terbuka —
@@ -139,6 +141,7 @@ export async function startOrder(params: {
           onlineCommissionPercent: Math.min(100, Math.max(0, settings.onlineCommissionPercent?.[platform] ?? 0)),
         }
       : {}),
+    ...(params.prepaidCode ? { prepaidCode: params.prepaidCode } : {}),
     notes: params.notes?.trim() ?? '',
     idempotencyKey: newIdempotencyKey(),
     parentOrderId: null,

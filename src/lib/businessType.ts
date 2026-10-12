@@ -95,6 +95,11 @@ export interface BusinessFeatures {
   combos: boolean
   /** Absensi karyawan (masuk/pulang dengan PIN) & rekap jam kerja. */
   attendance: boolean
+  /**
+   * Alat pengelola kafe & restoran: target waktu dapur + peringatan terlambat, struk &
+   * ringkasan harian via WhatsApp, pesanan terjadwal, label/alergen menu, layar pelanggan.
+   */
+  proTools: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -126,13 +131,14 @@ const ALL_FEATURES: BusinessFeatures = {
   loyalty: true,
   combos: true,
   attendance: true,
+  proTools: true,
 }
 
 /** Fitur layanan meja ala restoran — tak relevan untuk kantin & minimarket. */
 const NO_TABLE_SERVICE = { preBill: false, tips: false, reservations: false, waiterTracking: false } as const
 
 /** Fitur premium kafe & restoran — belum dipasang untuk kantin & minimarket. */
-const NO_PREMIUM = { promos: false, loyalty: false, combos: false, attendance: false } as const
+const NO_PREMIUM = { promos: false, loyalty: false, combos: false, attendance: false, proTools: false } as const
 
 /**
  * Fitur yang relevan per jenis usaha. Ini HANYA mengatur apa yang TERLIHAT di

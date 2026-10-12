@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { randomUUID } from '@/lib/id'
+import { productTagsOf } from '@/lib/productTags'
 
 /**
  * Halaman pesan-mandiri pelanggan (publik, tanpa login, tanpa Dexie).
@@ -22,6 +23,8 @@ interface MenuItem {
   description: string
   price: number
   photoDataUrl: string | null
+  /** Label menu & info alergen; kosong/undefined bila server belum mengirimnya. */
+  tags?: string[]
   modifierGroups: MenuGroup[]
 }
 interface Menu {
@@ -393,6 +396,7 @@ function MenuScreen(props: {
             <div className="p-2.5">
               <p className="truncate text-sm font-semibold text-ink-50">{item.name}</p>
               <p className="mt-0.5 text-xs font-medium text-[#5B4636]">{rupiah(item.price)}</p>
+              <ProductTagChips tags={item.tags} compact />
             </div>
           </button>
         ))}
@@ -502,6 +506,7 @@ function ProductDetailScreen({
 
       <h2 className="text-lg font-bold text-ink-50">{item.name}</h2>
       {item.description && <p className="mt-1.5 text-sm text-ink-300">{item.description}</p>}
+      <ProductTagChips tags={item.tags} />
 
       {item.modifierGroups.map((g) => (
         <div key={g.id} className="mt-5">
@@ -1065,5 +1070,23 @@ function StatusPage() {
       )}
       <KioneFooter />
     </Screen>
+  )
+}
+
+/** Label menu & info alergen. Alergen diberi warna peringatan supaya tak terlewat. */
+function ProductTagChips({ tags, compact }: { tags?: string[]; compact?: boolean }) {
+  const list = productTagsOf(tags)
+  if (list.length === 0) return null
+  return (
+    <div className={`flex flex-wrap gap-1 ${compact ? 'mt-1' : 'mt-2'}`}>
+      {list.map((t) => (
+        <span
+          key={t.id}
+          className={`rounded-full px-1.5 py-0.5 font-semibold ${compact ? 'text-[0.6rem]' : 'text-xs'} ${t.allergen ? 'bg-amber-100 text-amber-800' : 'bg-[#EFE4D4] text-[#5B4636]'}`}
+        >
+          {compact ? t.short : t.label}
+        </span>
+      ))}
+    </div>
   )
 }

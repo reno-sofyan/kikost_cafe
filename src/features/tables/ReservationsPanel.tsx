@@ -14,12 +14,13 @@ import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { ReservationFormModal } from '@/features/tables/ReservationFormModal'
+import { PreOrdersPanel } from '@/features/tables/PreOrdersPanel'
 import { toast } from '@/state/toastStore'
 import type { CafeTable, Reservation, ReservationStatus } from '@/types/domain'
 
-type Filter = 'waitlist' | 'today' | 'upcoming' | 'history'
+type Filter = 'waitlist' | 'today' | 'upcoming' | 'history' | 'preorder'
 
-const FILTER_LABELS: Record<Filter, string> = { waitlist: 'Daftar Tunggu', today: 'Reservasi Hari Ini', upcoming: 'Mendatang', history: 'Riwayat' }
+const FILTER_LABELS: Record<Filter, string> = { waitlist: 'Daftar Tunggu', today: 'Reservasi Hari Ini', upcoming: 'Mendatang', history: 'Riwayat', preorder: 'Pesanan Terjadwal' }
 
 const STATUS_BADGE: Record<ReservationStatus, string> = {
   booked: 'bg-brand-600/15 text-brand-400',
@@ -35,12 +36,17 @@ const NO_TABLES: CafeTable[] = []
 interface Props {
   /** Dudukkan tamu: buka pesanan di meja tsb. Melempar error bila gagal (mis. meja terisi). */
   onSeat: (reservation: Reservation, tableId: string) => Promise<void>
+  /** Diisi = tab "Pesanan Terjadwal" tampil. Membuka pesanan dari pesanan terjadwal (meja hanya untuk makan di tempat). */
+  onStartPreOrder?: (reservation: Reservation, tableId: string | null) => Promise<void>
 }
 
-export function ReservationsPanel({ onSeat }: Props) {
+export function ReservationsPanel({ onSeat, onStartPreOrder }: Props) {
   const currentUser = useSessionStore((s) => s.currentUser)!
   const actor = { userId: currentUser.id, userName: currentUser.name }
-  const reservations = useLiveQuery(() => listReservations(), []) ?? NO_RESERVATIONS
+  const allReservations = useLiveQuery(() => listReservations(), []) ?? NO_RESERVATIONS
+  // Pesanan terjadwal punya tabnya sendiri — bukan reservasi meja.
+  const reservations = useMemo(() => allReservations.filter((r) => !r.preOrder), [allReservations])
+  const preOrderOpenCount = allReservations.filter((r) => r.preOrder && r.status === 'booked').length
   const tables = useLiveQuery(() => listTables(), []) ?? NO_TABLES
   const [filter, setFilter] = useState<Filter>('today')
   const [editing, setEditing] = useState<Reservation | null>(null)
@@ -63,6 +69,7 @@ export function ReservationsPanel({ onSeat }: Props) {
     if (filter === 'waitlist') return reservations.filter((r) => r.walkIn && r.status === 'booked' && r.reservedAt >= todayStart)
     if (filter === 'today') return reservations.filter((r) => !r.walkIn && r.reservedAt >= todayStart && r.reservedAt < tomorrowStart)
     if (filter === 'upcoming') return reservations.filter((r) => r.reservedAt >= tomorrowStart && r.status === 'booked')
+    if (filter === 'preorder') return NO_RESERVATIONS
     return reservations.filter((r) => r.reservedAt < todayStart).reverse()
   }, [reservations, filter, todayStart, tomorrowStart])
 
@@ -72,7 +79,8 @@ export function ReservationsPanel({ onSeat }: Props) {
 
   async function handleSeat(reservation: Reservation, tableId: string) {
     try {
-      await onSeat(reservation, tableId)
+      if (reservation.preOrder) await onStartPreOrder?.(reservation, tableId)
+      else await onSeat(reservation, tableId)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal mendudukkan tamu')
     }
@@ -99,12 +107,15 @@ export function ReservationsPanel({ onSeat }: Props) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={`btn btn-compact !px-4 text-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}>
-            {FILTER_LABELS[f]}
-            {f === 'waitlist' && waitingCount > 0 ? ` (${waitingCount})` : ''}
-          </button>
-        ))}
+        {(Object.keys(FILTER_LABELS) as Filter[])
+          .filter((f) => f !== 'preorder' || !!onStartPreOrder)
+          .map((f) => (
+            <button key={f} onClick={() => setFilter(f)} className={`btn btn-compact !px-4 text-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}>
+              {FILTER_LABELS[f]}
+              {f === 'waitlist' && waitingCount > 0 ? ` (${waitingCount})` : ''}
+              {f === 'preorder' && preOrderOpenCount > 0 ? ` (${preOrderOpenCount})` : ''}
+            </button>
+          ))}
         <span className="ml-2 text-sm text-ink-400">
           Hari ini: {todayBooked.length} reservasi menunggu · {todayGuests} tamu
         </span>
@@ -118,13 +129,24 @@ export function ReservationsPanel({ onSeat }: Props) {
         </button>
       </div>
 
-      {visible.length === 0 && (
+      {filter === 'preorder' && onStartPreOrder && (
+        <PreOrdersPanel
+          now={now}
+          onStart={(r) => {
+            // Makan di tempat butuh meja; diambil/diantar langsung dibuka.
+            if (r.preOrder?.fulfillment === 'dine_in') setPickTableFor(r)
+            else void onStartPreOrder(r, null).catch((e: unknown) => toast.error(e instanceof Error ? e.message : 'Gagal memproses pesanan'))
+          }}
+        />
+      )}
+
+      {filter !== 'preorder' && visible.length === 0 && (
         <p className="mt-16 text-center text-sm text-ink-400">
           {filter === 'waitlist' ? 'Tidak ada tamu yang menunggu meja.' : filter === 'today' ? 'Belum ada reservasi untuk hari ini.' : filter === 'upcoming' ? 'Belum ada reservasi mendatang.' : 'Belum ada riwayat reservasi.'}
         </p>
       )}
 
-      <div className="space-y-2">
+      <div className={`space-y-2 ${filter === 'preorder' ? 'hidden' : ''}`}>
         {visible.map((r, index) => {
           const table = r.tableId ? tableById.get(r.tableId) : undefined
           const late = !r.walkIn && r.status === 'booked' && now > r.reservedAt + LATE_AFTER_MS
@@ -185,6 +207,8 @@ export function ReservationsPanel({ onSeat }: Props) {
       {(showNew || editing) && (
         <ReservationFormModal
           reservation={editing ?? undefined}
+          // Reservasi untuk besok/lusa tak tampil di "Hari Ini" — pindah ke tab yang memuatnya.
+          onSaved={(reservedAt) => setFilter(reservedAt >= tomorrowStart ? 'upcoming' : reservedAt >= todayStart ? 'today' : 'history')}
           onClose={() => {
             setShowNew(false)
             setEditing(null)

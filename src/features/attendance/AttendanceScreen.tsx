@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { attendanceReportToCsv, buildAttendanceReport, clockAttendance, formatWorkMinutes, listClockedIn } from '@/db/repositories/attendance'
 import { listActiveUsers } from '@/db/repositories/users'
+import { getSettings } from '@/db/repositories/settings'
+import { PayrollSection, StaffSetupSection } from '@/features/attendance/StaffPayrollPanel'
+import { buildRosterCompliance, lateMinutesFor, rosterFor, shiftOn } from '@/lib/roster'
 import { durationSince, formatDateTime, formatTime, jakartaDateKey, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { formatNumber } from '@/lib/currency'
 import { ROLE_LABELS, roleHasPermission } from '@/lib/permissions'
@@ -11,17 +14,21 @@ import { useSessionStore } from '@/state/sessionStore'
 import { toast } from '@/state/toastStore'
 import type { User } from '@/types/domain'
 
-type Period = 'today' | 'week' | 'month'
-const PERIOD_LABELS: Record<Period, string> = { today: 'Hari Ini', week: '7 Hari', month: 'Bulan Ini' }
+type Period = 'today' | 'week' | 'month' | 'lastMonth'
+const NO_USERS: User[] = []
+const PERIOD_LABELS: Record<Period, string> = { today: 'Hari Ini', week: '7 Hari', month: 'Bulan Ini', lastMonth: 'Bulan Lalu' }
 
 /** Absensi: karyawan absen masuk/pulang dengan PIN-nya sendiri; pengelola melihat rekap jam kerja. */
 export function AttendanceScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
-  const users = useLiveQuery(() => listActiveUsers(), []) ?? []
+  const users = useLiveQuery(() => listActiveUsers(), []) ?? NO_USERS
   const clockedIn = useLiveQuery(() => listClockedIn(), [])
   const [pinFor, setPinFor] = useState<User | null>(null)
   const [period, setPeriod] = useState<Period>('today')
   const canSeeReport = roleHasPermission(currentUser.role, 'reports.view')
+  const canManageStaff = roleHasPermission(currentUser.role, 'settings.manage')
+  const settings = useLiveQuery(() => getSettings(), [])
+  const actor = { userId: currentUser.id, userName: currentUser.name }
   // Durasi "sudah bekerja" ikut bergerak tanpa perubahan data.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -30,12 +37,24 @@ export function AttendanceScreen() {
   }, [])
   const dayKey = jakartaDateKey(now)
   const range = useMemo(
-    () => ({ from: period === 'today' ? startOfJakartaDay(0) : period === 'week' ? startOfJakartaDay(-6) : startOfJakartaMonth(), to: Date.now() + 60_000 }),
+    () =>
+      period === 'lastMonth'
+        ? { from: startOfJakartaMonth(-1), to: startOfJakartaMonth(0) - 1 }
+        : { from: period === 'today' ? startOfJakartaDay(0) : period === 'week' ? startOfJakartaDay(6) : startOfJakartaMonth(), to: Date.now() + 60_000 },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [period, dayKey],
   )
   const report = useLiveQuery(() => (canSeeReport ? buildAttendanceReport(range) : undefined), [canSeeReport, range, clockedIn])
   const sorted = [...users].sort((a, b) => a.name.localeCompare(b.name))
+  const rosters = settings?.staffRoster
+  // Kepatuhan jadwal (terlambat / tidak hadir) untuk karyawan yang punya jadwal.
+  const compliance = useMemo(
+    () => new Map((report ? buildRosterCompliance(users.map((u) => ({ userId: u.id, userName: u.name })), rosters, report.sessions, range, now) : []).map((c) => [c.userId, c])),
+    [report, users, rosters, range, now],
+  )
+  const hasRoster = compliance.size > 0
+  // Kunci periode untuk catatan gaji: bulan = YYYY-MM supaya tak berubah tiap hari.
+  const periodKey = period === 'month' || period === 'lastMonth' ? jakartaDateKey(range.from).slice(0, 7) : period === 'today' ? dayKey : `${jakartaDateKey(range.from)} s.d. ${dayKey}`
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -56,6 +75,12 @@ export function AttendanceScreen() {
               ) : (
                 <p className="mt-2 text-sm text-ink-400">Belum absen masuk</p>
               )}
+              {(() => {
+                const roster = rosterFor(rosters, u.id, u.name)
+                if (!roster) return null
+                const today = shiftOn(roster, dayKey)
+                return <p className="mt-1 text-xs text-ink-300">{today ? `Jadwal hari ini ${formatTime(today.start)}–${formatTime(today.end)}` : 'Hari ini libur'}</p>
+              })()}
               <span className={`mt-3 inline-block rounded-lg px-3 py-1.5 text-sm font-semibold ${since != null ? 'bg-ink-800 text-ink-100' : 'bg-brand-600 text-white'}`}>
                 {since != null ? 'Absen Pulang' : 'Absen Masuk'}
               </span>
@@ -94,6 +119,8 @@ export function AttendanceScreen() {
                       <th className="px-4 py-2">Karyawan</th>
                       <th className="px-4 py-2 text-right">Hari hadir</th>
                       <th className="px-4 py-2 text-right">Total jam kerja</th>
+                      {hasRoster && <th className="px-4 py-2 text-right">Terlambat</th>}
+                      {hasRoster && <th className="px-4 py-2 text-right">Tidak hadir</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -105,8 +132,30 @@ export function AttendanceScreen() {
                         </td>
                         <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(r.daysPresent)}</td>
                         <td className="px-4 py-2 text-right font-semibold tabular-nums text-ink-50">{formatWorkMinutes(r.totalMinutes)}</td>
+                        {hasRoster && (
+                          <td className={`px-4 py-2 text-right tabular-nums ${(compliance.get(r.userId)?.lateCount ?? 0) > 0 ? 'text-yellow-400' : 'text-ink-300'}`}>
+                            {compliance.has(r.userId) ? `${compliance.get(r.userId)!.lateCount}× (${compliance.get(r.userId)!.lateMinutes} mnt)` : '—'}
+                          </td>
+                        )}
+                        {hasRoster && (
+                          <td className={`px-4 py-2 text-right tabular-nums ${(compliance.get(r.userId)?.absentCount ?? 0) > 0 ? 'text-red-400' : 'text-ink-300'}`}>
+                            {compliance.has(r.userId) ? `${compliance.get(r.userId)!.absentCount}×` : '—'}
+                          </td>
+                        )}
                       </tr>
                     ))}
+                    {/* Terjadwal tetapi sama sekali tidak absen pada periode ini. */}
+                    {Array.from(compliance.values())
+                      .filter((c) => c.absentCount > 0 && !report.summary.some((r) => r.userId === c.userId))
+                      .map((c) => (
+                        <tr key={c.userId} className="border-t border-ink-800">
+                          <td className="px-4 py-2 text-ink-50">{c.userName}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-ink-100">0</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-ink-100">—</td>
+                          <td className="px-4 py-2 text-right text-ink-300">—</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-red-400">{c.absentCount}×</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -124,7 +173,12 @@ export function AttendanceScreen() {
                     {report.sessions.map((s) => (
                       <tr key={`${s.userId}-${s.clockIn}`} className="border-t border-ink-800">
                         <td className="px-4 py-2 text-ink-50">{s.userName}</td>
-                        <td className="px-4 py-2 text-ink-200">{formatDateTime(s.clockIn)}</td>
+                        <td className="px-4 py-2 text-ink-200">
+                          {formatDateTime(s.clockIn)}
+                          {lateMinutesFor(rosterFor(rosters, s.userId, s.userName), s.clockIn) > 0 && (
+                            <span className="ml-2 text-xs text-yellow-400">terlambat {lateMinutesFor(rosterFor(rosters, s.userId, s.userName), s.clockIn)} mnt</span>
+                          )}
+                        </td>
                         <td className={`px-4 py-2 ${s.missingOut ? 'text-yellow-400' : 'text-ink-200'}`}>{s.clockOut ? formatTime(s.clockOut) : s.missingOut ? 'Tidak absen' : 'Masih bekerja'}</td>
                         <td className="px-4 py-2 text-right tabular-nums text-ink-100">{s.clockOut ? formatWorkMinutes(s.minutes) : '—'}</td>
                       </tr>
@@ -136,6 +190,9 @@ export function AttendanceScreen() {
           )}
         </div>
       )}
+
+      {canSeeReport && canManageStaff && report && <PayrollSection report={report} settings={settings} periodKey={periodKey} periodLabel={PERIOD_LABELS[period]} actor={actor} />}
+      {canManageStaff && <StaffSetupSection users={sorted} settings={settings} actor={actor} />}
 
       {pinFor && <AttendancePinModal user={pinFor} clockingOut={clockedIn?.has(pinFor.id) ?? false} onClose={() => setPinFor(null)} />}
     </div>
