@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { DEPOSIT_TOPUP_METHODS, listGiftCards } from '@/db/repositories/deposits'
-import { cancelPreOrder, createPreOrder, listPreOrders, PRE_ORDER_DUE_SOON_MS, preOrderTotal } from '@/db/repositories/preOrders'
+import { cancelPreOrder, createPreOrder, describePreOrderLine, listPreOrders, PRE_ORDER_DUE_SOON_MS, preOrderLineUnitPrice, preOrderTotal } from '@/db/repositories/preOrders'
+import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
 import { listAvailableProducts } from '@/db/repositories/products'
 import { formatRupiah, parseRupiahInput } from '@/lib/currency'
 import { formatDate, formatTime, jakartaDateKey, jakartaDateTimeToEpoch, jakartaTimeKey, startOfJakartaDay } from '@/lib/datetime'
@@ -63,7 +64,7 @@ export function PreOrdersPanel({ now, onStart }: Props) {
           const total = preOrderTotal(pre.lines)
           const remind = waLink(
             r.phone,
-            `Halo ${r.customerName}, kami mengingatkan pesanan Anda untuk ${formatDate(r.reservedAt)} pukul ${formatTime(r.reservedAt)}: ${pre.lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}.${
+            `Halo ${r.customerName}, kami mengingatkan pesanan Anda untuk ${formatDate(r.reservedAt)} pukul ${formatTime(r.reservedAt)}: ${pre.lines.map(describePreOrderLine).join(', ')}.${
               depositLeft > 0 ? ` Uang muka ${formatRupiah(depositLeft)} sudah kami terima, sisa perkiraan ${formatRupiah(Math.max(0, total - depositLeft))}.` : ''
             } Terima kasih.`,
           )
@@ -81,7 +82,7 @@ export function PreOrdersPanel({ now, onStart }: Props) {
                     {r.customerName}
                     <span className="ml-2 text-sm font-normal text-ink-300">{FULFILLMENT_LABELS[pre.fulfillment]}</span>
                   </p>
-                  <p className="text-sm text-ink-200">{pre.lines.map((l) => `${l.qty}× ${l.name}${l.note ? ` (${l.note})` : ''}`).join(', ')}</p>
+                  <p className="text-sm text-ink-200">{pre.lines.map(describePreOrderLine).join(', ')}</p>
                   <p className="mt-0.5 truncate text-sm text-ink-400">
                     Perkiraan {formatRupiah(total)}
                     {pre.depositCode ? ` · uang muka ${formatRupiah(depositLeft)}` : ' · tanpa uang muka'}
@@ -121,7 +122,7 @@ export function PreOrdersPanel({ now, onStart }: Props) {
                     {formatDate(r.reservedAt)} {formatTime(r.reservedAt)}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-ink-100">
-                    {r.customerName} · {r.preOrder!.lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}
+                    {r.customerName} · {r.preOrder!.lines.map(describePreOrderLine).join(', ')}
                   </span>
                   <span className={r.status === 'seated' ? 'text-success-500' : 'text-ink-400'}>{r.status === 'seated' ? 'Diproses' : 'Dibatalkan'}</span>
                 </div>
@@ -226,9 +227,13 @@ function PreOrderFormModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
   }, [products, search])
   const total = preOrderTotal(lines)
 
+  // Menu ber-modifier (ukuran, level gula, …): pilihannya diambil lewat dialog yang sama dengan kasir.
+  const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
+
   function addProduct(productId: string) {
     const product = products.find((p) => p.id === productId)
     if (!product) return
+    if (product.modifierGroupIds.length > 0) return setPickerProduct(product)
     setLines((current) =>
       current.some((l) => l.productId === productId)
         ? current.map((l) => (l.productId === productId ? { ...l, qty: l.qty + 1 } : l))
@@ -236,8 +241,9 @@ function PreOrderFormModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
     )
   }
 
-  function setQty(productId: string, qty: number) {
-    setLines((current) => (qty <= 0 ? current.filter((l) => l.productId !== productId) : current.map((l) => (l.productId === productId ? { ...l, qty } : l))))
+  // Baris dikenali lewat urutannya: menu yang sama bisa muncul beberapa kali dengan modifier berbeda.
+  function setQty(index: number, qty: number) {
+    setLines((current) => (qty <= 0 ? current.filter((_, i) => i !== index) : current.map((l, i) => (i === index ? { ...l, qty } : l))))
   }
 
   async function submit() {
@@ -301,24 +307,27 @@ function PreOrderFormModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
       </div>
       {lines.length > 0 && (
         <div className="mb-3 space-y-2">
-          {lines.map((l) => (
-            <div key={l.productId} className="flex flex-wrap items-center gap-2 rounded-xl bg-ink-800 px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-50">{l.name}</span>
+          {lines.map((l, index) => (
+            <div key={`${l.productId}-${index}`} className="flex flex-wrap items-center gap-2 rounded-xl bg-ink-800 px-3 py-2">
+              <span className="min-w-0 flex-1 text-sm font-semibold text-ink-50">
+                <span className="block truncate">{l.name}</span>
+                {l.modifiers?.length ? <span className="block truncate text-xs font-normal text-ink-300">{l.modifiers.map((m) => m.optionName).join(', ')}</span> : null}
+              </span>
               <input
                 className="input-field !w-40 !py-1.5 text-sm"
                 placeholder="Catatan"
                 aria-label={`Catatan ${l.name}`}
                 value={l.note}
-                onChange={(e) => setLines((c) => c.map((x) => (x.productId === l.productId ? { ...x, note: e.target.value } : x)))}
+                onChange={(e) => setLines((c) => c.map((x, i) => (i === index ? { ...x, note: e.target.value } : x)))}
               />
-              <button className="btn-secondary btn-compact !px-3" aria-label={`Kurangi ${l.name}`} onClick={() => setQty(l.productId, l.qty - 1)}>
+              <button className="btn-secondary btn-compact !px-3" aria-label={`Kurangi ${l.name}`} onClick={() => setQty(index, l.qty - 1)}>
                 −
               </button>
-              <input type="number" min={1} className="input-field !w-16 !py-1.5 text-center" aria-label={`Jumlah ${l.name}`} value={l.qty} onChange={(e) => setQty(l.productId, Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
-              <button className="btn-secondary btn-compact !px-3" aria-label={`Tambah jumlah ${l.name}`} onClick={() => setQty(l.productId, l.qty + 1)}>
+              <input type="number" min={1} className="input-field !w-16 !py-1.5 text-center" aria-label={`Jumlah ${l.name}`} value={l.qty} onChange={(e) => setQty(index, Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
+              <button className="btn-secondary btn-compact !px-3" aria-label={`Tambah jumlah ${l.name}`} onClick={() => setQty(index, l.qty + 1)}>
                 +
               </button>
-              <span className="w-24 text-right text-sm tabular-nums text-ink-100">{formatRupiah(l.unitPrice * l.qty)}</span>
+              <span className="w-24 text-right text-sm tabular-nums text-ink-100">{formatRupiah(preOrderLineUnitPrice(l) * l.qty)}</span>
             </div>
           ))}
           <p className="text-right text-sm text-ink-300">
@@ -359,6 +368,16 @@ function PreOrderFormModal({ onClose, onSubmit }: { onClose: () => void; onSubmi
           {busy ? 'Menyimpan...' : 'Simpan Pesanan Terjadwal'}
         </button>
       </div>
+      {pickerProduct && (
+        <ModifierPickerModal
+          product={pickerProduct}
+          onCancel={() => setPickerProduct(null)}
+          onConfirm={({ qty, notes, modifiers }) => {
+            setLines((current) => [...current, { productId: pickerProduct.id, name: pickerProduct.name, qty, unitPrice: pickerProduct.price, note: notes, modifiers }])
+            setPickerProduct(null)
+          }}
+        />
+      )}
     </Modal>
   )
 }

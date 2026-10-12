@@ -11,7 +11,7 @@ import { buildDepositReport, findGiftCard } from './deposits'
 import { listExpenses } from './expenses'
 import { buildKitchenSpeedReport, buildTableTurnover, listLateKitchenOrders } from './serviceInsights'
 import { listRecordedPayroll, recordPayrollExpense, saveStaffPay, saveStaffRoster } from './staffPay'
-import { cancelPreOrder, countDuePreOrders, createPreOrder, listPreOrders, preOrderDepositBalance, startPreOrder } from './preOrders'
+import { cancelPreOrder, countDuePreOrders, createPreOrder, describePreOrderLine, listPreOrders, preOrderDepositBalance, preOrderTotal, startPreOrder } from './preOrders'
 import { buildDailySummaryInput, buildDailySummaryMessage, getLastClosedShift } from './dailySummary'
 import { buildReceiptData } from '@/features/printing/receiptData'
 import { buildKitchenSpeed, kitchenTargetMinutesOf, prepMinutesOf } from '@/lib/kitchenSpeed'
@@ -360,6 +360,19 @@ describe('Pesanan terjadwal', () => {
     })
     expect((await findGiftCard(pre.preOrder!.depositCode as string))!.balance).toBe(0)
     expect((await db.orders.get(order.id))!.status).toBe('paid')
+  })
+
+  it('pilihan modifier ikut tersimpan, dihitung di perkiraan, dan terbawa ke pesanan', async () => {
+    const large = { groupId: 'g1', groupName: 'Ukuran', optionId: 'o2', optionName: 'Large', priceDelta: 5000 }
+    const lines = [{ productId: 'kopi', name: 'Kopi', qty: 2, unitPrice: 20000, note: 'es sedikit', modifiers: [large] }]
+    expect(preOrderTotal(lines)).toBe(50000)
+    expect(describePreOrderLine(lines[0])).toBe('2× Kopi (Large; es sedikit)')
+    const pre = await createPreOrder(input({ lines, depositAmount: 0 }), ACTOR)
+    expect(pre.preOrder!.lines[0].modifiers).toEqual([large])
+    const { order } = await startPreOrder(pre.id, { cashierId: 'u1', cashierName: 'Kasir', shiftId })
+    expect(order.grandTotal).toBe(50000)
+    const [item] = await db.orderItems.where('orderId').equals(order.id).toArray()
+    expect(item).toMatchObject({ qty: 2, notes: 'es sedikit', lineTotal: 50000, modifiers: [large] })
   })
 
   it('menu yang sudah diarsipkan dilewati & dilaporkan', async () => {

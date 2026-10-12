@@ -595,6 +595,8 @@ export interface PreOrderLine {
   /** Harga saat dipesan — hanya perkiraan; harga final mengikuti menu saat pesanan diproses. */
   unitPrice: number
   note: string
+  /** Pilihan modifier (ukuran, level gula, topping) yang diminta tamu. */
+  modifiers?: OrderItemModifierSnapshot[]
 }
 
 export interface PreOrderInfo {

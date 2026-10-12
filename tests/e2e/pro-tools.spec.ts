@@ -85,6 +85,12 @@ test('operasional, label menu, jadwal & gaji, pesanan terjadwal, layar pelanggan
   await page.getByRole('button', { name: 'Tambah Kentang Goreng ke pesanan terjadwal' }).click()
   await page.getByRole('spinbutton', { name: 'Jumlah Kentang Goreng' }).fill('4')
   await page.getByRole('button', { name: 'Tambah Pisang Goreng Keju ke pesanan terjadwal' }).click()
+  // Menu ber-modifier: pilihannya diambil lewat dialog yang sama dengan kasir.
+  await page.getByLabel('Cari menu pesanan terjadwal').fill('cappuccino')
+  await page.getByRole('button', { name: 'Tambah Cappuccino ke pesanan terjadwal' }).click()
+  await page.getByRole('button', { name: /^Large/ }).click()
+  await page.getByRole('button', { name: /^Tambah •/ }).click()
+  await expect(page.getByText(/Large/).first()).toBeVisible()
   await page.getByLabel('Uang muka', { exact: true }).fill('20000')
   await shot(page, '43-pesanan-terjadwal-form')
   await page.getByRole('button', { name: 'Simpan Pesanan Terjadwal' }).click()
@@ -99,7 +105,10 @@ test('operasional, label menu, jadwal & gaji, pesanan terjadwal, layar pelanggan
 
   // --- Hari-H: proses → pesanan terbuka di kasir berisi menunya.
   await page.getByRole('button', { name: 'Proses pesanan Bu Sari' }).click()
-  await expect(page.getByRole('button', { name: /^Kurangi jumlah / })).toHaveCount(2)
+  await expect(page.getByRole('button', { name: /^Kurangi jumlah / })).toHaveCount(3)
+  const cappuccino = (await idbAll<{ productName: string; lineTotal: number; modifiers: { optionName: string }[] }>(page, 'orderItems')).find((i) => i.productName === 'Cappuccino')
+  expect(cappuccino?.lineTotal).toBe(30000) // 25.000 + Large 5.000
+  expect(cappuccino?.modifiers.map((m) => m.optionName)).toContain('Large')
 
   // --- Layar pelanggan (jendela kedua) mengikuti pesanan kasir.
   const display = await page.context().newPage()
@@ -117,10 +126,10 @@ test('operasional, label menu, jadwal & gaji, pesanan terjadwal, layar pelanggan
   await shot(page, '46-dapur-terlambat')
   for (const label of ['Mulai Proses', 'Tandai Siap']) {
     const buttons = page.getByRole('button', { name: label })
-    await expect(buttons).toHaveCount(2)
-    await buttons.first().click()
-    await expect(buttons).toHaveCount(1)
-    await buttons.first().click()
+    for (let left = 3; left > 0; left--) {
+      await expect(buttons).toHaveCount(left)
+      await buttons.first().click()
+    }
     await expect(buttons).toHaveCount(0)
   }
   await expect(page.getByText(/Terlambat \d+ mnt/)).toHaveCount(0)
@@ -158,6 +167,11 @@ test('operasional, label menu, jadwal & gaji, pesanan terjadwal, layar pelanggan
   await expect(page.getByText('Menu paling sering terlambat')).toBeVisible()
   await page.getByRole('heading', { name: 'Kecepatan Dapur' }).scrollIntoViewIfNeeded()
   await shot(page, '49-laporan-kecepatan-dapur')
+  // Ekspor CSV memuat bagian kecepatan dapur.
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Ekspor CSV' }).click()])
+  const csv = await (await import('node:fs/promises')).readFile(await download.path(), 'utf8')
+  expect(csv).toContain('Kecepatan Dapur (batas 15 menit)')
+  expect(csv).toContain('Kentang Goreng,1,1,25')
 
   // --- Tutup shift → ringkasan untuk pemilik siap dikirim ke WhatsApp.
   await page.getByRole('link', { name: 'Shift' }).click()

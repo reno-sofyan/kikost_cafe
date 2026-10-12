@@ -7,6 +7,10 @@ import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { buildDepositReport, type DepositReport } from '@/db/repositories/deposits'
 import { buildMenuEngineering, MENU_CLASS_INFO } from '@/lib/menuEngineering'
 import { accountingExportToCsv, buildAccountingExport } from '@/db/repositories/accounting'
+import { buildKitchenSpeedReport, buildTableTurnover, STATION_LABELS, type TableTurnover } from '@/db/repositories/serviceInsights'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
+import type { KitchenSpeed } from '@/lib/kitchenSpeed'
 
 export async function exportAccountingJournalCsv(range: DateRange): Promise<{ balanced: boolean }> {
   const exp = await buildAccountingExport(range)
@@ -42,6 +46,16 @@ async function depositReportFor(report: SalesReport): Promise<DepositReport | nu
   if (report.scope !== 'all') return null
   const d = await buildDepositReport(report.range)
   return d.topUpTotal > 0 || d.usedTotal !== 0 || d.withdrawnTotal > 0 || d.outstanding !== 0 || d.giftCardSoldTotal > 0 || d.giftCardOutstanding !== 0 ? d : null
+}
+
+/** Kecepatan dapur & perputaran meja untuk laporan Keseluruhan (hanya jenis usaha ber-`proTools`, dan hanya bila ada datanya). */
+async function serviceInsightsFor(report: SalesReport): Promise<{ speed: KitchenSpeed | null; turnover: TableTurnover | null }> {
+  if (report.scope !== 'all') return { speed: null, turnover: null }
+  const features = featuresForBusinessType((await getSettings()).businessType)
+  if (!features.proTools) return { speed: null, turnover: null }
+  const speed = features.kitchen ? await buildKitchenSpeedReport(report.range) : null
+  const turnover = features.tables ? await buildTableTurnover(report.range) : null
+  return { speed: speed && speed.overall.count > 0 ? speed : null, turnover: turnover && turnover.visits > 0 ? turnover : null }
 }
 
 export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
@@ -153,6 +167,28 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   lines.push('')
   lines.push(csvRow('Jam', 'Omzet', 'Jumlah Transaksi'))
   for (const h of report.byHour) if (h.transactionCount > 0) lines.push(csvRow(`${String(h.hour).padStart(2, '0')}:00`, h.revenue, h.transactionCount))
+  const { speed, turnover } = await serviceInsightsFor(report)
+  if (speed) {
+    lines.push('')
+    lines.push(`Kecepatan Dapur (batas ${speed.targetMinutes > 0 ? `${speed.targetMinutes} menit` : 'dimatikan'})`)
+    lines.push(csvRow('Stasiun', 'Item Disiapkan', 'Rata-rata (menit)', 'Terlambat', '% Tepat Waktu'))
+    lines.push(csvRow('Semua', speed.overall.count, speed.overall.avgMinutes, speed.overall.lateCount, speed.overall.onTimePercent))
+    for (const s of speed.byStation) lines.push(csvRow(STATION_LABELS[s.key] ?? s.key, s.count, s.avgMinutes, s.lateCount, s.onTimePercent))
+    if (speed.lateProducts.length > 0) {
+      lines.push(csvRow('Menu Paling Sering Terlambat', 'Terlambat', 'Dari', 'Rata-rata (menit)'))
+      for (const p of speed.lateProducts) lines.push(csvRow(p.key, p.lateCount, p.count, p.avgMinutes))
+    }
+  }
+  if (turnover) {
+    lines.push('')
+    lines.push('Perputaran Meja')
+    lines.push(csvRow('Kunjungan Meja', turnover.visits))
+    lines.push(csvRow('Rata-rata Lama Duduk (menit)', turnover.avgMinutes))
+    lines.push(csvRow('Perputaran per Meja per Hari', turnover.turnsPerTablePerDay))
+    if (turnover.longStayMinutes > 0) lines.push(csvRow(`Duduk Lebih dari ${turnover.longStayMinutes} Menit`, turnover.longStayCount))
+    lines.push(csvRow('Meja', 'Terisi', 'Tamu', 'Rata-rata Duduk (menit)', 'Omzet'))
+    for (const r of turnover.rows) lines.push(csvRow(r.tableName, r.visits, r.guests, r.avgMinutes, r.revenue))
+  }
 
   // BOM supaya Excel membaca UTF-8 dengan benar.
   await saveTextFile(`laporan-penjualan${fileSuffix(report)}-${formatDate(report.range.from)}.csv`, `\uFEFF${lines.join('\n')}`, 'text/csv')
@@ -501,6 +537,72 @@ export async function exportSalesReportPdf(
         { header: 'Omzet', width: 45, align: 'right' },
       ],
       report.byWaiter.map((w) => [w.waiterName, String(w.transactionCount), String(w.guestCount), formatRupiah(w.tips), formatRupiah(w.revenue)]),
+    )
+  }
+
+  const { speed, turnover } = await serviceInsightsFor(report)
+  if (speed) {
+    const hasTarget = speed.targetMinutes > 0
+    y = sectionTitle(doc, y, `Kecepatan Dapur${hasTarget ? ` (batas ${speed.targetMinutes} menit)` : ''}`)
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: 'Stasiun', width: 60 },
+        { header: 'Item', width: 30, align: 'right' },
+        { header: 'Rata-rata', width: 30, align: 'right' },
+        { header: 'Terlambat', width: 30, align: 'right' },
+        { header: 'Tepat Waktu', width: 30, align: 'right' },
+      ],
+      [{ ...speed.overall, key: 'Semua' }, ...speed.byStation.map((s) => ({ ...s, key: STATION_LABELS[s.key] ?? s.key }))].map((s) => [
+        s.key,
+        String(s.count),
+        `${s.avgMinutes} mnt`,
+        hasTarget ? String(s.lateCount) : '-',
+        hasTarget ? `${s.onTimePercent.toFixed(0)}%` : '-',
+      ]),
+    )
+    if (speed.lateProducts.length > 0) {
+      y = sectionTitle(doc, y, 'Menu Paling Sering Terlambat')
+      y = drawTable(
+        doc,
+        y,
+        [
+          { header: 'Menu', width: 100 },
+          { header: 'Terlambat', width: 40, align: 'right' },
+          { header: 'Rata-rata', width: 40, align: 'right' },
+        ],
+        speed.lateProducts.map((p) => [p.key, `${p.lateCount} dari ${p.count}`, `${p.avgMinutes} mnt`]),
+      )
+    }
+  }
+  if (turnover) {
+    y = sectionTitle(doc, y, 'Perputaran Meja')
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: '', width: 55 },
+        { header: '', width: 35, align: 'right' },
+        { header: '', width: 55 },
+        { header: '', width: 35, align: 'right' },
+      ],
+      [
+        ['Kunjungan Meja', String(turnover.visits), 'Rata-rata Lama Duduk', `${turnover.avgMinutes} mnt`],
+        ['Perputaran per Meja per Hari', `${turnover.turnsPerTablePerDay.toFixed(1)}x`, turnover.longStayMinutes > 0 ? `Lebih dari ${turnover.longStayMinutes} mnt` : '', turnover.longStayMinutes > 0 ? String(turnover.longStayCount) : ''],
+      ],
+    )
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: 'Meja', width: 60 },
+        { header: 'Terisi', width: 25, align: 'right' },
+        { header: 'Tamu', width: 25, align: 'right' },
+        { header: 'Rata-rata Duduk', width: 30, align: 'right' },
+        { header: 'Omzet', width: 40, align: 'right' },
+      ],
+      turnover.rows.map((r) => [r.tableName, `${r.visits}x`, String(r.guests), `${r.avgMinutes} mnt`, formatRupiah(r.revenue)]),
     )
   }
 

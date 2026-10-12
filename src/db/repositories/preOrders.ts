@@ -26,14 +26,25 @@ export interface PreOrderInput {
   depositMethod: PaymentMethod
 }
 
+/** Harga satu porsi termasuk tambahan modifier. */
+export function preOrderLineUnitPrice(line: PreOrderLine): number {
+  return line.unitPrice + (line.modifiers ?? []).reduce((s, m) => s + m.priceDelta, 0)
+}
+
 export function preOrderTotal(lines: PreOrderLine[]): number {
-  return lines.reduce((s, l) => s + l.unitPrice * l.qty, 0)
+  return lines.reduce((s, l) => s + preOrderLineUnitPrice(l) * l.qty, 0)
+}
+
+/** "2× Latte (Large, Kurang Gula; tanpa es)" — untuk daftar & pesan pengingat. */
+export function describePreOrderLine(line: PreOrderLine): string {
+  const extras = [(line.modifiers ?? []).map((m) => m.optionName).join(', '), line.note].filter(Boolean).join('; ')
+  return `${line.qty}× ${line.name}${extras ? ` (${extras})` : ''}`
 }
 
 function cleanLines(lines: PreOrderLine[]): PreOrderLine[] {
   return lines
     .filter((l) => l.qty > 0)
-    .map((l) => ({ productId: l.productId, name: l.name, qty: Math.floor(l.qty), unitPrice: Math.round(l.unitPrice), note: l.note.trim() }))
+    .map((l) => ({ productId: l.productId, name: l.name, qty: Math.floor(l.qty), unitPrice: Math.round(l.unitPrice), note: l.note.trim(), ...(l.modifiers?.length ? { modifiers: l.modifiers } : {}) }))
 }
 
 /**
@@ -135,7 +146,7 @@ export async function startPreOrder(
       skipped.push(line.name)
       continue
     }
-    await addOrderItem({ orderId: order.id, productId: product.id, productName: product.name, unitPrice: product.price, qty: line.qty, modifiers: [], notes: line.note })
+    await addOrderItem({ orderId: order.id, productId: product.id, productName: product.name, unitPrice: product.price, qty: line.qty, modifiers: line.modifiers ?? [], notes: line.note })
   }
   await db.transaction('rw', db.reservations, db.syncQueue, async () => {
     const updated: Reservation = { ...reservation, status: 'seated', tableId: dineIn ? (params.tableId as string) : null, orderId: order.id, updatedAt: getTrustedNow() }
