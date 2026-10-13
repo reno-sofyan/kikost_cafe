@@ -50,6 +50,14 @@ export default {
           500: "#047857", // teks, ikon, titik status — 5.0:1
           600: "#059669", // isian solid & basis tint
         },
+        // Hijau lumut — warna ubin meja bar di outlet. Hanya dipakai halaman
+        // pesan-mandiri pelanggan (/order/*); peran angka sama dengan `brand`.
+        moss: {
+          400: "#3f5c2d", // teks & ikon aksen — 7.4:1 di putih
+          500: "#6b8f52", // border, ring fokus
+          600: "#4a6b35", // isian tombol utama — teks putih 6.0:1
+          700: "#3c5a2a", // hover / tekan
+        },
         // Amber untuk sorotan sekunder (favorit, cetak ulang, menunggu).
         accent: {
           400: "#b45309", // teks — 4.6:1

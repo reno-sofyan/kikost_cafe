@@ -6,20 +6,38 @@ import { ToastHost } from '@/components/ui/ToastHost'
 import { installGlobalErrorHandlers } from '@/lib/globalErrorHandler'
 import { cleanupLegacyBrand } from '@/lib/legacyCleanup'
 import { ensurePersistentStorage } from '@/lib/persistentStorage'
+import { menuTokenFromPath, preloadMenu } from '@/features/order/menuPreload'
 import '@/index.css'
 
 // Dipasang sebelum apa pun lain dirender — lihat globalErrorHandler.ts untuk alasannya.
 installGlobalErrorHandlers()
 
-// Sisa IndexedDB/localStorage dari nama produk sebelum rebranding (Kikost Cafe POS /
-// Kinara Coffee) — tidak pernah berisi data produksi nyata, aman dihapus tanpa migrasi.
-// Tidak diblokir render: berjalan paralel, bukan prasyarat aplikasi tampil.
-void cleanupLegacyBrand()
+/**
+ * Pekerjaan startup khusus perangkat kasir — TIDAK dijalankan di halaman
+ * pesan-mandiri (/order/*), yang dibuka di HP pelanggan lewat data seluler:
+ * - service worker mem-precache seluruh aplikasi POS (beberapa MB);
+ * - izin "persistent storage" & pembersihan IndexedDB lama tak relevan di sana.
+ */
+function startPosRuntime(): void {
+  // Sisa IndexedDB/localStorage dari nama produk sebelum rebranding (Kikost Cafe POS /
+  // Kinara Coffee) — tidak pernah berisi data produksi nyata, aman dihapus tanpa migrasi.
+  // Tidak diblokir render: berjalan paralel, bukan prasyarat aplikasi tampil.
+  void cleanupLegacyBrand()
 
-// Kunci IndexedDB sebagai "persistent storage" supaya Android tidak menghapusnya
-// otomatis saat perangkat kekurangan ruang. Tidak diblokir render — permintaan izin
-// boleh gagal/tertunda tanpa mencegah kasir memakai aplikasi. Lihat persistentStorage.ts.
-void ensurePersistentStorage()
+  // Kunci IndexedDB sebagai "persistent storage" supaya Android tidak menghapusnya
+  // otomatis saat perangkat kekurangan ruang. Tidak diblokir render — permintaan izin
+  // boleh gagal/tertunda tanpa mencegah kasir memakai aplikasi. Lihat persistentStorage.ts.
+  void ensurePersistentStorage()
+
+  // Didaftarkan manual (injectRegister: false di vite.config.ts) supaya bisa dilewati
+  // di halaman pelanggan. Isinya sama persis dengan registerSW.js yang dulu disuntikkan
+  // plugin PWA.
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    const register = () => void navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    if (document.readyState === 'complete') register()
+    else window.addEventListener('load', register)
+  }
+}
 
 const rootEl = document.getElementById('root')!
 
@@ -28,6 +46,9 @@ const rootEl = document.getElementById('root')!
 if (window.location.pathname.startsWith('/order/')) {
   // Halaman pelanggan dipakai di HP (potret) — matikan portrait-lock kasir.
   document.body.classList.add('customer-view')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff')
+  const menuToken = menuTokenFromPath(window.location.pathname)
+  if (menuToken) preloadMenu(menuToken)
   void import('@/features/order/CustomerApp').then(({ CustomerApp }) => {
     ReactDOM.createRoot(rootEl).render(
       <React.StrictMode>
@@ -44,6 +65,7 @@ if (window.location.pathname.startsWith('/order/')) {
   // Layar pelanggan: jendela kedua di perangkat kasir. Hanya MEMBACA database lokal —
   // tanpa login, sinkronisasi, atau mesin cetak (semua itu tetap milik jendela kasir).
   document.body.classList.add('customer-view')
+  startPosRuntime()
   void Promise.all([import('@/features/display/CustomerDisplayScreen'), import('@/db/repositories/settings')]).then(
     ([{ CustomerDisplayScreen }, { ensureDefaultSettings }]) =>
       ensureDefaultSettings().finally(() => {
@@ -57,6 +79,7 @@ if (window.location.pathname.startsWith('/order/')) {
       }),
   )
 } else {
+  startPosRuntime()
   void Promise.all([import('@/App'), import('@/db/repositories/settings')]).then(
     ([{ default: App }, { ensureDefaultSettings }]) =>
       // Pastikan baris pengaturan default ada sebelum render, supaya komponen yang

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import QRCode from 'qrcode'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { randomUUID } from '@/lib/id'
 import { productTagsOf } from '@/lib/productTags'
+import { fetchMenu } from './menuPreload'
 
 /**
  * Halaman pesan-mandiri pelanggan (publik, tanpa login, tanpa Dexie).
@@ -63,7 +63,7 @@ function findOption(item: MenuItem, optionId: string): MenuOption | undefined {
 
 function Screen({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-full bg-[#FBF3E8] text-ink-50">
+    <div className="min-h-full bg-white text-ink-50">
       <div
         className="mx-auto max-w-md px-4 pt-5"
         style={{ paddingBottom: 'calc(11rem + env(safe-area-inset-bottom))' }}
@@ -81,6 +81,40 @@ function Center({ children }: { children: ReactNode }) {
         {children}
       </div>
       <KioneFooter />
+    </Screen>
+  )
+}
+
+/** Kerangka halaman menu selama data dimuat — tata letaknya sama dengan MenuScreen. */
+function MenuSkeleton() {
+  return (
+    <Screen>
+      <div className="animate-pulse" aria-busy="true" aria-label="Memuat menu">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="h-11 w-11 rounded-2xl bg-ink-950" />
+          <div className="flex-1 space-y-2">
+            <div className="h-2.5 w-24 rounded bg-ink-950" />
+            <div className="h-4 w-40 rounded bg-ink-950" />
+          </div>
+        </div>
+        <div className="mb-3 h-11 rounded-2xl bg-ink-950" />
+        <div className="mb-5 flex gap-2">
+          {[16, 24, 24, 20].map((w, i) => (
+            <div key={i} className="h-9 rounded-full bg-ink-950" style={{ width: `${w * 0.25}rem` }} />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="overflow-hidden rounded-2xl border border-ink-600">
+              <div className="aspect-[4/3] bg-ink-950" />
+              <div className="space-y-2 p-3">
+                <div className="h-3 w-3/4 rounded bg-ink-950" />
+                <div className="h-3 w-1/3 rounded bg-ink-950" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </Screen>
   )
 }
@@ -138,7 +172,7 @@ function OrderFlow() {
   useEffect(() => {
     let alive = true
     setLoading(true)
-    fetch(`${API}/api/t/${encodeURIComponent(token)}`)
+    fetchMenu(token)
       .then(async (r) => {
         let body: unknown
         try {
@@ -163,6 +197,10 @@ function OrderFlow() {
       alive = false
     }
   }, [token])
+
+  useEffect(() => {
+    if (menu) document.title = `Menu · ${menu.business.name}`
+  }, [menu])
 
   const cartCount = useMemo(() => cart.reduce((n, l) => n + l.qty, 0), [cart])
   const subtotal = useMemo(() => cart.reduce((sum, l) => sum + (l.item.price + lineExtra(l)) * l.qty, 0), [cart])
@@ -221,7 +259,7 @@ function OrderFlow() {
     }
   }
 
-  if (loading) return <Center>Memuat menu…</Center>
+  if (loading) return <MenuSkeleton />
   if (loadErr && !menu) return <Center>{loadErr}</Center>
   if (!menu) return <Center>Menu tidak tersedia.</Center>
 
@@ -309,66 +347,68 @@ function MenuScreen(props: {
   onViewCart: () => void
 }) {
   const { menu, search, setSearch, activeCat, setActiveCat, cartCount, subtotal, onOpenItem, onQuickAdd, onViewCart } = props
-  const q = search.trim().toLowerCase()
-  const items = menu.items.filter(
-    (i) => (activeCat === ALL_CATEGORY || i.categoryId === activeCat) && (!q || i.name.toLowerCase().includes(q)),
-  )
+  const items = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return menu.items.filter(
+      (i) => (activeCat === ALL_CATEGORY || i.categoryId === activeCat) && (!q || i.name.toLowerCase().includes(q)),
+    )
+  }, [menu.items, activeCat, search])
   const tableBadge = menu.table.name.match(/\d+/)?.[0] ?? menu.table.name
 
   return (
     <Screen>
-      <header className="-mx-4 mb-4 rounded-b-3xl bg-[#CDB69C] px-4 pb-6 pt-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xl font-bold leading-snug text-[#402A1E]">Selamat Datang di {menu.business.name}—</p>
-            <p className="mt-1 text-sm text-[#5B4636]">Tempat rehat sejenak dari hari yang panjang.</p>
+      <header className="mb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            {menu.business.logoDataUrl ? (
+              <img src={menu.business.logoDataUrl} alt="" className="h-11 w-11 flex-none rounded-2xl object-cover" />
+            ) : (
+              <span className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-moss-600 text-white">
+                <Icon name="coffee" size={20} />
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-moss-400">Selamat datang di</p>
+              <h1 className="truncate text-lg leading-tight text-ink-50">{menu.business.name}</h1>
+            </div>
           </div>
-          {menu.business.logoDataUrl ? (
-            <img src={menu.business.logoDataUrl} alt={menu.business.name} className="h-12 w-12 flex-none rounded-xl object-cover" />
-          ) : (
-            <span className="flex-none rounded-full border border-[#402A1E]/40 p-2 text-[#402A1E]">
-              <Icon name="coffee" size={20} />
-            </span>
-          )}
+          <span className="inline-flex flex-none items-center gap-1.5 rounded-full bg-moss-600/10 px-3 py-1.5 text-xs font-semibold text-moss-400">
+            <Icon name="table" size={13} />
+            {tableBadge}
+          </span>
         </div>
-        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#402A1E]/30 bg-white/70 px-3 py-1 text-xs font-semibold text-[#402A1E]">
-          <Icon name="table" size={13} />
-          {tableBadge}
-        </span>
+        <p className="mt-3 text-sm text-ink-300">Tempat rehat sejenak dari hari yang panjang.</p>
       </header>
 
-      <label className="mb-3 block">
-        <span className="relative block">
-          <Icon name="search" size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A7864]" />
+      {/* Latar solid (bukan blur) supaya scroll tetap ringan di HP kelas bawah. */}
+      <div className="sticky top-0 z-10 -mx-4 mb-3 bg-white px-4 pb-2 pt-2">
+        <label className="relative mb-3 block">
+          <Icon name="search" size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300" />
           <input
-            className="w-full rounded-full border border-[#E7D9C7] bg-white py-3 pl-10 pr-4 text-sm text-ink-50 placeholder:text-[#8A7864] focus:border-[#B99B78] focus:outline-none"
+            className="w-full rounded-2xl border border-transparent bg-ink-950 py-3 pl-10 pr-4 text-sm text-ink-50 placeholder:text-ink-300 focus:border-moss-500 focus:bg-white focus:outline-none"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari minuman dan makanan..."
           />
-        </span>
-      </label>
+        </label>
 
-      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
-        <button
-          onClick={() => setActiveCat(ALL_CATEGORY)}
-          className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-            activeCat === ALL_CATEGORY ? 'bg-[#3E2B21] text-white' : 'bg-[#E7DACA] text-[#5B4636]'
-          }`}
-        >
-          Semua
-        </button>
-        {menu.categories.map((c) => (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
           <button
-            key={c.id}
-            onClick={() => setActiveCat(c.id)}
-            className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              activeCat === c.id ? 'bg-[#3E2B21] text-white' : 'bg-[#E7DACA] text-[#5B4636]'
-            }`}
+            onClick={() => setActiveCat(ALL_CATEGORY)}
+            className={`whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${activeCat === ALL_CATEGORY ? 'border-moss-600 bg-moss-600 text-white' : 'border-ink-600 bg-white text-ink-200'}`}
           >
-            {c.name}
+            Semua
           </button>
-        ))}
+          {menu.categories.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveCat(c.id)}
+              className={`whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${activeCat === c.id ? 'border-moss-600 bg-moss-600 text-white' : 'border-ink-600 bg-white text-ink-200'}`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -376,10 +416,17 @@ function MenuScreen(props: {
           <button
             key={item.id}
             onClick={() => onOpenItem(item)}
-            className="overflow-hidden rounded-2xl bg-white text-left shadow-card transition-transform active:scale-[0.98]"
+            // content-visibility: kartu di luar layar tidak di-layout/di-paint sampai digulir.
+            className="overflow-hidden rounded-2xl border border-ink-600 bg-white text-left transition-transform [contain-intrinsic-size:auto_13rem] [content-visibility:auto] active:scale-[0.98]"
           >
-            <div className="relative aspect-square w-full bg-[#EFE4D4]">
-              {item.photoDataUrl && <img src={item.photoDataUrl} alt="" className="h-full w-full object-cover" />}
+            <div className="relative aspect-[4/3] w-full bg-ink-950">
+              {item.photoDataUrl ? (
+                <img src={item.photoDataUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+              ) : (
+                <span className="absolute inset-0 flex items-center justify-center text-ink-500">
+                  <Icon name="image" size={28} />
+                </span>
+              )}
               <span
                 role="button"
                 aria-label={`Tambah ${item.name}`}
@@ -388,14 +435,14 @@ function MenuScreen(props: {
                   if (item.modifierGroups.length > 0) onOpenItem(item)
                   else onQuickAdd(item)
                 }}
-                className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-[#3E2B21] text-white shadow-pop"
+                className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-moss-600 text-white shadow-card ring-2 ring-white"
               >
                 <Icon name="plus" size={16} />
               </span>
             </div>
-            <div className="p-2.5">
-              <p className="truncate text-sm font-semibold text-ink-50">{item.name}</p>
-              <p className="mt-0.5 text-xs font-medium text-[#5B4636]">{rupiah(item.price)}</p>
+            <div className="p-3">
+              <p className="line-clamp-2 text-sm font-semibold leading-snug text-ink-50">{item.name}</p>
+              <p className="mt-1 text-sm font-bold text-moss-400">{rupiah(item.price)}</p>
               <ProductTagChips tags={item.tags} compact />
             </div>
           </button>
@@ -405,10 +452,10 @@ function MenuScreen(props: {
 
       {cartCount > 0 && (
         <div
-          className="fixed inset-x-0 bottom-0 z-20 border-t border-[#E7D9C7] bg-white/95 p-3 shadow-[0_-8px_24px_-12px_rgba(70,40,22,0.25)] backdrop-blur"
+          className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-600 bg-white p-3 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)]"
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
         >
-          <button onClick={onViewCart} className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl bg-[#3E2B21] px-4 py-3 text-white">
+          <button onClick={onViewCart} className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl bg-moss-600 px-4 py-3.5 text-white shadow-pop">
             <span className="flex items-center gap-2 text-left">
               <Icon name="cart" size={18} />
               <span>
@@ -429,7 +476,7 @@ function MenuScreen(props: {
 
 function RequirementBadge({ group }: { group: MenuGroup }) {
   const label = !group.required ? 'Opsional' : group.multiSelect ? 'Wajib pilih' : 'Pilih satu'
-  return <span className="rounded-full bg-[#EFE4D4] px-2.5 py-1 text-xs font-medium text-[#5B4636]">{label}</span>
+  return <span className="rounded-full bg-ink-950 px-2.5 py-1 text-xs font-medium text-ink-200">{label}</span>
 }
 
 function OptionRow({ selected, label, priceDelta, onClick }: { selected: boolean; label: string; priceDelta: number; onClick: () => void }) {
@@ -437,16 +484,16 @@ function OptionRow({ selected, label, priceDelta, onClick }: { selected: boolean
     <button
       onClick={onClick}
       className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-3 text-left text-sm transition-colors ${
-        selected ? 'border-[#3E2B21] bg-[#3E2B21]/5' : 'border-[#E7D9C7] bg-white'
+        selected ? 'border-moss-600 bg-moss-600/5' : 'border-ink-600 bg-white'
       }`}
     >
       <span className="flex items-center gap-2.5">
-        <span className={`flex h-5 w-5 flex-none items-center justify-center rounded-full border-2 ${selected ? 'border-[#3E2B21]' : 'border-ink-500'}`}>
-          {selected && <span className="h-2.5 w-2.5 rounded-full bg-[#3E2B21]" />}
+        <span className={`flex h-5 w-5 flex-none items-center justify-center rounded-full border-2 ${selected ? 'border-moss-600' : 'border-ink-500'}`}>
+          {selected && <span className="h-2.5 w-2.5 rounded-full bg-moss-600" />}
         </span>
         {label}
       </span>
-      {priceDelta !== 0 && <span className="text-[#5B4636]">+{rupiah(priceDelta)}</span>}
+      {priceDelta !== 0 && <span className="text-ink-200">+{rupiah(priceDelta)}</span>}
     </button>
   )
 }
@@ -534,7 +581,7 @@ function ProductDetailScreen({
       <label className="mb-4 mt-5 block">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-semibold text-ink-50">Catatan Tambahan</span>
-          <span className="rounded-full bg-[#EFE4D4] px-2.5 py-1 text-xs font-medium text-[#5B4636]">Opsional</span>
+          <span className="rounded-full bg-ink-950 px-2.5 py-1 text-xs font-medium text-ink-200">Opsional</span>
         </div>
         <textarea
           className="input-field min-h-0 bg-white"
@@ -547,25 +594,25 @@ function ProductDetailScreen({
       </label>
 
       <div
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-[#E7D9C7] bg-white/95 p-3 shadow-[0_-8px_24px_-12px_rgba(70,40,22,0.25)] backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-20 border-t border-ink-600 bg-white p-3 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)]"
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto flex max-w-md items-center gap-3">
           <button
-            className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-[#E7D9C7] bg-white text-lg text-[#3E2B21]"
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-ink-600 bg-white text-lg text-ink-50"
             onClick={() => setQty((n) => Math.max(1, n - 1))}
           >
             −
           </button>
           <span className="w-6 flex-none text-center text-base font-bold text-ink-50">{qty}</span>
           <button
-            className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-[#E7D9C7] bg-white text-lg text-[#3E2B21]"
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-full border border-ink-600 bg-white text-lg text-ink-50"
             onClick={() => setQty((n) => Math.min(99, n + 1))}
           >
             +
           </button>
           <button
-            className="flex min-h-touch flex-1 items-center justify-center rounded-xl bg-[#3E2B21] px-4 text-sm font-semibold text-white disabled:opacity-40"
+            className="flex min-h-touch flex-1 items-center justify-center rounded-xl bg-moss-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
             disabled={missingRequired}
             onClick={() => onSave({ key: initial?.key ?? randomUUID(), item, qty, optionIds, note }, initial?.key)}
           >
@@ -637,7 +684,7 @@ function CheckoutScreen(props: {
             key={t.value}
             onClick={() => setOrderType(t.value)}
             className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2.5 text-sm font-semibold ${
-              orderType === t.value ? 'bg-[#3E2B21] text-white' : 'border border-[#E7D9C7] bg-white text-[#5B4636]'
+              orderType === t.value ? 'bg-moss-600 text-white' : 'border border-ink-600 bg-white text-ink-200'
             }`}
           >
             <Icon name={t.icon} size={15} />
@@ -646,16 +693,16 @@ function CheckoutScreen(props: {
         ))}
       </div>
 
-      <div className="mb-5 rounded-2xl border border-[#E7D9C7] bg-white p-4">
+      <div className="mb-5 rounded-2xl border border-ink-600 bg-white p-4">
         <p className="mb-3 text-sm font-semibold text-ink-50">Data Pelanggan</p>
         <label className="mb-3 block">
           <span className="mb-1 block text-xs text-ink-300">
             Nama Anda<span className="text-red-500">*</span>
           </span>
           <span className="relative block">
-            <Icon name="user" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A7864]" />
+            <Icon name="user" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300" />
             <input
-              className="w-full rounded-xl border border-[#E7D9C7] bg-white py-2.5 pl-9 pr-3 text-sm placeholder:text-[#8A7864] focus:border-[#B99B78] focus:outline-none"
+              className="w-full rounded-xl border border-ink-600 bg-white py-2.5 pl-9 pr-3 text-sm placeholder:text-ink-300 focus:border-moss-500 focus:outline-none"
               value={customerName}
               maxLength={60}
               onChange={(e) => setCustomerName(e.target.value)}
@@ -668,9 +715,9 @@ function CheckoutScreen(props: {
             Nomor Handphone<span className="text-red-500">*</span>
           </span>
           <span className="relative block">
-            <Icon name="phone" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A7864]" />
+            <Icon name="phone" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300" />
             <input
-              className="w-full rounded-xl border border-[#E7D9C7] bg-white py-2.5 pl-9 pr-3 text-sm placeholder:text-[#8A7864] focus:border-[#B99B78] focus:outline-none"
+              className="w-full rounded-xl border border-ink-600 bg-white py-2.5 pl-9 pr-3 text-sm placeholder:text-ink-300 focus:border-moss-500 focus:outline-none"
               value={customerPhone}
               maxLength={20}
               type="tel"
@@ -686,9 +733,9 @@ function CheckoutScreen(props: {
               Nomor Meja<span className="text-red-500">*</span>
             </span>
             <span className="relative block">
-              <Icon name="table" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8A7864]" />
+              <Icon name="table" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300" />
               <input
-                className="w-full rounded-xl border border-[#E7D9C7] bg-[#F5EEE3] py-2.5 pl-9 pr-3 text-sm text-ink-300"
+                className="w-full rounded-xl border border-ink-600 bg-ink-800 py-2.5 pl-9 pr-3 text-sm text-ink-300"
                 value={menu.table.name}
                 disabled
                 readOnly
@@ -700,22 +747,22 @@ function CheckoutScreen(props: {
 
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm font-semibold text-ink-50">Pesanan Anda</p>
-        <button onClick={onBack} className="flex items-center gap-1 rounded-full bg-[#3E2B21] px-3 py-1.5 text-xs font-semibold text-white">
+        <button onClick={onBack} className="flex items-center gap-1 rounded-full bg-moss-600 px-3 py-1.5 text-xs font-semibold text-white">
           <Icon name="plus" size={12} /> Tambah Menu
         </button>
       </div>
 
-      <div className="mb-5 rounded-2xl border border-[#E7D9C7] bg-white p-4">
+      <div className="mb-5 rounded-2xl border border-ink-600 bg-white p-4">
         {cart.map((l, i) => {
           const options = l.optionIds.map((oid) => findOption(l.item, oid)).filter((o): o is MenuOption => !!o)
           return (
-            <div key={l.key} className={`py-3 ${i > 0 ? 'border-t border-[#EFE4D4]' : 'pt-0'}`}>
+            <div key={l.key} className={`py-3 ${i > 0 ? 'border-t border-ink-950' : 'pt-0'}`}>
               <div className="flex items-center justify-between gap-2">
                 <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-50">{l.item.name}</p>
                 <div className="flex flex-none items-center gap-2">
                   <button
                     aria-label="Kurangi"
-                    className="flex h-6 w-6 items-center justify-center rounded-full border border-[#E7D9C7] text-[#5B4636]"
+                    className="flex h-6 w-6 items-center justify-center rounded-full border border-ink-600 text-ink-200"
                     onClick={() => onChangeQty(l.key, -1)}
                   >
                     −
@@ -723,7 +770,7 @@ function CheckoutScreen(props: {
                   <span className="w-4 text-center text-sm font-semibold text-ink-50">{l.qty}</span>
                   <button
                     aria-label="Tambah"
-                    className="flex h-6 w-6 items-center justify-center rounded-full border border-[#E7D9C7] text-[#5B4636]"
+                    className="flex h-6 w-6 items-center justify-center rounded-full border border-ink-600 text-ink-200"
                     onClick={() => onChangeQty(l.key, 1)}
                   >
                     +
@@ -733,7 +780,7 @@ function CheckoutScreen(props: {
               {l.note && <p className="mt-0.5 text-xs text-ink-400">Notes : {l.note}</p>}
               <div className="mt-1 flex items-center justify-between">
                 <p className="text-sm text-ink-300">{rupiah((l.item.price + lineExtra(l)) * l.qty)}</p>
-                <button className="text-xs font-semibold text-blue-600" onClick={() => onEditLine(l)}>
+                <button className="text-xs font-semibold text-moss-400" onClick={() => onEditLine(l)}>
                   Edit
                 </button>
               </div>
@@ -749,7 +796,7 @@ function CheckoutScreen(props: {
         {cart.length === 0 && <p className="py-4 text-center text-sm text-ink-400">Keranjang kosong.</p>}
       </div>
 
-      <div className="mb-5 rounded-2xl border border-[#E7D9C7] bg-white">
+      <div className="mb-5 rounded-2xl border border-ink-600 bg-white">
         <div className="space-y-1.5 p-4 text-sm text-ink-300">
           <div className="flex justify-between">
             <span>Subtotal ({itemCount} Item)</span>
@@ -768,7 +815,7 @@ function CheckoutScreen(props: {
             </div>
           )}
         </div>
-        <div className="flex justify-between rounded-b-2xl bg-[#F5EEE3] px-4 py-3 text-sm font-bold text-ink-50">
+        <div className="flex justify-between rounded-b-2xl bg-ink-800 px-4 py-3 text-sm font-bold text-ink-50">
           <span>Total</span>
           <span>{rupiah(total)}</span>
         </div>
@@ -781,7 +828,7 @@ function CheckoutScreen(props: {
             key={t.value}
             onClick={() => setPaymentMethod(t.value)}
             className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2.5 text-xs font-semibold ${
-              paymentMethod === t.value ? 'bg-[#3E2B21] text-white' : 'border border-[#E7D9C7] bg-white text-[#5B4636]'
+              paymentMethod === t.value ? 'bg-moss-600 text-white' : 'border border-ink-600 bg-white text-ink-200'
             }`}
           >
             <Icon name={t.icon} size={14} />
@@ -793,7 +840,7 @@ function CheckoutScreen(props: {
       {submitErr && <p className="mb-3 rounded-lg bg-red-900 px-3 py-2 text-sm text-red-500">{submitErr}</p>}
 
       <button
-        className="flex min-h-touch w-full items-center justify-center rounded-xl bg-[#3E2B21] text-base font-semibold text-white disabled:opacity-40"
+        className="flex min-h-touch w-full items-center justify-center rounded-xl bg-moss-600 text-base font-semibold text-white disabled:opacity-40"
         disabled={!valid || submitting}
         onClick={onSubmit}
       >
@@ -877,6 +924,8 @@ function PayQrisPanel({
       const r = await fetch(`${API}/api/t/${encodeURIComponent(token)}/orders/${encodeURIComponent(orderId)}/pay`, { method: 'POST' })
       const body = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(body.error || 'Gagal memulai pembayaran QRIS.')
+      // Dimuat saat dibutuhkan saja — pustaka QR tak perlu ikut diunduh untuk melihat menu.
+      const { default: QRCode } = await import('qrcode')
       const qrDataUrl = await QRCode.toDataURL(String(body.qrString), { width: 280, margin: 1 })
       setCharge({ qrDataUrl, grossAmount: Number(body.grossAmount) || amountDue, expiryTime: body.expiryTime ?? null })
     } catch (e) {
@@ -898,7 +947,7 @@ function PayQrisPanel({
     return (
       <div className="mt-3 border-t border-ink-800 pt-3">
         {error && <p className="mb-2 rounded-lg bg-red-900 px-3 py-2 text-xs text-red-400">{error}</p>}
-        <button className="btn-primary w-full" disabled={loading} onClick={() => void start()}>
+        <button className="flex min-h-touch w-full items-center justify-center rounded-xl bg-moss-600 px-4 text-sm font-semibold text-white disabled:opacity-40" disabled={loading} onClick={() => void start()}>
           {loading ? 'Menyiapkan QRIS…' : `Bayar Sekarang dengan QRIS · ${rupiah(amountDue)}`}
         </button>
       </div>
@@ -925,7 +974,6 @@ function StatusPage() {
   const autopay = searchParams.get('autopay') === '1'
   const [data, setData] = useState<OrderStatus | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [callSent, setCallSent] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -946,21 +994,6 @@ function StatusPage() {
     return () => clearInterval(t)
   }, [load])
 
-  async function call(type: 'waiter' | 'bill') {
-    setCallSent(null)
-    try {
-      const r = await fetch(`${API}/api/t/${encodeURIComponent(token)}/calls`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ type }),
-      })
-      if (!r.ok) throw new Error()
-      setCallSent(type === 'waiter' ? 'Waiter dipanggil.' : 'Permintaan tagihan terkirim.')
-    } catch {
-      setCallSent('Gagal mengirim. Coba lagi.')
-    }
-  }
-
   if (err && !data) return <Center>{err}</Center>
   if (!data) return <Center>Memuat status…</Center>
 
@@ -977,7 +1010,7 @@ function StatusPage() {
         )}
         <h1 className="mt-2 text-xl font-bold">Pesanan {data.orderNumber}</h1>
         {data.queueNumber != null && (
-          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1 text-sm font-semibold text-white">
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-moss-600 px-3 py-1 text-sm font-semibold text-white">
             Antrean #{data.queueNumber}
           </span>
         )}
@@ -997,12 +1030,12 @@ function StatusPage() {
               <li
                 key={s.key}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${
-                  now ? 'bg-brand-600/12 font-semibold text-ink-50' : done ? 'text-ink-300' : 'text-ink-400'
+                  now ? 'bg-moss-600/12 font-semibold text-ink-50' : done ? 'text-ink-300' : 'text-ink-400'
                 }`}
               >
                 <span
                   className={`flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs font-bold ${
-                    done ? 'bg-success-500 text-white' : now ? 'bg-brand-600 text-white' : 'bg-ink-800 text-ink-400'
+                    done ? 'bg-success-500 text-white' : now ? 'bg-moss-600 text-white' : 'bg-ink-800 text-ink-400'
                   }`}
                 >
                   {done ? '✓' : i + 1}
@@ -1053,20 +1086,9 @@ function StatusPage() {
       </div>
 
       {!rejected && (
-        <div className="mt-5 space-y-2">
-          <div className="flex gap-2">
-            <button className="btn-secondary flex-1" onClick={() => void call('waiter')}>
-              Panggil Waiter
-            </button>
-            <button className="btn-secondary flex-1" onClick={() => void call('bill')}>
-              Minta Tagihan
-            </button>
-          </div>
-          <Link to={`/order/${token}`} className="btn-ghost w-full">
-            Tambah Pesanan
-          </Link>
-          {callSent && <p className="text-center text-sm text-success-400">{callSent}</p>}
-        </div>
+        <Link to={`/order/${token}`} className="btn-ghost mt-5 w-full">
+          Tambah Pesanan
+        </Link>
       )}
       <KioneFooter />
     </Screen>
@@ -1082,7 +1104,7 @@ function ProductTagChips({ tags, compact }: { tags?: string[]; compact?: boolean
       {list.map((t) => (
         <span
           key={t.id}
-          className={`rounded-full px-1.5 py-0.5 font-semibold ${compact ? 'text-[0.6rem]' : 'text-xs'} ${t.allergen ? 'bg-amber-100 text-amber-800' : 'bg-[#EFE4D4] text-[#5B4636]'}`}
+          className={`rounded-full px-1.5 py-0.5 font-semibold ${compact ? 'text-[0.6rem]' : 'text-xs'} ${t.allergen ? 'bg-amber-100 text-amber-800' : 'bg-ink-950 text-ink-200'}`}
         >
           {compact ? t.short : t.label}
         </span>

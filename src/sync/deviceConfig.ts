@@ -7,6 +7,7 @@
 
 const API_BASE_URL_KEY = 'kione.sync.apiBaseUrl'
 const DEVICE_KEY_KEY = 'kione.sync.deviceKey'
+const FULL_RESYNC_FOR_KEY = 'kione.sync.fullResyncFor'
 
 export interface DeviceSyncConfig {
   apiBaseUrl: string
@@ -90,4 +91,28 @@ export function clearDeviceSyncConfig(): void {
 
 export function isBackendConfigured(): boolean {
   return getApiBaseUrl().length > 0
+}
+
+/** Identitas backend aktif: URL + kunci (kunci menentukan tenant di server). */
+function backendIdentity(): string {
+  return `${getApiBaseUrl()}|${getDeviceKey()}`
+}
+
+/**
+ * true bila backend aktif belum pernah menerima dorongan penuh data lokal dari
+ * perangkat ini — backend baru pertama kali disimpan, atau URL/kunci diganti ke
+ * server/tenant lain. Data yang ditulis sebelum itu (mis. katalog bawaan
+ * onboarding) tak pernah masuk antrean sync dengan sendirinya, sehingga menu
+ * pesan-mandiri QR kosong sampai sinkron ulang penuh dijalankan.
+ */
+export function needsFullResync(): boolean {
+  return isBackendConfigured() && readStored(FULL_RESYNC_FOR_KEY) !== backendIdentity()
+}
+
+export function markFullResyncDone(): void {
+  try {
+    localStorage.setItem(FULL_RESYNC_FOR_KEY, backendIdentity())
+  } catch {
+    /* localStorage tidak tersedia — sinkron ulang penuh akan ditawarkan lagi */
+  }
 }

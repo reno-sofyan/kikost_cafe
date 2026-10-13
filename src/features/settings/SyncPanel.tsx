@@ -20,6 +20,8 @@ import {
   getApiBaseUrl,
   getDeviceKey,
   hasStoredOverride,
+  markFullResyncDone,
+  needsFullResync,
   saveDeviceSyncConfig,
 } from '@/sync/deviceConfig'
 import { getDeviceId } from '@/sync/device'
@@ -41,6 +43,7 @@ export function SyncPanel() {
   const [saved, setSaved] = useState(false)
   const [resyncState, setResyncState] = useState<'idle' | 'running' | 'done'>('idle')
   const [resyncCount, setResyncCount] = useState<number | null>(null)
+  const [autoResyncDeferred, setAutoResyncDeferred] = useState(false)
   const { confirm: confirmResync, dialog: resyncConfirmDialog } = useConfirmDialog()
 
   async function handleFullResync() {
@@ -56,6 +59,7 @@ export function SyncPanel() {
     setResyncState('running')
     try {
       const count = await enqueueFullResync()
+      markFullResyncDone()
       setResyncCount(count)
       await triggerManualSync()
       setResyncState('done')
@@ -76,7 +80,32 @@ export function SyncPanel() {
     setSaved(true)
     setTestState('idle')
     setTimeout(() => setSaved(false), 2500)
-    void triggerManualSync()
+    void syncAfterSave()
+  }
+
+  /**
+   * Backend baru (pertama kali disimpan, atau URL/kunci diganti) belum punya data
+   * lama perangkat ini — dorong semuanya sekali, otomatis. Ditunda bila server
+   * belum terjangkau supaya salah ketik URL tidak menumpuk antrean ganda.
+   */
+  async function syncAfterSave() {
+    setAutoResyncDeferred(false)
+    if (needsFullResync()) {
+      if (await pingBackend()) {
+        setResyncState('running')
+        try {
+          const count = await enqueueFullResync()
+          markFullResyncDone()
+          setResyncCount(count)
+          setResyncState('done')
+        } catch {
+          setResyncState('idle')
+        }
+      } else {
+        setAutoResyncDeferred(true)
+      }
+    }
+    await triggerManualSync()
   }
 
   function handleReset() {
@@ -176,6 +205,11 @@ export function SyncPanel() {
           <p className="mb-2 text-sm text-red-400">Gagal terhubung. Periksa URL, kunci, dan koneksi internet.</p>
         )}
         {saved && <p className="mb-2 text-sm text-success-500">Konfigurasi disimpan.</p>}
+        {autoResyncDeferred && (
+          <p className="mb-2 text-sm text-yellow-400">
+            Server belum terjangkau, jadi data lama perangkat ini belum dikirim. Tekan Simpan lagi saat sudah online.
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <button className="btn-secondary" disabled={testState === 'testing' || !apiUrl.trim()} onClick={() => void handleTest()}>

@@ -5,6 +5,8 @@ import {
   getDeviceKey,
   hasStoredOverride,
   isBackendConfigured,
+  markFullResyncDone,
+  needsFullResync,
   saveDeviceSyncConfig,
 } from './deviceConfig'
 
@@ -50,5 +52,24 @@ describe('deviceConfig', () => {
     clearDeviceSyncConfig()
     expect(hasStoredOverride()).toBe(false)
     expect(getApiBaseUrl()).toBe('')
+  })
+
+  it('needsFullResync: false tanpa backend, true sampai ditandai, true lagi bila URL/kunci berganti', () => {
+    expect(needsFullResync()).toBe(false)
+
+    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.contoh.com', deviceKey: 'kunci-a' })
+    expect(needsFullResync()).toBe(true)
+    markFullResyncDone()
+    expect(needsFullResync()).toBe(false)
+
+    // Menyimpan ulang nilai yang sama tidak memicu sinkron ulang penuh lagi.
+    saveDeviceSyncConfig({ apiBaseUrl: 'https://pos.contoh.com/', deviceKey: 'kunci-a' })
+    expect(needsFullResync()).toBe(false)
+
+    saveDeviceSyncConfig({ deviceKey: 'kunci-b' })
+    expect(needsFullResync()).toBe(true)
+    markFullResyncDone()
+    saveDeviceSyncConfig({ apiBaseUrl: 'https://lain.contoh.com' })
+    expect(needsFullResync()).toBe(true)
   })
 })

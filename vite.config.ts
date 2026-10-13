@@ -14,6 +14,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Didaftarkan manual di main.tsx: halaman pesan-mandiri (/order/*) di HP pelanggan
+      // tidak boleh memasang service worker yang mem-precache seluruh aplikasi POS.
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'favicon-48.png', 'apple-touch-icon.png', 'robots.txt', 'icons/*.png', 'brand/*.png', 'fonts/*.woff2'],
       manifest: {
         id: '/',
@@ -33,6 +36,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Wajib eksplisit: dengan injectRegister: false plugin tidak lagi menambahkannya,
+        // dan tanpa clientsClaim halaman kasir tak dikendalikan SW pada kunjungan pertama
+        // (chunk layar yang dimuat malas gagal diambil saat offline).
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: '/index.html',
         // Halaman pesan-mandiri pelanggan (/order/*), API, konsol operator (/ops)

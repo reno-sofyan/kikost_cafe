@@ -37,9 +37,10 @@ lihat [Pembayaran online](#pembayaran-online-midtrans-qris) di bawah.
      berbeda).
    - Tambah meja / titik ("Meja 1", "Pojok", "Bar") — bebas dinamai.
    - **Buat QR** per meja → **Unduh PNG** → cetak & tempel di meja.
-4. Pastikan tablet sudah pernah online setelah update supaya katalog
-   (produk/kategori/modifier/pengaturan) ter-push ke server — kalau belum,
-   menu QR akan kosong.
+4. Katalog (produk/kategori/modifier/pengaturan) harus sudah ter-push ke server —
+   kalau belum, menu QR kosong. Sejak v1.0.31 ini otomatis saat backend pertama
+   kali di-**Simpan** di Pengaturan → Sinkronisasi (atau URL/kunci diganti); tablet
+   dengan backend tertanam saat build tetap perlu **Sinkron Ulang Semua Data** sekali.
 
 ## Operasional harian
 
@@ -48,8 +49,9 @@ lihat [Pembayaran online](#pembayaran-online-midtrans-qris) di bawah.
 - **Terima**: order pindah ke `CONFIRMED`, dapat nomor antrean, langsung dikirim
   ke dapur/bar (printer gagal tidak membatalkan — job masuk antrean cetak).
 - **Tolak**: wajib isi alasan; pelanggan melihatnya di halaman status.
-- Panggil Waiter / Minta Tagihan dari pelanggan muncul sebagai baris di layar
-  **Pesanan QR**; tekan **Selesai** setelah ditangani.
+- Tombol Panggil Waiter / Minta Tagihan sudah dihapus dari halaman pelanggan
+  (v1.0.31); endpoint `/calls` & barisnya di layar **Pesanan QR** masih ada tapi
+  tak lagi terpicu.
 - Nonaktifkan QR sebuah meja kapan saja tanpa kehilangan data meja.
 
 ## Real-time (SSE)
