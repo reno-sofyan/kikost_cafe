@@ -30,13 +30,13 @@ test('menu paket: dibuat di form produk, dijual di kasir, stok dipotong dari isi
   expect(paket.comboItems).toEqual([{ productId: kentang.id, qty: 2 }])
 
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const nb = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Pesanan Baru' }) })
   await nb.getByRole('button', { name: 'Takeaway' }).click()
   await nb.getByRole('button', { name: 'Mulai Pesanan' }).click()
   await page.getByPlaceholder(/Cari produk/).fill('Paket Ngemil')
   await page.getByRole('button', { name: /Paket Ngemil/ }).click()
-  await expect(page.getByText('Isi paket: 2× Kentang Goreng')).toBeVisible()
+  await expect(page.getByText('Isi paket : 2× Kentang Goreng')).toBeVisible()
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/16-kasir-paket.png` })
 
   await page.getByRole('button', { name: /^Bayar •/ }).click()

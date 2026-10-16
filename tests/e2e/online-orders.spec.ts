@@ -10,7 +10,7 @@ test('pesanan online: platform di kasir → bayar via aplikasi → tiga halaman 
 
   // Pesanan online GoFood dengan nomor pesanan aplikasi.
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const nb = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Pesanan Baru' }) })
   await nb.getByRole('button', { name: 'Online', exact: true }).click()
   await nb.getByRole('button', { name: 'GoFood' }).click()

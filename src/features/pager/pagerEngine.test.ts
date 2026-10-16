@@ -6,7 +6,7 @@ import { startOrder } from '@/db/repositories/orders'
 import { getOpenShift, openShift } from '@/db/repositories/shifts'
 import { setPagerSender, resetPagerSender } from '@/features/pager/pagerDrivers'
 import { buildPagerFrame } from '@/features/pager/pagerProtocol'
-import { processPagerQueue, getPagerPoolSnapshot } from '@/features/pager/pagerEngine'
+import { processPagerQueue, getPagerPoolSnapshot, setOrderPagerNumber } from '@/features/pager/pagerEngine'
 import type { PagerConfig } from '@/types/domain'
 
 const TEMPLATE = '02{nnn}03'
@@ -180,5 +180,29 @@ describe('processPagerQueue — mode manual (base station keypad-only, mis. iWar
     const id = await readyOrder()
     await processPagerQueue()
     expect((await db.orders.get(id))?.pagerNumber ?? null).toBeNull()
+  })
+})
+
+describe('nomor pager dari kasir', () => {
+  it('nomor yang diisi kasir dipakai saat siap, dan tidak diberikan ke pesanan lain', async () => {
+    await updateSettings({ pagerConfig: PAGER_ON })
+    const shift = (await getOpenShift()) ?? (await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 0 }))
+    const a = await startOrder({ type: 'takeaway', cashierId: 'u1', cashierName: 'Kasir', shiftId: shift.id })
+    const b = await startOrder({ type: 'takeaway', cashierId: 'u1', cashierName: 'Kasir', shiftId: shift.id })
+    await setOrderPagerNumber(a.id, 1)
+    await expect(setOrderPagerNumber(b.id, 1)).rejects.toThrow(/masih dipegang/)
+    await expect(setOrderPagerNumber(b.id, 31)).rejects.toThrow(/1–30/)
+
+    // B siap duluan: coaster #1 dipegang A (masih disiapkan), jadi B dapat #2.
+    await db.orders.update(b.id, { lifecycleStatus: 'READY' })
+    await processPagerQueue()
+    expect((await db.orders.get(b.id))?.pagerNumber).toBe(2)
+
+    await db.orders.update(a.id, { lifecycleStatus: 'READY' })
+    await processPagerQueue()
+    const doneA = await db.orders.get(a.id)
+    expect(doneA?.pagerNumber).toBe(1)
+    expect(doneA?.pagerCalledAt).not.toBeNull()
+    await expect(setOrderPagerNumber(a.id, 3)).rejects.toThrow(/sudah dipanggil/)
   })
 })

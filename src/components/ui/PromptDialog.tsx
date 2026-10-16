@@ -8,6 +8,9 @@ export interface PromptDialogProps {
   placeholder?: string
   confirmLabel?: string
   cancelLabel?: string
+  inputMode?: 'text' | 'numeric'
+  /** Izinkan konfirmasi dengan isian kosong (mis. untuk menghapus nilai). */
+  allowEmpty?: boolean
   onCancel: () => void
   onConfirm: (value: string) => void
 }
@@ -16,7 +19,7 @@ export interface PromptDialogProps {
  * Dialog input teks satu baris — pengganti `prompt()` bawaan browser.
  * Biasanya dipakai lewat `usePromptDialog`.
  */
-export function PromptDialog({ title, description, initialValue = '', placeholder, confirmLabel = 'Simpan', cancelLabel = 'Batal', onCancel, onConfirm }: PromptDialogProps) {
+export function PromptDialog({ title, description, initialValue = '', placeholder, confirmLabel = 'Simpan', cancelLabel = 'Batal', inputMode, allowEmpty = false, onCancel, onConfirm }: PromptDialogProps) {
   const [value, setValue] = useState(initialValue)
 
   return (
@@ -27,17 +30,19 @@ export function PromptDialog({ title, description, initialValue = '', placeholde
         className="input-field mb-4"
         value={value}
         placeholder={placeholder}
+        aria-label={title}
+        inputMode={inputMode}
         autoFocus
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && value.trim()) onConfirm(value.trim())
+          if (e.key === 'Enter' && (allowEmpty || value.trim())) onConfirm(value.trim())
         }}
       />
       <div className="flex gap-3">
         <button className="btn-ghost flex-1" onClick={onCancel}>
           {cancelLabel}
         </button>
-        <button className="btn-primary flex-[2]" disabled={!value.trim()} onClick={() => onConfirm(value.trim())}>
+        <button className="btn-primary flex-[2]" disabled={!allowEmpty && !value.trim()} onClick={() => onConfirm(value.trim())}>
           {confirmLabel}
         </button>
       </div>

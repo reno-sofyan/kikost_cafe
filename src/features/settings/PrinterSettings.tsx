@@ -114,6 +114,7 @@ export function PrinterSettings() {
             ))}
             {printers.length === 0 && <p className="text-sm text-ink-500">Belum ada printer.</p>}
           </div>
+          <ReceiptLogoCard />
           <CashDrawerCard />
         </>
       )}
@@ -154,6 +155,40 @@ export function PrinterSettings() {
           }
         />
       )}
+    </div>
+  )
+}
+
+/** Logo usaha di kepala struk thermal (diambil dari Pengaturan → Profil Usaha). */
+function ReceiptLogoCard() {
+  const settings = useLiveQuery(() => getSettings(), [])
+  if (!settings) return null
+  const on = settings.printerConfig.printLogo !== false
+
+  return (
+    <div className="card space-y-3 p-4">
+      <div className="flex items-start gap-3">
+        {settings.logoDataUrl ? (
+          <img src={settings.logoDataUrl} alt="Logo usaha" className="h-12 w-12 flex-none rounded-lg border border-ink-600 object-contain grayscale" />
+        ) : null}
+        <div>
+          <p className="font-semibold text-ink-50">Logo di Struk</p>
+          <p className="text-xs text-ink-500">
+            {settings.logoDataUrl
+              ? 'Logo dicetak hitam-putih di atas nama usaha. Logo berlatar putih dengan garis tegas paling jelas di kertas thermal. Tekan "Test" pada printer untuk mencoba.'
+              : 'Belum ada logo — unggah di Pengaturan → Profil Usaha.'}
+          </p>
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-ink-300">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={!settings.logoDataUrl}
+          onChange={(e) => void updateSettings({ printerConfig: { ...settings.printerConfig, printLogo: e.target.checked } })}
+        />
+        Cetak logo di struk
+      </label>
     </div>
   )
 }

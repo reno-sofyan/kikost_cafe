@@ -1,5 +1,6 @@
 import { formatRupiah } from '@/lib/currency'
 import type { ReceiptData } from '@/features/printing/receiptData'
+import { escPosRasterCommand, type MonoBitmap } from '@/features/printing/logoRaster'
 import type { KitchenTicketPayload } from '@/types/domain'
 
 const ESC = 0x1b
@@ -49,6 +50,11 @@ class EscPosBuilder {
     return this.raw(ESC, 0x64, lines)
   }
 
+  bytesRaw(values: Uint8Array): this {
+    for (const v of values) this.bytes.push(v)
+    return this
+  }
+
   toBytes(): Uint8Array {
     return new Uint8Array(this.bytes)
   }
@@ -63,11 +69,12 @@ function twoColumns(left: string, right: string, width: number): string {
   return `${left}${' '.repeat(space)}${right}`
 }
 
-export function buildEscPosReceipt(data: ReceiptData): Uint8Array {
+export function buildEscPosReceipt(data: ReceiptData, logo?: MonoBitmap | null): Uint8Array {
   const width = CHARS_PER_LINE[data.paperSize]
   const b = new EscPosBuilder().init()
 
   b.align('center')
+  if (logo) b.bytesRaw(escPosRasterCommand(logo)).feed(1)
   if (data.isVoided) {
     b.bold(true).line('** TRANSAKSI DIBATALKAN **').bold(false)
   }

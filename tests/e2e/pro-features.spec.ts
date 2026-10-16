@@ -67,7 +67,7 @@ test('target omzet, harga online massal, absensi, voucher hadiah, daftar tunggu,
 
   // --- Kasir dine-in: urutan saji menahan hidangan utama.
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   await page.getByRole('button', { name: 'Mulai Pesanan' }).click()
   await page.getByRole('button', { name: 'Snack' }).click()
   await page.getByRole('button', { name: /Kentang Goreng/ }).click()
@@ -79,9 +79,9 @@ test('target omzet, harga online massal, absensi, voucher hadiah, daftar tunggu,
   await courseChips.nth(1).click() // Utama
   await expect(page.getByText('Utama • ditahan')).toBeVisible()
   await shot(page, '33-kasir-urutan-saji')
-  await page.getByRole('button', { name: 'Lepas Pembuka ke Dapur / Bar' }).click()
+  await page.getByRole('button', { name: 'Lepas Pembuka ke Dapur/Bar' }).click()
   await expect(page.getByText(/1 item dikirim.*1 item ditahan/)).toBeVisible()
-  await page.getByRole('button', { name: 'Lepas Utama ke Dapur / Bar' }).click()
+  await page.getByRole('button', { name: 'Lepas Utama ke Dapur/Bar' }).click()
   // Dua menu lagi supaya ada 4 menu terjual → Analisis Menu tampil di laporan.
   await page.getByRole('button', { name: /Roti Bakar Coklat Keju Rp/ }).click()
   await page.getByRole('button', { name: 'Dessert', exact: true }).click()

@@ -45,7 +45,7 @@ test('promo otomatis, voucher KOL, dan poin member dari pengaturan sampai lapora
 
   // --- Kasir: promo terpasang sendiri, voucher lewat kode, member didaftarkan di tempat.
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const nb = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Pesanan Baru' }) })
   await nb.getByRole('button', { name: 'Takeaway' }).click()
   await nb.getByRole('button', { name: 'Mulai Pesanan' }).click()
@@ -53,7 +53,7 @@ test('promo otomatis, voucher KOL, dan poin member dari pengaturan sampai lapora
   await page.getByRole('button', { name: /Kentang Goreng/ }).click()
   await expect(page.getByText('Promo Diskon Pembukaan')).toBeVisible()
 
-  await page.getByRole('button', { name: '+ Kode voucher' }).click()
+  await page.getByRole('button', { name: 'Kode Voucher', exact: true }).click()
   await page.getByLabel('Kode voucher').fill('SALAH')
   await page.getByRole('button', { name: 'Pasang Voucher' }).click()
   await expect(page.getByText(/tidak dikenal/)).toBeVisible()

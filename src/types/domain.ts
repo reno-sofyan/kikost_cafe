@@ -159,6 +159,11 @@ export interface AppSettings {
   cashierDiscountMaxPercent?: number
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */
   qrOrderBaseUrl: string
+  /**
+   * Fitur & Akses (Pengaturan): menu samping mana yang dipakai dan peran mana yang
+   * boleh membukanya. Kunci = `NavKey`; yang tak diisi memakai bawaan jenis usaha.
+   */
+  navAccess?: Partial<Record<string, { enabled?: boolean; roles?: Role[] }>>
   /** Outlet aktif di perangkat ini (Fase 3). */
   activeOutletId?: string
   receiptPaperSize: ReceiptPaperSize
@@ -187,6 +192,8 @@ export interface PrinterConfig extends PrinterConnectionSettings {
   bluetoothName: string | null
   autoPrintOnPayment: boolean
   autoPrintKitchenOrder: boolean
+  /** Cetak logo usaha di kepala struk thermal. Kosong = ya (bila logo diunggah). */
+  printLogo?: boolean
   /** Buka laci kasir (lewat printer kasir) tiap pembayaran tunai. `undefined`
    *  (pengaturan lama) = aktif. */
   openDrawerOnCash?: boolean

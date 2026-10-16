@@ -12,13 +12,20 @@ const RETRY_BACKOFF_MS = 30_000
 
 const lastAttemptAt = new Map<string, number>()
 
-/** Order hari ini yang masih menunggu diambil pelanggan (memegang coaster fisik). */
-async function readyOrdersToday(): Promise<Order[]> {
+/** Tahap order yang pelanggannya masih memegang coaster (belum diambil/dibatalkan). */
+const COASTER_HELD_STATUSES = ['PENDING_CONFIRMATION', 'DRAFT', 'CONFIRMED', 'PREPARING', 'READY'] as const
+
+/**
+ * Order hari ini yang masih memegang coaster fisik: yang sudah READY menunggu
+ * diambil, dan — karena kasir bisa menyerahkan coaster saat memesan — yang masih
+ * dibuat/disiapkan tapi sudah diberi nomor pager di Kasir.
+ */
+export async function coasterHoldingOrdersToday(): Promise<Order[]> {
   const todayKey = jakartaDateKey(getTrustedNow())
   return db.orders
     .where('lifecycleStatus')
-    .equals('READY')
-    .filter((o) => o.status !== 'void' && jakartaDateKey(o.createdAt) === todayKey)
+    .anyOf([...COASTER_HELD_STATUSES])
+    .filter((o) => o.status !== 'void' && jakartaDateKey(o.createdAt) === todayKey && (o.lifecycleStatus === 'READY' || o.pagerNumber != null))
     .toArray()
 }
 
@@ -50,15 +57,39 @@ export async function getPagerPoolSnapshot(): Promise<PagerPoolSnapshot> {
   if (pagerConfig.connectionType === 'none') {
     return { enabled: false, max: pagerConfig.maxPagerNumber, held: 0, waitingForCoaster: 0 }
   }
-  const ready = await readyOrdersToday()
-  const held = ready.filter((o) => o.pagerNumber != null).length
-  const waitingForCoaster = ready.filter((o) => o.pagerNumber == null && o.pagerCalledAt == null).length
+  const holding = await coasterHoldingOrdersToday()
+  const held = holding.filter((o) => o.pagerNumber != null).length
+  const waitingForCoaster = holding.filter((o) => o.lifecycleStatus === 'READY' && o.pagerNumber == null && o.pagerCalledAt == null).length
   return {
     enabled: true,
     max: pagerConfig.maxPagerNumber,
     held,
     waitingForCoaster: held >= pagerConfig.maxPagerNumber ? waitingForCoaster : 0,
   }
+}
+
+/**
+ * Kasir menyerahkan coaster saat memesan: catat nomornya di order (null = lepas).
+ * Saat order siap, pager engine membunyikan nomor ini, bukan memilih nomor baru.
+ * Ditolak bila di luar 1..maxPagerNumber atau masih dipegang pesanan lain hari ini.
+ */
+export async function setOrderPagerNumber(orderId: string, pagerNumber: number | null): Promise<void> {
+  const { pagerConfig } = await getSettings()
+  if (pagerNumber != null) {
+    if (!Number.isInteger(pagerNumber) || pagerNumber < 1 || pagerNumber > pagerConfig.maxPagerNumber) {
+      throw new Error(`Nomor pager harus 1–${pagerConfig.maxPagerNumber}.`)
+    }
+    const holder = (await coasterHoldingOrdersToday()).find((o) => o.id !== orderId && o.pagerNumber === pagerNumber)
+    if (holder) throw new Error(`Pager #${pagerNumber} masih dipegang pesanan ${holder.orderNumber}.`)
+  }
+  await db.transaction('rw', db.orders, db.syncQueue, async () => {
+    const fresh = await db.orders.get(orderId)
+    if (!fresh) throw new Error('Pesanan tidak ditemukan')
+    if (fresh.pagerCalledAt != null) throw new Error('Pager pesanan ini sudah dipanggil — nomornya tak bisa diganti.')
+    await db.orders.update(orderId, { pagerNumber, updatedAt: getTrustedNow() })
+    const updated = await db.orders.get(orderId)
+    if (updated) await enqueueSync('orders', orderId, updated)
+  })
 }
 
 /** Tetapkan `pagerNumber` + `pagerCalledAt` pada sebuah order (di dalam transaksi), lalu sinkronkan. */
@@ -102,9 +133,9 @@ export async function processPagerQueue(): Promise<void> {
   const { pagerConfig } = await getSettings()
   if (pagerConfig.connectionType === 'none' || !pagerConfig.autoCallOnReady) return
 
-  const ready = await readyOrdersToday()
-  const pending = ready
-    .filter((o) => o.pagerCalledAt == null)
+  const holding = await coasterHoldingOrdersToday()
+  const pending = holding
+    .filter((o) => o.lifecycleStatus === 'READY' && o.pagerCalledAt == null)
     .sort((a, b) => a.createdAt - b.createdAt)
   if (pending.length === 0) return
 
@@ -116,7 +147,7 @@ export async function processPagerQueue(): Promise<void> {
     if (prev != null && now - prev < RETRY_BACKOFF_MS) continue
 
     const pagerNumber =
-      order.pagerNumber ?? pickFreePagerNumber(ready, pagerConfig.maxPagerNumber, order.id)
+      order.pagerNumber ?? pickFreePagerNumber(holding, pagerConfig.maxPagerNumber, order.id)
     if (pagerNumber == null) {
       // Semua coaster sedang dipakai — coba lagi siklus berikutnya (tanpa backoff)
       // saat ada order yang diambil pelanggan dan nomornya bebas.

@@ -3,6 +3,7 @@ import { db } from '@/db/schema'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { activePrinterForStation } from '@/db/repositories/printers'
 import { buildEscPosKitchenTicket, buildEscPosReceipt } from '@/features/printing/escpos'
+import { receiptLogoFor } from '@/features/printing/logoRaster'
 import { sendEscPosBytes, warmUpPrinter } from '@/features/printing/printerDrivers'
 import type { ReceiptData } from '@/features/printing/receiptData'
 import type { KitchenTicketPayload, Printer, PrintJob, PrintJobKind, PrinterStation } from '@/types/domain'
@@ -96,7 +97,7 @@ async function runJob(job: PrintJob): Promise<void> {
 
     const bytes =
       job.kind === 'receipt'
-        ? buildEscPosReceipt(job.payload as ReceiptData)
+        ? buildEscPosReceipt(job.payload as ReceiptData, await receiptLogoFor(job.payload as ReceiptData))
         : buildEscPosKitchenTicket(job.payload as KitchenTicketPayload)
 
     try {

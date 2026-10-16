@@ -118,7 +118,7 @@ test('operasional, label menu, jadwal & gaji, pesanan terjadwal, layar pelanggan
   if (SHOTS) await display.screenshot({ path: `${SHOTS}/45-layar-pelanggan.png` })
 
   // --- Dapur: pesanan yang menunggu lebih dari batas ditandai terlambat.
-  await page.getByRole('button', { name: 'Kirim ke Dapur / Bar' }).click()
+  await page.getByRole('button', { name: 'Kirim ke Dapur/Bar' }).click()
   await expect.poll(async () => (await idbAll<{ kitchenPrintedAt: number | null }>(page, 'orderItems')).every((i) => i.kitchenPrintedAt != null)).toBe(true)
   await backdateKitchenItems(page, 25)
   await page.getByRole('link', { name: 'Dapur' }).click()

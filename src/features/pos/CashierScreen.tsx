@@ -55,6 +55,8 @@ import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
 import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
+import { usePromptDialog } from '@/components/ui/usePromptDialog'
+import { setOrderPagerNumber } from '@/features/pager/pagerEngine'
 import { toast } from '@/state/toastStore'
 import { productTagsOf } from '@/lib/productTags'
 import { publishCustomerDisplay } from '@/lib/customerDisplay'
@@ -86,6 +88,8 @@ export function CashierScreen() {
   const [clearFlow, setClearFlow] = useState<null | { step: 'reason' } | { step: 'owner'; reason: string }>(null)
   const cancelEmpty = useEmptyOrderCancel(() => setActiveOrderId(null))
   const [pickerProduct, setPickerProduct] = useState<Product | null>(null)
+  /** Produk yang ditap saat belum ada pesanan — dimasukkan begitu pesanan baru dibuat. */
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null)
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
   const [removeReasonFor, setRemoveReasonFor] = useState<OrderItem | null>(null)
   const [voidItemApproval, setVoidItemApproval] = useState<{ item: OrderItem; reason: string } | null>(null)
@@ -103,8 +107,14 @@ export function CashierScreen() {
     publishCustomerDisplay({ orderId: activeOrderId, stage: 'order' })
   }, [activeOrderId])
   const items = useLiveQuery(() => (activeOrderId ? listOrderItems(activeOrderId) : []), [activeOrderId])
+  // Pesanan yang sudah lunas/batal tak pernah tinggal di keranjang: membuka Kasir
+  // lagi selalu siap untuk pesanan baru. Yang sudah selesai ada di Riwayat.
+  useEffect(() => {
+    if (activeOrderId && order && order.status !== 'open') setActiveOrderId(null)
+  }, [activeOrderId, order, setActiveOrderId])
 
   const settings = useLiveQuery(() => getSettings(), [])
+  const { prompt, dialog: promptDialog } = usePromptDialog()
   // Sebelum `settings` termuat, anggap semua fitur relevan (perilaku kafe lama).
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   // Sambungkan printer kasir (dan dapur/bar) sejak layar Kasir dibuka, supaya struk &
@@ -173,7 +183,8 @@ export function CashierScreen() {
   }
 
   /** Order aktif; di mode kasir cepat dibuat otomatis bila belum ada. */
-  async function ensureActiveOrder(): Promise<string | null> {
+  async function ensureActiveOrder(justStartedId?: string): Promise<string | null> {
+    if (justStartedId) return justStartedId
     if (activeOrderId) return activeOrderId
     if (!features.quickSale) return null
     if (!quickStartRef.current) {
@@ -184,20 +195,26 @@ export function CashierScreen() {
     return quickStartRef.current
   }
 
-  async function handleProductTap(product: Product) {
-    if (!activeOrderId && !features.quickSale) return
+  async function handleProductTap(product: Product, justStartedId?: string) {
     if (!product.isAvailable) {
       toast.error(`${product.name} sedang habis / tidak tersedia`)
       return
     }
+    // Belum ada pesanan: tap produk langsung membuka dialog Pesanan Baru, lalu
+    // produk ini masuk keranjang begitu pesanan dibuat.
+    if (!activeOrderId && !justStartedId && !features.quickSale) {
+      setPendingProduct(product)
+      setShowNewOrder(true)
+      return
+    }
     if (product.modifierGroupIds.length > 0) {
-      if (!(await ensureActiveOrder())) return
+      if (!(await ensureActiveOrder(justStartedId))) return
       setPickerProduct(product)
       return
     }
     // Kantin/minimarket: pindai/tap ulang produk yang sama → qty baris yang ada +1.
     // Hanya baris polos yang belum diteruskan ke dapur & belum didiskon per item.
-    const stackTarget = features.stackSameItems
+    const stackTarget = features.stackSameItems && !justStartedId
       ? activeItems.find(
           (i) =>
             i.productId === product.id &&
@@ -216,7 +233,7 @@ export function CashierScreen() {
       await updateOrderItemQty(stackTarget.id, stackTarget.qty + 1)
       return
     }
-    const orderId = await ensureActiveOrder()
+    const orderId = await ensureActiveOrder(justStartedId)
     if (!orderId) return
     await addOrderItem({
       orderId,
@@ -399,6 +416,24 @@ export function CashierScreen() {
     toast.success(`Tagihan tertunda ${params.name} tersimpan.`)
   }
 
+  async function handlePagerClick() {
+    if (!order) return
+    const value = await prompt({
+      title: 'Nomor Pager',
+      description: `Nomor coaster yang diberikan ke pelanggan (1–${settings?.pagerConfig.maxPagerNumber ?? 30}). Pager berbunyi otomatis saat pesanan siap. Kosongkan untuk melepas.`,
+      initialValue: order.pagerNumber != null ? String(order.pagerNumber) : '',
+      inputMode: 'numeric',
+      allowEmpty: true,
+      confirmLabel: 'Simpan',
+    })
+    if (value == null) return
+    try {
+      await setOrderPagerNumber(order.id, value.trim() ? Number(value.trim()) : null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menyimpan nomor pager')
+    }
+  }
+
   async function handleModifierConfirm(params: { qty: number; notes: string; modifiers: { groupId: string; groupName: string; optionId: string; optionName: string; priceDelta: number }[] }) {
     if (!activeOrderId || !pickerProduct) return
     const canFulfill = await canFulfillProductQty(pickerProduct, params.qty)
@@ -448,15 +483,17 @@ export function CashierScreen() {
 
   const canDiscount = roleHasPermission(currentUser.role, 'discount.apply')
 
+  const pagerOn = features.pager && !!settings && settings.pagerConfig.connectionType !== 'none'
+
   return (
-    <div className="flex h-full">
-      <div className="flex min-w-0 flex-1 flex-col border-r border-ink-800">
-        <div className="flex flex-none flex-wrap items-center gap-2 border-b border-ink-800 px-4 py-3">
+    <div className="flex h-full bg-white">
+      <div className="flex min-w-0 flex-1 flex-col bg-[#fbfbfd]">
+        <div className="flex flex-none flex-wrap items-center gap-2.5 px-3 pb-3 pt-5">
           <div className="relative min-w-[12rem] flex-1">
-            <Icon name="barcode" size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
             <input
-              className="input-field pl-10"
-              placeholder="Cari produk, SKU, atau pindai barcode..."
+              className="min-h-[3.1rem] w-full rounded-full border border-ink-300 bg-white px-5 text-[1.05rem] text-ink-50 placeholder:text-ink-200 focus:border-ocean-600 focus:outline-none focus:ring-2 focus:ring-ocean-600/20"
+              placeholder="Cari produk yang sudah terdaftar.."
+              aria-label="Cari produk, SKU, atau pindai barcode"
               autoFocus={features.quickSale}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -465,55 +502,56 @@ export function CashierScreen() {
               }}
             />
           </div>
-          <button className="btn-secondary flex-1 whitespace-nowrap sm:flex-none" onClick={() => setShowOpenBills(true)}>
+          <button
+            className="min-h-[2.75rem] whitespace-nowrap rounded-lg border-2 border-brand-600 bg-white px-3 text-[0.95rem] font-medium text-brand-600 hover:bg-brand-600/5"
+            onClick={() => setShowOpenBills(true)}
+          >
             Pesanan Terbuka
           </button>
-          <button className="btn-primary flex-1 whitespace-nowrap sm:flex-none" onClick={handleNewOrderClick}>
-            {features.quickSale ? '+ Transaksi Baru' : '+ Pesanan Baru'}
+          <button
+            className="flex min-h-[2.75rem] items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand-600 px-3 text-[0.95rem] font-medium text-white hover:bg-brand-700"
+            onClick={handleNewOrderClick}
+          >
+            <Icon name="plus" size={18} />
+            {features.quickSale ? 'Transaksi Baru' : 'Pesanan Baru'}
           </button>
         </div>
 
-        <div className="flex flex-none gap-2 overflow-x-auto border-b border-ink-800 px-4 py-2">
-          <button
-            onClick={() => setCategoryId('all')}
-            className={`btn btn-compact !px-4 text-sm ${categoryId === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-          >
-            Semua
-          </button>
-          {categories.map((c) => (
+        <div className="flex flex-none gap-1.5 overflow-x-auto px-3 pb-2">
+          {[{ id: 'all', name: 'Semua' }, ...categories].map((c) => (
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
-              className={`btn btn-compact !px-4 text-sm whitespace-nowrap ${categoryId === c.id ? 'btn-primary' : 'btn-secondary'}`}
+              aria-pressed={categoryId === c.id}
+              className={`min-h-[2.4rem] min-w-[5.6rem] whitespace-nowrap rounded-lg border px-4 text-[0.95rem] font-semibold transition-colors ${
+                categoryId === c.id ? 'border-brand-600 bg-brand-600/10 text-brand-700' : 'border-ink-300 bg-white text-ink-100 hover:bg-ink-800'
+              }`}
             >
               {c.name}
             </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* md, bukan lg — di viewport landscape tablet 11" (~960px efektif) breakpoint lg (1024px)
-              tak pernah tercapai, jadi grid mentok 3 kolom walau ruang sebenarnya cukup untuk 4. */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+        <div className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
             {products.map((product) => (
               <button
                 key={product.id}
                 onClick={() => void handleProductTap(product)}
-                disabled={!activeOrderId && !features.quickSale}
-                className="card relative flex flex-col items-start p-3 text-left disabled:opacity-40"
+                className={`relative flex flex-col items-stretch rounded-xl border border-ink-300 bg-white p-2.5 text-left transition-shadow hover:shadow-md ${product.isAvailable ? '' : 'opacity-50'}`}
               >
-                <div className="mb-2 flex h-20 w-full items-center justify-center rounded-lg bg-ink-800 text-3xl">
+                <div className="mb-2.5 flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-lg bg-[#d9d9d9]">
                   {product.photoDataUrl ? (
-                    <img src={product.photoDataUrl} alt={product.name} className="h-full w-full rounded-lg object-cover" />
+                    <img src={product.photoDataUrl} alt={product.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   ) : (
-                    <Icon name={features.quickSale ? 'box' : 'coffee'} size={30} className="text-ink-400" />
+                    <Icon name={features.quickSale ? 'box' : 'coffee'} size={30} className="text-white/80" />
                   )}
                 </div>
-                <span className="line-clamp-2 text-sm font-semibold text-ink-50">{product.name}</span>
-                <span className="mt-1 text-sm font-bold text-brand-400">{formatRupiah(productPriceFor(product, orderIsOnline, orderPlatform))}</span>
-                {orderIsOnline && productPriceFor(product, true, orderPlatform) !== product.price ? <span className="text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
+                <span className="line-clamp-2 px-1 text-[0.95rem] font-semibold leading-snug text-ink-50">{product.name}</span>
+                <span className="px-1 text-[0.8rem] font-bold text-grape-400">{formatRupiah(productPriceFor(product, orderIsOnline, orderPlatform))}</span>
+                {orderIsOnline && productPriceFor(product, true, orderPlatform) !== product.price ? <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
                 {productTagsOf(product.tags).length > 0 && (
-                  <span className="mt-1 flex flex-wrap gap-1">
+                  <span className="mt-1 flex flex-wrap gap-1 px-1">
                     {productTagsOf(product.tags).map((t) => (
                       <span key={t.id} title={t.label} className={`rounded px-1 py-0.5 text-[10px] font-semibold ${t.allergen ? 'bg-yellow-900/40 text-yellow-300' : 'bg-ink-800 text-ink-200'}`}>
                         {t.short}
@@ -521,56 +559,76 @@ export function CashierScreen() {
                     ))}
                   </span>
                 )}
-                {!product.isAvailable && <span className="mt-1 text-xs text-red-400">Habis</span>}
+                {!product.isAvailable && <span className="px-1 text-xs font-semibold text-red-400">Habis</span>}
                 {product.isFavorite && (
-                  <span className="absolute right-2 top-2 text-accent-500">
-                    <Icon name="star" size={14} fill="currentColor" />
+                  <span className="absolute right-4 top-4 rounded-full bg-white/90 p-1 text-accent-500">
+                    <Icon name="star" size={13} fill="currentColor" />
                   </span>
                 )}
               </button>
             ))}
-            {products.length === 0 && <p className="col-span-full text-center text-ink-500">Produk tidak ditemukan</p>}
+            {products.length === 0 && <p className="col-span-full py-8 text-center text-ink-300">Produk tidak ditemukan</p>}
           </div>
         </div>
       </div>
 
-      <div className="flex w-80 flex-none flex-col bg-ink-900 xl:w-96">
+      <div className="flex w-80 flex-none flex-col border-l border-ink-500 bg-white lg:w-[22rem] xl:w-[27rem]">
         {!activeOrderId || !order ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <Icon name="receipt" size={40} className="text-ink-400" />
-            <p className="text-ink-400">
-              {features.quickSale
-                ? 'Pindai barcode atau tap produk untuk memulai transaksi'
-                : 'Mulai pesanan baru atau buka pesanan yang sudah ada'}
-            </p>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ocean-50 text-ocean-400">
+              <Icon name="receipt" size={30} />
+            </span>
+            <div>
+              <p className="text-lg font-semibold text-ink-50">Siap untuk pesanan baru</p>
+              <p className="mt-1 text-sm text-ink-300">
+                {features.quickSale ? 'Pindai barcode atau tap produk untuk memulai transaksi.' : 'Tap produk untuk langsung memulai pesanan baru. Pesanan yang sudah selesai ada di Riwayat.'}
+              </p>
+            </div>
+            {!features.quickSale && (
+              <button className="flex min-h-[3rem] items-center gap-2 rounded-full bg-ocean-600 px-6 font-semibold text-white hover:bg-ocean-700" onClick={handleNewOrderClick}>
+                <Icon name="plus" size={18} /> Buat Pesanan
+              </button>
+            )}
           </div>
         ) : (
           <>
-            <div className="flex-none border-b border-ink-800 px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-ink-50">
+            <div className="flex-none border-b border-ink-600 px-4 pb-2.5 pt-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[1.2rem] font-semibold text-ink-50">
                   {features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
                 </span>
-                {features.orderTypes.length > 1 && <span className="text-xs text-ink-400">{ORDER_TYPE_LABELS[order.type]}</span>}
+                {features.orderTypes.length > 1 && <span className="text-sm text-ocean-400">{ORDER_TYPE_LABELS[order.type]}</span>}
               </div>
-              <div className="mt-1 flex flex-wrap gap-x-2 text-sm text-ink-400">
+              <div className="mt-0.5 flex flex-wrap gap-x-1.5 text-[0.85rem] text-ink-300">
                 <span>{order.orderNumber}</span>
                 {order.type === 'dine_in' && order.guestCount ? <span>• {order.guestCount} tamu</span> : null}
-                {order.notes ? <span className="text-ink-300">• {order.notes}</span> : null}
+                {order.notes ? <span className="text-ink-200">• {order.notes}</span> : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                {((features.waiterTracking && !isOnlineOrder(order)) || order.waiterName) && (
+                  <button className="flex items-center gap-1.5 text-[0.85rem] text-ink-300 hover:text-ink-100" onClick={() => setShowWaiterPicker(true)}>
+                    <Icon name="user" size={15} />
+                    {order.waiterName ? `Pelayan: ${order.waiterName}` : 'Pilih Pelayan'}
+                  </button>
+                )}
+                {pagerOn && (
+                  <button
+                    className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.8rem] font-semibold ${
+                      order.pagerNumber != null ? 'border-grape-600 bg-grape-600 text-white' : 'border-dashed border-grape-600 text-grape-400'
+                    }`}
+                    disabled={order.pagerCalledAt != null}
+                    onClick={() => void handlePagerClick()}
+                    aria-label="Nomor pager"
+                  >
+                    <Icon name="bell" size={14} />
+                    {order.pagerNumber != null ? `Pager #${order.pagerNumber}` : 'Isi No. Pager'}
+                  </button>
+                )}
               </div>
               {isOnlineOrder(order) && (
                 <div className="mt-2 rounded-lg bg-brand-600/12 px-2 py-1 text-xs font-semibold text-brand-400">
                   Pesanan Online • {onlineChannelLabel(order)}
                 </div>
-              )}
-              {((features.waiterTracking && !isOnlineOrder(order)) || order.waiterName) && (
-                <button
-                  className="mt-1 flex items-center gap-1 text-sm text-ink-300 underline-offset-2 hover:underline"
-                  onClick={() => setShowWaiterPicker(true)}
-                >
-                  <Icon name="user" size={13} />
-                  {order.waiterName ? `Pelayan: ${order.waiterName}` : 'Pilih pelayan'}
-                </button>
               )}
               {order.billPrintCount ? (
                 <div className="mt-2 rounded-lg bg-yellow-900/25 px-2 py-1 text-xs font-semibold text-yellow-400">
@@ -585,84 +643,86 @@ export function CashierScreen() {
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              {activeItems.length === 0 && <p className="text-center text-sm text-ink-500">Keranjang kosong</p>}
+            <div className="flex-1 overflow-y-auto px-2.5 py-3">
+              {activeItems.length === 0 && <p className="py-6 text-center text-sm text-ink-300">Keranjang kosong — tap produk di kiri.</p>}
               <div className="space-y-3">
                 {activeItems.map((item) => (
-                  <div key={item.id} className="rounded-xl bg-ink-800 p-3">
+                  <div key={item.id} className="rounded-xl bg-[#f4f6fb] px-3.5 py-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-ink-50">{item.productName}</p>
+                      <p className="min-w-0 text-[1.05rem] font-semibold leading-snug text-ink-50">{item.productName}</p>
+                      <span className="flex-none text-[1.05rem] font-semibold text-ink-50">{formatRupiah(item.lineTotal)}</span>
+                    </div>
+                    <div className="mt-1 flex items-end justify-between gap-2">
+                      <div className="min-w-0 space-y-0.5">
                         {item.modifiers.map((m) => (
-                          <p key={m.optionId} className="text-xs text-ink-400">
-                            {m.groupName}: {m.optionName}
+                          <p key={m.optionId} className="text-[0.8rem] text-ink-200">
+                            {m.groupName} : {m.optionName}
                             {m.priceDelta > 0 ? ` (+${formatRupiah(m.priceDelta)})` : ''}
                           </p>
                         ))}
-                        {item.notes && <p className="mt-0.5 text-xs italic text-ink-500">"{item.notes}"</p>}
+                        {item.notes && <p className="text-[0.8rem] italic text-ink-300">"{item.notes}"</p>}
+                        {item.kitchenStatus !== 'new' && (
+                          <span className="inline-block rounded bg-success-600/20 px-2 py-0.5 text-[10px] text-success-500">Dapur: {item.kitchenStatus}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-none flex-col items-end gap-2">
                         {courseMode && !item.skipKitchen && (
                           <button
-                            className={`mt-1 rounded-full px-2 py-0.5 text-xs font-semibold disabled:opacity-60 ${item.course ? 'bg-accent-500/15 text-accent-500' : 'bg-ink-700 text-ink-300'}`}
+                            className="text-[0.8rem] text-ink-300 disabled:opacity-60"
                             disabled={item.kitchenPrintedAt != null}
                             aria-label={`Urutan saji ${item.productName}`}
                             onClick={() => void setOrderItemCourse(item.id, cycleCourse(item.course)).catch((e) => toast.error(e instanceof Error ? e.message : 'Gagal'))}
                           >
-                            {item.course ? COURSE_LABELS[item.course] : 'Urutan saji: —'}
+                            Urutan Saji : {item.course ? COURSE_LABELS[item.course] : '-'}
                             {item.course && item.kitchenPrintedAt == null && heldCourse != null && item.course > heldCourse ? ' • ditahan' : ''}
                           </button>
                         )}
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="flex h-8 w-8 items-center justify-center rounded-md bg-grape-600 text-white hover:bg-grape-700"
+                            aria-label={`Kurangi jumlah ${item.productName}`}
+                            onClick={() => void handleQtyChange(item, -1)}
+                          >
+                            <Icon name="minus" size={14} />
+                          </button>
+                          <span className="w-9 text-center text-[1rem] font-medium text-ocean-400">{item.qty}</span>
+                          <button
+                            className="flex h-8 w-8 items-center justify-center rounded-md bg-grape-600 text-white hover:bg-grape-700"
+                            aria-label={`Tambah jumlah ${item.productName}`}
+                            onClick={() => void handleQtyChange(item, 1)}
+                          >
+                            <Icon name="plus" size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <span className="flex-none font-semibold text-brand-400">{formatRupiah(item.lineTotal)}</span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="btn-secondary btn-compact !px-3"
-                          aria-label={`Kurangi jumlah ${item.productName}`}
-                          onClick={() => void handleQtyChange(item, -1)}
-                        >
-                          <Icon name="minus" size={14} />
-                        </button>
-                        <span className="w-6 text-center font-bold">{item.qty}</span>
-                        <button
-                          className="btn-secondary btn-compact !px-3"
-                          aria-label={`Tambah jumlah ${item.productName}`}
-                          onClick={() => void handleQtyChange(item, 1)}
-                        >
-                          <Icon name="plus" size={14} />
-                        </button>
-                      </div>
-                      {item.kitchenStatus !== 'new' && (
-                        <span className="rounded bg-success-600/20 px-2 py-0.5 text-[10px] text-success-500">
-                          Dapur: {item.kitchenStatus}
-                        </span>
-                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="flex-none space-y-2 border-t border-ink-800 px-4 py-3">
+            <div className="flex-none space-y-2 px-2 pb-3 pt-2">
               <OrderPerks order={order} features={features} />
-              <SummaryRow label="Subtotal" value={order.subtotal} />
-              {discountLinesOf(order).map((d) => (
-                <SummaryRow key={d.label} label={d.label} value={-d.amount} />
-              ))}
-              {order.serviceChargeAmount > 0 && <SummaryRow label={`Service Charge (${order.serviceChargePercent}%)`} value={order.serviceChargeAmount} />}
-              {order.taxAmount > 0 && <SummaryRow label={`Pajak (${order.taxPercent}%)`} value={order.taxAmount} />}
-              {order.roundingAdjustment !== 0 && <SummaryRow label="Pembulatan" value={order.roundingAdjustment} />}
-              <div className="flex items-center justify-between border-t border-ink-700 pt-2 text-lg font-bold text-ink-50">
+              <div className="space-y-1 px-1.5 text-[0.95rem] text-ocean-400">
+                <SummaryRow label="Subtotal" value={order.subtotal} />
+                {discountLinesOf(order).map((d) => (
+                  <SummaryRow key={d.label} label={d.label} value={-d.amount} />
+                ))}
+                {order.serviceChargeAmount > 0 && <SummaryRow label={`Service Charge (${order.serviceChargePercent}%)`} value={order.serviceChargeAmount} />}
+                {order.taxAmount > 0 && <SummaryRow label={`Pajak (${order.taxPercent}%)`} value={order.taxAmount} />}
+                {order.roundingAdjustment !== 0 && <SummaryRow label="Pembulatan" value={order.roundingAdjustment} />}
+              </div>
+              <div className="mx-1.5 flex items-center justify-between border-t border-ink-500 pt-2 text-[1.1rem] font-bold text-ocean-400">
                 <span>Total</span>
                 <span>{formatRupiah(order.grandTotal)}</span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <button className="btn-secondary" disabled={!canDiscount} onClick={() => setShowDiscount(true)}>
+              <div className="grid grid-cols-3 gap-1.5 px-1.5 pt-1">
+                <button className={CART_OUTLINE_BTN} disabled={!canDiscount} onClick={() => setShowDiscount(true)}>
                   Diskon
                 </button>
                 <button
-                  className="btn-secondary"
+                  className={CART_OUTLINE_BTN}
                   title="Pesanan sudah tersimpan otomatis — ini hanya menutup layar keranjang"
                   onClick={() => {
                     setActiveOrderId(null)
@@ -670,48 +730,58 @@ export function CashierScreen() {
                 >
                   Tutup
                 </button>
-                <button className="btn-secondary" disabled={activeItems.length === 0} onClick={() => void handleClearCart()}>
+                <button className={CART_OUTLINE_BTN} disabled={activeItems.length === 0} onClick={() => void handleClearCart()}>
                   Kosongkan
                 </button>
               </div>
-              {features.kitchen && activeItems.some((i) => !i.skipKitchen && i.kitchenPrintedAt == null) && (
+              {(() => {
+                const showKitchen = features.kitchen && activeItems.some((i) => !i.skipKitchen && i.kitchenPrintedAt == null)
+                if (!showKitchen && !features.preBill) return null
+                return (
+                  <div className={`grid gap-1.5 px-1.5 ${showKitchen && features.preBill ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    {showKitchen && (
+                      <button
+                        className="min-h-[2.6rem] rounded-lg border-2 border-royal-600 bg-white px-2 text-[0.95rem] font-medium text-royal-400 hover:bg-royal-600/5"
+                        onClick={async () => {
+                          const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
+                          toast.success(
+                            res.itemCount === 0
+                              ? 'Semua item sudah dikirim ke dapur.'
+                              : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}${res.heldCount > 0 ? ` • ${res.heldCount} item ditahan untuk tahap berikutnya` : ''}.`,
+                          )
+                        }}
+                      >
+                        {heldCourse != null ? `Lepas ${COURSE_LABELS[heldCourse]} ke Dapur/Bar` : 'Kirim ke Dapur/Bar'}
+                      </button>
+                    )}
+                    {features.preBill && (
+                      <button
+                        className="min-h-[2.6rem] rounded-lg bg-royal-600 px-2 text-[0.95rem] font-medium text-white hover:bg-royal-700 disabled:opacity-50"
+                        disabled={activeItems.length === 0}
+                        onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}
+                      >
+                        {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
+              <div className="px-1 pt-1.5">
                 <button
-                  className="btn-secondary w-full"
-                  onClick={async () => {
-                    const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
-                    toast.success(
-                      res.itemCount === 0
-                        ? 'Semua item sudah dikirim ke dapur.'
-                        : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}${res.heldCount > 0 ? ` • ${res.heldCount} item ditahan untuk tahap berikutnya` : ''}.`,
-                    )
-                  }}
-                >
-                  {heldCourse != null ? `Lepas ${COURSE_LABELS[heldCourse]} ke Dapur / Bar` : 'Kirim ke Dapur / Bar'}
-                </button>
-              )}
-              {features.preBill && (
-                <button
-                  className="btn-secondary w-full"
+                  className="min-h-[3.5rem] w-full rounded-full bg-ocean-600 text-[1.2rem] font-semibold text-white shadow-sm hover:bg-ocean-700 disabled:opacity-50"
                   disabled={activeItems.length === 0}
-                  onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}
+                  onClick={() => navigate(`/kasir/${order.id}/bayar`)}
+                  aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
                 >
-                  <Icon name="receipt" size={15} className="mr-1 inline" />
-                  {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
+                  Bayar
                 </button>
-              )}
-              <button
-                className="btn-primary w-full"
-                disabled={activeItems.length === 0}
-                onClick={() => navigate(`/kasir/${order.id}/bayar`)}
-              >
-                Bayar • {formatRupiah(order.grandTotal)}
-              </button>
+              </div>
               {features.payLater && !order.payLater && (
-                <button className="btn-secondary w-full" disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
+                <button className={`${CART_OUTLINE_BTN} w-full`} disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
                   Tagihan Tertunda (Bayar Nanti)
                 </button>
               )}
-              <button className="btn-ghost w-full !text-red-400" onClick={() => void handleCancelOrderClick()}>
+              <button className="w-full py-2 text-[0.95rem] font-medium text-red-500 hover:text-red-400" onClick={() => void handleCancelOrderClick()}>
                 Batalkan Pesanan
               </button>
             </div>
@@ -726,8 +796,15 @@ export function CashierScreen() {
           requireBuyerName={features.buyerName}
           showWaiter={features.waiterTracking}
           defaultWaiterId={defaultWaiterFor(currentUser, features.waiterTracking)?.id ?? null}
-          onCancel={() => setShowNewOrder(false)}
-          onConfirm={(p) => void handleStartOrder(p)}
+          onCancel={() => {
+            setShowNewOrder(false)
+            setPendingProduct(null)
+          }}
+          onConfirm={(p) => {
+            const product = pendingProduct
+            setPendingProduct(null)
+            void handleStartOrder(p).then((id) => (product ? handleProductTap(product, id) : undefined))
+          }}
         />
       )}
       {showOpenBills && (
@@ -897,13 +974,17 @@ export function CashierScreen() {
       {preBill && order && <PrintPreviewModal data={preBill} orderId={order.id} onClose={() => setPreBill(null)} />}
       {cancelEmpty.dialogs}
       {confirmDialog}
+      {promptDialog}
     </div>
   )
 }
 
+const CART_OUTLINE_BTN =
+  'min-h-[2.6rem] rounded-lg border-2 border-ink-500 bg-white px-2 text-[0.95rem] font-medium text-ink-200 hover:bg-ink-800 disabled:opacity-50'
+
 function SummaryRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between text-sm text-ink-300">
+    <div className="flex items-center justify-between">
       <span>{label}</span>
       <span>{formatRupiah(value)}</span>
     </div>

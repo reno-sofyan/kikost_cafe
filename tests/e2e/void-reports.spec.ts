@@ -5,7 +5,7 @@ const PIN = '246810'
 
 async function payTakeawayKentang(page: Page) {
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const nb = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Pesanan Baru' }) })
   await nb.getByRole('button', { name: 'Takeaway' }).click()
   await nb.getByRole('button', { name: 'Mulai Pesanan' }).click()

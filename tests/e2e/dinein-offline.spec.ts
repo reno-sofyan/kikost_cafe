@@ -10,7 +10,7 @@ test('dine-in tanpa meja: pesan → BAYAR OFFLINE → sukses, stok & antrean kon
   await openShift(page)
 
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   // Dine-in adalah default; tambahkan catatan pelanggan lalu mulai.
   await page.getByPlaceholder('mis. "Budi" atau "cewe jaket merah"').fill('Budi')
   await page.getByRole('button', { name: 'Mulai Pesanan' }).click()

@@ -33,8 +33,8 @@ export function GuestRating({ orderId, actor }: { orderId: string; actor: { user
   }
 
   return (
-    <div className="w-full max-w-xs rounded-2xl border border-ink-800 p-3">
-      <p className="mb-1 text-sm text-ink-300">Bagaimana pengalaman Anda? (opsional)</p>
+    <div className="w-full max-w-xs">
+      <p className="mb-1 text-[0.95rem] text-ink-300">Bagaimana pengalaman Anda? (opsional)</p>
       <div className="flex justify-center gap-1" role="radiogroup" aria-label="Penilaian tamu">
         {[1, 2, 3, 4, 5].map((n) => (
           <button
@@ -42,7 +42,7 @@ export function GuestRating({ orderId, actor }: { orderId: string; actor: { user
             role="radio"
             aria-checked={rating === n}
             aria-label={`${n} bintang`}
-            className={`h-11 w-11 text-3xl leading-none ${n <= rating ? 'text-accent-500' : 'text-ink-600'}`}
+            className={`h-10 w-9 text-[1.7rem] leading-none ${n <= rating ? 'text-accent-500' : 'text-ink-500'}`}
             onClick={() => setRating(n)}
           >
             ★

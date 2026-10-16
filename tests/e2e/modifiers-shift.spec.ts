@@ -11,7 +11,7 @@ interface ShiftRow { status: string; variance: number | null }
 
 async function startTakeaway(page: Page) {
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const modal = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Pesanan Baru' }) })
   await modal.getByRole('button', { name: 'Takeaway' }).click()
   await modal.getByRole('button', { name: 'Mulai Pesanan' }).click()
@@ -34,7 +34,7 @@ test('modifier picker: Large + Boba menambah harga & tersimpan di item', async (
 
   // Tunggu picker tertutup DAN item benar-benar masuk keranjang (bukan cuma judul picker).
   await expect(page.getByRole('button', { name: /^Tambah •/ })).toBeHidden()
-  await expect(page.getByText(/Ukuran: Large/)).toBeVisible()
+  await expect(page.getByText(/Ukuran : Large/)).toBeVisible()
 
   const items = await idbAll<OrderItemRow>(page, 'orderItems')
   expect(items).toHaveLength(1)

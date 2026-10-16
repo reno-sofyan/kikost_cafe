@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { buildEscPosReceipt } from '@/features/printing/escpos'
+import { receiptLogoFor } from '@/features/printing/logoRaster'
 import { renderReceiptDocument } from '@/features/printing/renderReceiptHtml'
 import { EscPosPrinter } from '@/native/escPosPrinterPlugin'
 import type { ReceiptData } from '@/features/printing/receiptData'
@@ -100,7 +101,7 @@ export class NativeEscPosDriver implements PrinterDriver {
     if (this.config.connectionType !== 'bluetooth' && this.config.connectionType !== 'network') {
       throw new PrinterNotConfiguredError()
     }
-    await nativePrint(this.config.connectionType, this.config, toBase64(buildEscPosReceipt(data)))
+    await nativePrint(this.config.connectionType, this.config, toBase64(buildEscPosReceipt(data, await receiptLogoFor(data))))
   }
 }
 

@@ -80,8 +80,11 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
               </button>
             </>
           ) : (
-            <button className="text-ink-300 underline-offset-2 hover:underline" onClick={() => setShowVoucher(true)}>
-              + Kode voucher
+            <button
+              className="flex min-h-[2.4rem] w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-brand-500/60 text-[0.85rem] text-ink-100 hover:bg-brand-600/5"
+              onClick={() => setShowVoucher(true)}
+            >
+              <Icon name="plus" size={16} /> Kode Voucher
             </button>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useSessionStore } from '@/state/sessionStore'
 import { useSyncStore } from '@/state/syncStore'
@@ -14,56 +14,33 @@ import { countActivePrintFailures } from '@/db/repositories/printQueue'
 import { countPendingQrOrders } from '@/db/repositories/qrOrders'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { db } from '@/db/schema'
-import { Icon, type IconName } from '@/components/ui/Icon'
+import { Icon } from '@/components/ui/Icon'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
-import { featuresForBusinessType, type BusinessFeatures } from '@/lib/businessType'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { ShiftReminder } from '@/features/shifts/ShiftReminder'
 import { formatTime, startOfJakartaDay } from '@/lib/datetime'
 import { listLateKitchenOrders } from '@/db/repositories/serviceInsights'
 import { countDuePreOrders } from '@/db/repositories/preOrders'
-import type { Role } from '@/types/domain'
-
-interface NavItem {
-  to: string
-  label: string
-  icon: IconName
-  permission?: Parameters<typeof roleHasPermission>[1]
-  roles?: Role[]
-  /** Item hanya tampil bila fitur ini aktif untuk jenis usaha perangkat. `undefined` = selalu tampil. */
-  feature?: keyof BusinessFeatures
-}
-
-/** Peran yang membuka/menutup shift — juga yang menerima pengingat shift 21.00. */
-const SHIFT_ROLES: Role[] = ['pemilik', 'administrator', 'supervisor', 'kasir']
-
-const NAV_ITEMS: NavItem[] = [
-  { to: '/kasir', label: 'Kasir', icon: 'cart', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
-  { to: '/pesanan-qr', label: 'Pesanan QR', icon: 'bell', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'], feature: 'qrOrdering' },
-  { to: '/meja', label: 'Meja', icon: 'table', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji'], feature: 'tables' },
-  { to: '/dapur', label: 'Dapur', icon: 'chef', feature: 'kitchen' },
-  { to: '/cetak', label: 'Cetak', icon: 'printer', roles: ['pemilik', 'administrator', 'supervisor', 'kasir', 'pramusaji', 'dapur'] },
-  { to: '/riwayat', label: 'Riwayat', icon: 'clock', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
-  { to: '/pelanggan', label: 'Pelanggan', icon: 'user', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
-  { to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', roles: ['pemilik', 'administrator', 'supervisor', 'kasir'] },
-  { to: '/laporan', label: 'Laporan', icon: 'chart', permission: 'reports.view' },
-  { to: '/promo', label: 'Promo', icon: 'star', permission: 'settings.manage', feature: 'promos' },
-  { to: '/produk', label: 'Produk', icon: 'coffee', permission: 'settings.manage' },
-  { to: '/stok', label: 'Stok', icon: 'box', permission: 'stock.adjust' },
-  { to: '/shift', label: 'Shift', icon: 'cashDrawer', roles: SHIFT_ROLES },
-  { to: '/absensi', label: 'Absensi', icon: 'checkCircle', feature: 'attendance' },
-  { to: '/pengaturan', label: 'Pengaturan', icon: 'settings', permission: 'settings.manage' },
-]
+import { NAV_ITEM_DEFS, resolveNavItems, SHIFT_ROLES, visibleNavItems } from '@/lib/navAccess'
+import { ROLE_LABELS } from '@/lib/permissions'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const currentUser = useSessionStore((s) => s.currentUser)
   const lock = useSessionStore((s) => s.lock)
   const logout = useSessionStore((s) => s.logout)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const sync = useSyncStore()
   const openShift = useLiveQuery(() => getOpenShift(), [])
+  // "Shift 2" = shift ke-berapa yang dibuka hari ini di perangkat ini.
+  const shiftNumber = useLiveQuery(
+    async () => (openShift ? db.shifts.filter((s) => s.deviceId === openShift.deviceId && s.openedAt >= startOfJakartaDay(0) && s.openedAt <= openShift.openedAt).count() : null),
+    [openShift?.id],
+  )
   const printAlerts =
     useLiveQuery(async () => {
       const failed = await countActivePrintFailures()
@@ -130,40 +107,46 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Sebelum `settings` termuat, anggap semua fitur relevan — lebih baik sekejap
   // menampilkan item ekstra daripada nav "berkedip" hilang-lalu-muncul.
   const businessFeatures = featuresForBusinessType(settings?.businessType ?? 'lainnya')
-  const visibleItems = NAV_ITEMS.filter((item) => {
-    if (item.roles && !item.roles.includes(currentUser.role)) return false
-    if (item.permission && !roleHasPermission(currentUser.role, item.permission)) return false
-    if (item.feature && !businessFeatures[item.feature]) return false
-    return true
-  })
+  const visibleItems = visibleNavItems(resolveNavItems(settings, businessFeatures), currentUser.role)
+
+  const pageTitle = visibleItems.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`))?.label ?? NAV_ITEM_DEFS.find((d) => pathname.startsWith(d.to))?.label ?? ''
+  const syncPill = !isBackendConfigured()
+    ? { label: 'Mode Lokal', tone: 'bg-ink-700 text-ink-200', dot: 'bg-ink-400' }
+    : sync.isSyncing
+      ? { label: 'Menyinkronkan…', tone: 'bg-ocean-50 text-ocean-400', dot: 'bg-ocean-400 animate-pulse' }
+      : sync.failedCount > 0
+        ? { label: 'Gagal Sinkron', tone: 'bg-red-900 text-red-400', dot: 'bg-red-500' }
+        : !sync.isOnline
+          ? { label: 'Offline', tone: 'bg-accent-600/15 text-accent-700', dot: 'bg-accent-500' }
+          : sync.pendingCount > 0
+            ? { label: `Menunggu sinkron (${sync.pendingCount})`, tone: 'bg-ocean-50 text-ocean-400', dot: 'bg-ocean-400' }
+            : { label: 'Tersinkron', tone: 'bg-[#d9f7ef] text-[#16a34a]', dot: 'bg-[#4ade80]' }
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-ink-950">
       {/* flex-none pada anak nav: tanpa itu, di layar pendek (mis. Galaxy Tab A8
           landscape ≈ 1280×728 CSS px) item ikut menyusut & blok nama usaha
           terpotong alih-alih nav bisa di-scroll. */}
-      <nav className="flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3">
-        <div className="mb-2 flex flex-none flex-col items-center gap-1.5 px-2 pb-3 [@media(max-height:800px)]:mb-1 [@media(max-height:800px)]:pb-2" title={businessName}>
-          <BusinessLogo size="sm" />
-          <span className="line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight text-ink-300">
-            {businessName}
-          </span>
+      <nav className="flex w-[6.25rem] flex-none flex-col items-stretch overflow-y-auto bg-ocean-600 pb-3 text-white">
+        <div className="flex flex-none flex-col items-center gap-1.5 px-1.5 pb-5 pt-4 [@media(max-height:800px)]:pb-3" title={businessName}>
+          {settings?.logoDataUrl && <BusinessLogo size="sm" />}
+          <span className="line-clamp-2 text-center text-[1.05rem] leading-tight">{businessName}</span>
         </div>
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
-                isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
+              `relative flex flex-none flex-col items-center gap-1.5 py-3 text-[0.8rem] transition-colors [@media(max-height:800px)]:py-2 ${
+                isActive ? 'bg-white/45' : 'hover:bg-white/15'
               }`
             }
           >
-            <Icon name={item.icon} size={21} />
+            <Icon name={item.icon} size={22} />
             <span className="leading-none">{item.label}</span>
             {(navBadges[item.to]?.count ?? 0) > 0 && (
               <span
-                className="absolute right-1.5 top-1 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] text-white"
+                className="absolute right-2 top-1 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] text-white"
                 title={`${navBadges[item.to].count} ${navBadges[item.to].title}`}
                 aria-label={`${navBadges[item.to].count} ${navBadges[item.to].title}`}
               >
@@ -175,88 +158,89 @@ export function AppShell({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-none items-center justify-between border-b border-ink-700 bg-ink-900 px-4 py-2.5">
-          <div className="flex items-center gap-3">
+        <header className="flex min-h-[4.25rem] flex-none items-center gap-3 border-b border-ink-100 bg-white px-5 py-2.5">
+          <h1 className="mr-auto truncate text-[1.4rem] font-semibold text-ink-50">{pageTitle}</h1>
+          {showBackupWarning && (
             <button
-              onClick={() => void triggerManualSync()}
-              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                sync.failedCount > 0
-                  ? 'border-red-300/40 bg-red-900 text-red-400'
-                  : 'border-ink-600 bg-ink-800 text-ink-200 hover:bg-ink-700'
-              }`}
-              title="Sinkronisasi sekarang"
+              onClick={() => navigate('/pengaturan?tab=backup')}
+              className="flex items-center gap-1.5 rounded-full bg-accent-600/20 px-3 py-1.5 text-xs font-medium text-accent-400 hover:bg-accent-600/30"
+              title="Buka Pengaturan → Backup"
             >
-              <Icon name={sync.isOnline ? 'wifi' : 'wifiOff'} size={16} />
-              {sync.isSyncing ? 'Menyinkronkan...' : sync.failedCount > 0 ? 'Gagal Sinkron' : sync.isOnline ? 'Online' : 'Offline'}
-              {sync.pendingCount > 0 && (
-                <span className="rounded-full bg-brand-600 px-1.5 text-white">{sync.pendingCount}</span>
-              )}
-              <Icon name="refresh" size={14} className={sync.isSyncing ? 'animate-spin' : ''} />
+              <Icon name="alertTriangle" size={14} />
+              Backup: {lastBackupLabel(now)}
             </button>
-            {openShift ? (
-              <span className="badge border border-success-500/30 bg-success-600/15 text-success-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
-                Shift aktif sejak {formatTime(openShift.openedAt)} • Kas {formatRupiah(openShift.expectedCash)}
-              </span>
-            ) : (
-              <span className="badge border border-red-300/40 bg-red-900 text-red-500">Belum ada shift</span>
-            )}
-            {showBackupWarning && (
-              <button
-                onClick={() => navigate('/pengaturan?tab=backup')}
-                className="flex items-center gap-1.5 rounded-full bg-accent-600/20 px-3 py-1.5 text-xs font-medium text-accent-400 hover:bg-accent-600/30"
-                title="Buka Pengaturan → Backup"
-              >
-                <Icon name="alertTriangle" size={14} />
-                Backup: {lastBackupLabel(now)}
-              </button>
-            )}
-            {showClockWarning && (
-              <span
-                className="flex items-center gap-1.5 rounded-full bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-400"
-                title="Jam/tanggal perangkat ini tampak mundur dari waktu yang pernah tercatat — periksa Pengaturan tanggal & waktu Android. Transaksi & laporan bisa salah urutan/tanggal sampai ini diperbaiki."
-              >
-                <Icon name="alertTriangle" size={14} />
-                Jam perangkat mundur
-              </span>
-            )}
-            {pendingQr > 0 && (
-              <button
-                onClick={() => navigate('/pesanan-qr')}
-                className="flex items-center gap-1.5 rounded-full border border-brand-500/30 bg-brand-600/12 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-600/20"
-                title="Buka Pesanan QR"
-              >
-                <Icon name="bell" size={14} />
-                {pendingQr} pesanan QR menunggu
-              </button>
-            )}
-            {printAlerts > 0 && (
-              <button
-                onClick={() => navigate('/cetak')}
-                className="flex items-center gap-1.5 rounded-full bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/40"
-                title="Buka Antrean Cetak"
-              >
-                <Icon name="printer" size={14} />
-                {printAlerts} cetak bermasalah
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-right text-xs leading-tight">
-              <div className="font-semibold text-ink-50">{currentUser.name}</div>
-              <div className="text-ink-400">{currentUser.role}</div>
-            </div>
-            <button onClick={lock} className="btn-ghost !min-h-[2.75rem] !px-3 !py-2" title="Kunci layar">
-              <Icon name="lock" size={18} />
-            </button>
+          )}
+          {showClockWarning && (
+            <span
+              className="flex items-center gap-1.5 rounded-full bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-400"
+              title="Jam/tanggal perangkat ini tampak mundur dari waktu yang pernah tercatat — periksa Pengaturan tanggal & waktu Android. Transaksi & laporan bisa salah urutan/tanggal sampai ini diperbaiki."
+            >
+              <Icon name="alertTriangle" size={14} />
+              Jam perangkat mundur
+            </span>
+          )}
+          {pendingQr > 0 && (
             <button
-              onClick={() => void handleLogout()}
-              className="btn-ghost !min-h-[2.75rem] !px-3 !py-2"
-              title="Ganti akun / keluar"
+              onClick={() => navigate('/pesanan-qr')}
+              className="flex items-center gap-1.5 rounded-full border border-brand-500/30 bg-brand-600/12 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-600/20"
+              title="Buka Pesanan QR"
             >
-              <Icon name="power" size={18} />
+              <Icon name="bell" size={14} />
+              {pendingQr} pesanan QR menunggu
             </button>
+          )}
+          {printAlerts > 0 && (
+            <button
+              onClick={() => navigate('/cetak')}
+              className="flex items-center gap-1.5 rounded-full bg-red-900/30 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/40"
+              title="Buka Antrean Cetak"
+            >
+              <Icon name="printer" size={14} />
+              {printAlerts} cetak bermasalah
+            </button>
+          )}
+          <button
+            onClick={() => void triggerManualSync()}
+            className={`flex min-h-[2.75rem] items-center gap-2 rounded-full px-4 text-sm font-medium ${syncPill.tone}`}
+            title="Sinkronisasi sekarang"
+          >
+            <span className={`h-2.5 w-2.5 rounded-full ${syncPill.dot}`} />
+            {syncPill.label}
+          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu((v) => !v)}
+              aria-haspopup="menu"
+              aria-label="Menu akun"
+              aria-expanded={showUserMenu}
+              className="flex min-h-[2.75rem] items-center rounded-full border-2 border-ocean-600 bg-white py-1 pl-1 pr-3 text-sm text-ocean-400"
+              title={`${currentUser.name} • ${ROLE_LABELS[currentUser.role]}`}
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#c9d6ea] text-sm text-ocean-700">{currentUser.name.trim()[0]?.toUpperCase() ?? '?'}</span>
+              <span className="ml-2 max-w-[8rem] truncate">{currentUser.name}</span>
+              <span className="mx-2 h-6 w-px bg-ocean-600/60" />
+              <span className={openShift ? '' : 'text-red-500'}>{openShift ? `Shift ${shiftNumber ?? ''}`.trim() : 'Belum Shift'}</span>
+            </button>
+            {showUserMenu && (
+              <>
+                <button className="fixed inset-0 z-40 cursor-default" aria-label="Tutup menu akun" onClick={() => setShowUserMenu(false)} />
+                <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-ink-600 bg-white shadow-lg">
+                  <div className="border-b border-ink-700 px-4 py-3 text-sm">
+                    <p className="font-semibold text-ink-50">{currentUser.name}</p>
+                    <p className="text-ink-300">{ROLE_LABELS[currentUser.role]}</p>
+                    <p className="mt-1 text-xs text-ink-300">
+                      {openShift ? `Shift aktif sejak ${formatTime(openShift.openedAt)} • Kas ${formatRupiah(openShift.expectedCash)}` : 'Belum ada shift'}
+                    </p>
+                  </div>
+                  <button role="menuitem" className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-ink-100 hover:bg-ink-800" onClick={() => { setShowUserMenu(false); lock() }}>
+                    <Icon name="lock" size={18} /> Kunci layar
+                  </button>
+                  <button role="menuitem" className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-ink-100 hover:bg-ink-800" onClick={() => { setShowUserMenu(false); void handleLogout() }}>
+                    <Icon name="power" size={18} /> Ganti akun / keluar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </header>
 

@@ -63,14 +63,14 @@ test('beli X gratis Y, saldo member, promo ulang tahun, dan pembayaran komisi KO
 
   // --- Kasir: 3 kentang → 1 gratis; voucher KOL; member dengan saldo.
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const nb = page.locator('div.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Pesanan Baru' }) })
   await nb.getByRole('button', { name: 'Takeaway' }).click()
   await nb.getByRole('button', { name: 'Mulai Pesanan' }).click()
   await page.getByRole('button', { name: 'Snack' }).click()
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: /Kentang Goreng/ }).first().click()
   await expect(page.getByText('Promo Beli 2 Gratis 1')).toBeVisible()
-  await page.getByRole('button', { name: '+ Kode voucher' }).click()
+  await page.getByRole('button', { name: 'Kode Voucher', exact: true }).click()
   await page.getByLabel('Kode voucher').fill('DINA2K')
   await page.getByRole('button', { name: 'Pasang Voucher' }).click()
   await expect(page.getByText('Voucher DINA2K').first()).toBeVisible()

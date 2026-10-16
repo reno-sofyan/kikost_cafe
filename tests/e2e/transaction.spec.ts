@@ -30,7 +30,7 @@ test('transaksi takeaway tunai: bayar → sukses → stok berkurang tepat satu k
 
   // Kasir → pesanan baru takeaway.
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const newOrder = page.locator('div.rounded-2xl.bg-ink-900').filter({
     has: page.getByRole('heading', { name: 'Pesanan Baru' }),
   })
@@ -89,7 +89,7 @@ test('pembayaran tunai kurang dari total ditolak', async ({ page }) => {
   await openShift(page)
 
   await page.getByRole('link', { name: 'Kasir' }).click()
-  await page.getByRole('button', { name: '+ Pesanan Baru' }).click()
+  await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
   const newOrder = page.locator('div.rounded-2xl.bg-ink-900').filter({
     has: page.getByRole('heading', { name: 'Pesanan Baru' }),
   })

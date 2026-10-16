@@ -14,6 +14,9 @@ import { OnboardingWizard } from '@/features/onboarding/OnboardingWizard'
 import { LoginScreen } from '@/features/auth/LoginScreen'
 import { LockScreen } from '@/features/auth/LockScreen'
 import { CashierScreen } from '@/features/pos/CashierScreen'
+import { featuresForBusinessType } from '@/lib/businessType'
+import { canOpenPath, homePathFor, resolveNavItems } from '@/lib/navAccess'
+import type { AppSettings, Role } from '@/types/domain'
 
 // Layar inti (jalur transaksi) dimuat langsung; sisanya di-split per rute supaya
 // muat awal di tablet murah ringan. Chunk dimuat saat rute pertama kali dibuka.
@@ -48,6 +51,26 @@ function RouteView({ children }: { children: ReactNode }) {
       <Suspense fallback={<ScreenLoading />}>{children}</Suspense>
     </ErrorBoundary>
   )
+}
+
+/**
+ * Menjaga rute sesuai Pengaturan → Fitur & Akses: menu yang dimatikan atau tak
+ * diberikan ke peran ini dialihkan ke halaman awal peran tersebut.
+ */
+function AccessGuard({ settings, role, children }: { settings: AppSettings; role: Role; children: ReactNode }) {
+  const { pathname } = useLocation()
+  const items = resolveNavItems(settings, featuresForBusinessType(settings.businessType))
+  const home = homePathFor(items, role)
+  if (!home) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-ink-300">
+        <p className="text-base font-semibold text-ink-100">Belum ada menu untuk akun ini</p>
+        <p className="max-w-sm text-sm">Minta Pemilik atau Administrator membuka Pengaturan → Fitur &amp; Akses dan memberi akses ke peran Anda.</p>
+      </div>
+    )
+  }
+  if (pathname === '/' || !canOpenPath(items, role, pathname)) return <Navigate to={home} replace />
+  return <>{children}</>
 }
 
 export default function App() {
@@ -101,27 +124,28 @@ export default function App() {
       <AutoLockWatcher autoLockMinutes={settings.autoLockMinutes} />
       <AppShell>
         <RouteView>
-          <Routes>
-            <Route path="/" element={<Navigate to="/kasir" replace />} />
-            <Route path="/kasir" element={<CashierScreen />} />
-            <Route path="/meja" element={<TablesScreen />} />
-            <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
-            <Route path="/dapur" element={<KitchenDisplayScreen />} />
-            <Route path="/pesanan-qr" element={<QrOrderInbox />} />
-            <Route path="/cetak" element={<PrintQueueScreen />} />
-            <Route path="/riwayat" element={<HistoryScreen />} />
-            <Route path="/pelanggan" element={<CustomersScreen />} />
-            <Route path="/pengeluaran" element={<ExpensesScreen />} />
-            <Route path="/laporan" element={<ReportsScreen />} />
-            <Route path="/laporan/:scope" element={<ReportsScreen />} />
-            <Route path="/promo" element={<PromoScreen />} />
-            <Route path="/absensi" element={<AttendanceScreen />} />
-            <Route path="/produk" element={<ProductsScreen />} />
-            <Route path="/stok" element={<InventoryScreen />} />
-            <Route path="/shift" element={<ShiftScreen />} />
-            <Route path="/pengaturan/*" element={<SettingsScreen />} />
-            <Route path="*" element={<Navigate to="/kasir" replace />} />
-          </Routes>
+          <AccessGuard settings={settings} role={currentUser.role}>
+            <Routes>
+              <Route path="/kasir" element={<CashierScreen />} />
+              <Route path="/meja" element={<TablesScreen />} />
+              <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
+              <Route path="/dapur" element={<KitchenDisplayScreen />} />
+              <Route path="/pesanan-qr" element={<QrOrderInbox />} />
+              <Route path="/cetak" element={<PrintQueueScreen />} />
+              <Route path="/riwayat" element={<HistoryScreen />} />
+              <Route path="/pelanggan" element={<CustomersScreen />} />
+              <Route path="/pengeluaran" element={<ExpensesScreen />} />
+              <Route path="/laporan" element={<ReportsScreen />} />
+              <Route path="/laporan/:scope" element={<ReportsScreen />} />
+              <Route path="/promo" element={<PromoScreen />} />
+              <Route path="/absensi" element={<AttendanceScreen />} />
+              <Route path="/produk" element={<ProductsScreen />} />
+              <Route path="/stok" element={<InventoryScreen />} />
+              <Route path="/shift" element={<ShiftScreen />} />
+              <Route path="/pengaturan/*" element={<SettingsScreen />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AccessGuard>
         </RouteView>
       </AppShell>
     </>

@@ -6,6 +6,7 @@ import { getMidtransConfig } from '@/sync/client'
 import { useSessionStore } from '@/state/sessionStore'
 import { roleHasPermission } from '@/lib/permissions'
 import { UserManager } from '@/features/settings/UserManager'
+import { FeatureAccessSettings } from '@/features/settings/FeatureAccessSettings'
 import { CancelCodePanel } from '@/features/settings/CancelCodePanel'
 import { BackupManager } from '@/features/settings/BackupManager'
 import { PrinterSettings } from '@/features/settings/PrinterSettings'
@@ -32,6 +33,7 @@ type Tab =
   | 'printer'
   | 'pager'
   | 'meja-qr'
+  | 'fitur-akses'
   | 'pengguna'
   | 'kode-batal'
   | 'sinkronisasi'
@@ -49,6 +51,7 @@ const TAB_KEYS: Tab[] = [
   'printer',
   'pager',
   'meja-qr',
+  'fitur-akses',
   'pengguna',
   'kode-batal',
   'sinkronisasi',
@@ -78,6 +81,7 @@ export function SettingsScreen() {
     { key: 'printer', label: 'Printer', visible: true },
     { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'meja-qr', label: 'Meja & QR', visible: features.qrOrdering && roleHasPermission(currentUser.role, 'qr.manage') },
+    { key: 'fitur-akses', label: 'Fitur & Akses', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'kode-batal', label: 'Kode Pembatalan', visible: features.ownerPinCancel && currentUser.role === 'pemilik' },
     { key: 'sinkronisasi', label: 'Sinkronisasi', visible: true },
@@ -91,7 +95,6 @@ export function SettingsScreen() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-none flex-wrap items-center gap-2 border-b border-ink-800 px-6 py-4">
-        <h1 className="mr-4 text-xl font-bold text-ink-50">Pengaturan</h1>
         {tabs
           .filter((t) => t.visible)
           .map((t) => (
@@ -111,6 +114,7 @@ export function SettingsScreen() {
         {tab === 'printer' && <PrinterSettings />}
         {tab === 'pager' && <PagerSettings />}
         {tab === 'meja-qr' && <TableQrSettings />}
+        {tab === 'fitur-akses' && <FeatureAccessSettings />}
         {tab === 'pengguna' && <UserManager />}
         {tab === 'kode-batal' && <CancelCodePanel />}
         {tab === 'sinkronisasi' && <SyncPanel />}

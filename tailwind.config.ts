@@ -58,6 +58,25 @@ export default {
           600: "#4a6b35", // isian tombol utama — teks putih 6.0:1
           700: "#3c5a2a", // hover / tekan
         },
+        // Biru laut — bilah navigasi samping & tombol Bayar (tata letak Kasir 2026-10).
+        ocean: {
+          50: "#e8f1fb", // tint (avatar, sorotan halus)
+          400: "#0f5aa6", // teks & angka total — 6.9:1 di putih
+          600: "#0f5aa6", // isian bilah samping & tombol Bayar — teks putih 6.9:1
+          700: "#0b4886", // hover / tekan
+        },
+        // Biru terang — tombol aksi sekunder solid (Cetak Tagihan, Cetak Struk Pelanggan).
+        royal: {
+          400: "#3550c4", // teks — 6.4:1
+          600: "#3a56c9", // isian — teks putih 6.0:1
+          700: "#2f47ad",
+        },
+        // Ungu — harga produk, tombol qty, Cetak ke Dapur/Bar.
+        grape: {
+          400: "#5b1a9e", // teks harga — 9.6:1
+          600: "#5b1a9e", // isian — teks putih 9.6:1
+          700: "#4a1482",
+        },
         // Amber untuk sorotan sekunder (favorit, cetak ulang, menunggu).
         accent: {
           400: "#b45309", // teks — 4.6:1
