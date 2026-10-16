@@ -1,4 +1,3 @@
-import jsPDF from 'jspdf'
 import { getSettings } from '@/db/repositories/settings'
 import { activePrinterForStation } from '@/db/repositories/printers'
 import { buildReceiptData, type ReceiptData } from '@/features/printing/receiptData'
@@ -48,6 +47,8 @@ export async function printReceiptData(data: ReceiptData): Promise<void> {
  */
 export async function saveReceiptAsPdf(data: ReceiptData): Promise<void> {
   const widthMm = data.paperSize === '58mm' ? 58 : 80
+  // Dimuat saat dipakai: jsPDF (~250 KB) tak perlu ikut di bundel awal kasir.
+  const { default: jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: [widthMm, 200] })
 
   const plainText = htmlToPlainLines(renderReceiptBodyHtml(data))

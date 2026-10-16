@@ -49,3 +49,39 @@ describe('runSyncCycle — penghapusan', () => {
     await expect(runSyncCycle()).resolves.toBeUndefined()
   })
 })
+
+describe('runSyncCycle — kecepatan', () => {
+  it('mengirim antrean besar dalam batch ≤100 item', async () => {
+    for (let i = 0; i < 250; i++) await enqueueSync('categories', `c${i}`, { id: `c${i}`, updatedAt: 1 })
+    await runSyncCycle()
+    expect(pushSyncBatch.mock.calls.map((c) => (c[1] as SyncPushItem[]).length)).toEqual([100, 100, 50])
+    expect(await db.syncQueue.where('status').equals('synced').count()).toBe(250)
+  })
+
+  it('memecah batch berisi payload besar (mis. foto) di bawah ±2 MB', async () => {
+    const photo = 'x'.repeat(900 * 1024)
+    for (let i = 0; i < 4; i++) await enqueueSync('products', `p${i}`, { id: `p${i}`, photoDataUrl: photo, updatedAt: 1 })
+    await runSyncCycle()
+    expect(pushSyncBatch.mock.calls.map((c) => (c[1] as SyncPushItem[]).length)).toEqual([2, 2])
+  })
+
+  it('HTTP 429: entri kembali pending tanpa menambah attempts', async () => {
+    await enqueueSync('categories', 'c1', { id: 'c1', updatedAt: 1 })
+    pushSyncBatch.mockRejectedValueOnce(Object.assign(new Error('Sinkronisasi gagal (HTTP 429)'), { status: 429 }))
+    await runSyncCycle()
+    const [entry] = await db.syncQueue.toArray()
+    expect(entry).toMatchObject({ status: 'pending', attempts: 0 })
+
+    await runSyncCycle()
+    expect((await db.syncQueue.toArray())[0].status).toBe('synced')
+  })
+
+  it('pull berhalaman: menarik lagi selama hasMore', async () => {
+    pullSyncChanges
+      .mockResolvedValueOnce({ entities: {}, serverTime: 10, hasMore: true })
+      .mockResolvedValueOnce({ entities: {}, serverTime: 20, hasMore: true })
+      .mockResolvedValueOnce({ entities: {}, serverTime: 25 })
+    await runSyncCycle()
+    expect(pullSyncChanges.mock.calls.map((c) => c[0])).toEqual([expect.any(Number), 10, 20])
+  })
+})

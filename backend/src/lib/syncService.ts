@@ -36,6 +36,8 @@ export interface PullResponse {
   /** ID entitas yang dihapus sejak `since` — klien menghapusnya dari data lokal. */
   deletions: Partial<Record<SyncEntity, string[]>>
   serverTime: number
+  /** true bila masih ada perubahan setelah `serverTime` — klien langsung menarik lagi. */
+  hasMore: boolean
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -246,6 +248,10 @@ export async function processPull(sinceRaw: number, tenantId: string): Promise<P
     const entities: Partial<Record<SyncEntity, unknown[]>> = {}
     const deletions: Partial<Record<SyncEntity, string[]>> = {}
     let maxSeq = since
+    // Seq terakhir dari entitas yang terpotong LIMIT. Kursor tidak boleh melewatinya:
+    // dulu kursor = seq tertinggi lintas entitas, sehingga sisa baris entitas yang
+    // terpotong (seq lebih rendah dari entitas lain) terlewati selamanya.
+    let truncatedAt = Number.POSITIVE_INFINITY
 
     for (const entity of SYNC_ENTITIES) {
       const { rows } = await client.query<{ payload: unknown; entity_id: string; deleted: boolean; server_seq: string }>(
@@ -263,10 +269,14 @@ export async function processPull(sinceRaw: number, tenantId: string): Promise<P
         if (gone.length > 0) deletions[entity] = gone.map((r) => r.entity_id)
         const localMax = Number(rows[rows.length - 1].server_seq)
         if (localMax > maxSeq) maxSeq = localMax
+        if (rows.length >= config.SYNC_PULL_LIMIT && localMax < truncatedAt) truncatedAt = localMax
       }
     }
 
-    return { entities, deletions, serverTime: maxSeq }
+    // Baris entitas lain di atas `truncatedAt` terkirim ulang di halaman berikut —
+    // aman, penerapan di klien idempoten (last-write-wins per updatedAt).
+    const hasMore = Number.isFinite(truncatedAt)
+    return { entities, deletions, serverTime: hasMore ? truncatedAt : maxSeq, hasMore }
   } finally {
     client.release()
   }

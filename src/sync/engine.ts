@@ -5,7 +5,13 @@ import { applyRemoteDeletions, applyRemoteEntities } from '@/sync/applyRemote'
 import { isBackendConfigured, pullSyncChanges, pushSyncBatch, type SyncPushItem } from '@/sync/client'
 import type { SyncQueueEntry } from '@/types/domain'
 
-const PUSH_BATCH_SIZE = 25
+// Server menerima ≤200 item & ≤8 MiB per push. 100 item memangkas jumlah request
+// (batas laju 240/menit per IP) tanpa mendekati batas ukuran; batas byte menjaga
+// batch berisi foto produk (data-url) tetap jauh di bawah 8 MiB.
+const PUSH_MAX_ITEMS = 100
+const PUSH_MAX_BYTES = 2 * 1024 * 1024
+/** Pengaman putaran tarik berhalaman dalam satu siklus. */
+const MAX_PULL_PAGES = 50
 const RETRY_BACKOFF_BASE_MS = 5000
 const MAX_ATTEMPTS_BEFORE_BACKOFF_CAP = 6
 
@@ -52,7 +58,8 @@ async function pushPendingQueue(): Promise<void> {
   let hasMore = true
   while (hasMore) {
     const candidates = await db.syncQueue.where('status').anyOf(['pending', 'failed']).sortBy('createdAt')
-    const batch = candidates.filter(eligibleForRetry).slice(0, PUSH_BATCH_SIZE)
+    const eligible = candidates.filter(eligibleForRetry)
+    const batch = takeBatch(eligible)
     if (batch.length === 0) {
       hasMore = false
       break
@@ -85,6 +92,18 @@ async function pushPendingQueue(): Promise<void> {
         }
       }
     } catch (error) {
+      if (isRateLimited(error)) {
+        // Server sedang membatasi laju — bukan kegagalan data. Kembalikan ke antrean
+        // tanpa menambah `attempts`, supaya siklus berikut (≤20 dtk) langsung mencoba
+        // lagi alih-alih menunggu backoff yang bisa mencapai 5 menit.
+        await db.syncQueue.bulkUpdate(
+          batch.map((entry) => ({
+            key: entry.id,
+            changes: { status: 'pending' as const, lastError: 'Server sibuk (HTTP 429), dicoba lagi otomatis', updatedAt: Date.now() },
+          })),
+        )
+        throw error
+      }
       await db.syncQueue.bulkUpdate(
         batch.map((entry) => ({
           key: entry.id,
@@ -100,16 +119,38 @@ async function pushPendingQueue(): Promise<void> {
       throw error
     }
 
-    if (batch.length < PUSH_BATCH_SIZE) hasMore = false
+    if (batch.length >= eligible.length) hasMore = false
   }
 }
 
+/** Ambil entri terdepan sampai PUSH_MAX_ITEMS atau ±PUSH_MAX_BYTES (minimal satu entri). */
+function takeBatch(eligible: SyncQueueEntry[]): SyncQueueEntry[] {
+  const batch: SyncQueueEntry[] = []
+  let bytes = 0
+  for (const entry of eligible) {
+    if (batch.length >= PUSH_MAX_ITEMS) break
+    const size = JSON.stringify(entry.payload ?? null).length
+    if (batch.length > 0 && bytes + size > PUSH_MAX_BYTES) break
+    batch.push(entry)
+    bytes += size
+  }
+  return batch
+}
+
+function isRateLimited(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { status?: unknown }).status === 429
+}
+
 async function pullRemoteChanges(): Promise<void> {
-  const since = getLastPullAt()
-  const response = await pullSyncChanges(since)
-  await applyRemoteEntities(response.entities)
-  await applyRemoteDeletions(response.deletions ?? {})
-  setLastPullAt(response.serverTime)
+  // Server membatasi baris per entitas; `hasMore` = masih ada sisa. Ditarik habis
+  // dalam siklus ini supaya tablet baru/yang lama offline tak menunggu 20 dtk per halaman.
+  for (let page = 0; page < MAX_PULL_PAGES; page++) {
+    const response = await pullSyncChanges(getLastPullAt())
+    await applyRemoteEntities(response.entities)
+    await applyRemoteDeletions(response.deletions ?? {})
+    setLastPullAt(response.serverTime)
+    if (!response.hasMore) break
+  }
 }
 
 export function startSyncEngine(): () => void {

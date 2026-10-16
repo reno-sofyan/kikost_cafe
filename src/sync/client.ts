@@ -27,6 +27,8 @@ export interface SyncPullResponse {
   /** ID entitas yang dihapus sejak `since`. Opsional: server lama tak mengirimnya. */
   deletions?: Partial<Record<SyncEntity, string[]>>
   serverTime: number
+  /** true = batas per entitas tercapai, tarik lagi segera. Opsional: server lama tak mengirimnya. */
+  hasMore?: boolean
 }
 
 function apiBaseUrl(): string {
@@ -35,6 +37,17 @@ function apiBaseUrl(): string {
 
 function deviceSyncKey(): string {
   return getDeviceKey()
+}
+
+/** Balasan HTTP gagal dari server sinkronisasi; `status` dipakai engine (mis. 429 = tunggu, bukan gagal). */
+export class SyncHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'SyncHttpError'
+  }
 }
 
 export class SyncNotConfiguredError extends Error {
@@ -84,7 +97,7 @@ export async function pushSyncBatch(deviceId: string, items: SyncPushItem[]): Pr
   })
   const data = await parseJsonOrThrow<SyncPushResponse>(response, 'Sinkronisasi gagal')
   if (!response.ok) {
-    throw new Error(`Sinkronisasi gagal (HTTP ${response.status})`)
+    throw new SyncHttpError(`Sinkronisasi gagal (HTTP ${response.status})`, response.status)
   }
   return data
 }
@@ -93,7 +106,7 @@ export async function pullSyncChanges(since: number): Promise<SyncPullResponse> 
   const response = await authorizedFetch(`/api/sync/pull?since=${since}`, { method: 'GET' })
   const data = await parseJsonOrThrow<SyncPullResponse>(response, 'Gagal mengambil data terbaru')
   if (!response.ok) {
-    throw new Error(`Gagal mengambil data terbaru (HTTP ${response.status})`)
+    throw new SyncHttpError(`Gagal mengambil data terbaru (HTTP ${response.status})`, response.status)
   }
   return data
 }
