@@ -113,40 +113,42 @@ export function AppShell({ children }: { children: ReactNode }) {
   const syncPill = !isBackendConfigured()
     ? { label: 'Mode Lokal', tone: 'bg-ink-700 text-ink-200', dot: 'bg-ink-400' }
     : sync.isSyncing
-      ? { label: 'Menyinkronkan…', tone: 'bg-ocean-50 text-ocean-400', dot: 'bg-ocean-400 animate-pulse' }
+      ? { label: 'Menyinkronkan…', tone: 'bg-brand-600/12 text-brand-400', dot: 'bg-brand-500 animate-pulse' }
       : sync.failedCount > 0
         ? { label: 'Gagal Sinkron', tone: 'bg-red-900 text-red-400', dot: 'bg-red-500' }
         : !sync.isOnline
           ? { label: 'Offline', tone: 'bg-accent-600/15 text-accent-700', dot: 'bg-accent-500' }
           : sync.pendingCount > 0
-            ? { label: `Menunggu sinkron (${sync.pendingCount})`, tone: 'bg-ocean-50 text-ocean-400', dot: 'bg-ocean-400' }
-            : { label: 'Tersinkron', tone: 'bg-[#d9f7ef] text-[#16a34a]', dot: 'bg-[#4ade80]' }
+            ? { label: `Menunggu sinkron (${sync.pendingCount})`, tone: 'bg-brand-600/12 text-brand-400', dot: 'bg-brand-500' }
+            : { label: 'Tersinkron', tone: 'bg-success-600/15 text-success-500', dot: 'bg-success-500' }
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-ink-950">
       {/* flex-none pada anak nav: tanpa itu, di layar pendek (mis. Galaxy Tab A8
           landscape ≈ 1280×728 CSS px) item ikut menyusut & blok nama usaha
           terpotong alih-alih nav bisa di-scroll. */}
-      <nav className="flex w-[6.25rem] flex-none flex-col items-stretch overflow-y-auto bg-ocean-600 pb-3 text-white">
-        <div className="flex flex-none flex-col items-center gap-1.5 px-1.5 pb-5 pt-4 [@media(max-height:800px)]:pb-3" title={businessName}>
-          {settings?.logoDataUrl && <BusinessLogo size="sm" />}
-          <span className="line-clamp-2 text-center text-[1.05rem] leading-tight">{businessName}</span>
+      <nav className="flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3">
+        <div className="mb-2 flex flex-none flex-col items-center gap-1.5 px-2 pb-3 [@media(max-height:800px)]:mb-1 [@media(max-height:800px)]:pb-2" title={businessName}>
+          <BusinessLogo size="sm" />
+          <span className="line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight text-ink-300">
+            {businessName}
+          </span>
         </div>
         {visibleItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `relative flex flex-none flex-col items-center gap-1.5 py-3 text-[0.8rem] transition-colors [@media(max-height:800px)]:py-2 ${
-                isActive ? 'bg-white/45' : 'hover:bg-white/15'
+              `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
+                isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
               }`
             }
           >
-            <Icon name={item.icon} size={22} />
+            <Icon name={item.icon} size={21} />
             <span className="leading-none">{item.label}</span>
             {(navBadges[item.to]?.count ?? 0) > 0 && (
               <span
-                className="absolute right-2 top-1 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] text-white"
+                className="absolute right-1.5 top-1 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] text-white"
                 title={`${navBadges[item.to].count} ${navBadges[item.to].title}`}
                 aria-label={`${navBadges[item.to].count} ${navBadges[item.to].title}`}
               >
@@ -158,8 +160,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-[4.25rem] flex-none items-center gap-3 border-b border-ink-100 bg-white px-5 py-2.5">
-          <h1 className="mr-auto truncate text-[1.4rem] font-semibold text-ink-50">{pageTitle}</h1>
+        <header className="flex min-h-[4.25rem] flex-none items-center gap-3 border-b border-ink-700 bg-ink-900 px-5 py-2.5">
+          <h1 className="mr-auto truncate text-xl font-bold text-ink-50">{pageTitle}</h1>
           {showBackupWarning && (
             <button
               onClick={() => navigate('/pengaturan?tab=backup')}
@@ -213,18 +215,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-haspopup="menu"
               aria-label="Menu akun"
               aria-expanded={showUserMenu}
-              className="flex min-h-[2.75rem] items-center rounded-full border-2 border-ocean-600 bg-white py-1 pl-1 pr-3 text-sm text-ocean-400"
+              className="flex min-h-[2.75rem] items-center rounded-full border border-ink-600 bg-ink-900 py-1 pl-1 pr-3 text-sm font-medium text-ink-100 hover:bg-ink-800"
               title={`${currentUser.name} • ${ROLE_LABELS[currentUser.role]}`}
             >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#c9d6ea] text-sm text-ocean-700">{currentUser.name.trim()[0]?.toUpperCase() ?? '?'}</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">{currentUser.name.trim()[0]?.toUpperCase() ?? '?'}</span>
               <span className="ml-2 max-w-[8rem] truncate">{currentUser.name}</span>
-              <span className="mx-2 h-6 w-px bg-ocean-600/60" />
+              <span className="mx-2 h-6 w-px bg-ink-600" />
               <span className={openShift ? '' : 'text-red-500'}>{openShift ? `Shift ${shiftNumber ?? ''}`.trim() : 'Belum Shift'}</span>
             </button>
             {showUserMenu && (
               <>
                 <button className="fixed inset-0 z-40 cursor-default" aria-label="Tutup menu akun" onClick={() => setShowUserMenu(false)} />
-                <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-ink-600 bg-white shadow-lg">
+                <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-ink-600 bg-ink-900 shadow-pop">
                   <div className="border-b border-ink-700 px-4 py-3 text-sm">
                     <p className="font-semibold text-ink-50">{currentUser.name}</p>
                     <p className="text-ink-300">{ROLE_LABELS[currentUser.role]}</p>

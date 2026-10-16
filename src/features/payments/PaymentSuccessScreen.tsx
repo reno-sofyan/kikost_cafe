@@ -103,27 +103,27 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   }
 
   const receiptBusy = !!receiptJob && (receiptJob.status === 'QUEUED' || receiptJob.status === 'PRINTING')
-  const bigBtn = 'flex min-h-[3.25rem] items-center justify-center rounded-lg px-4 text-[1.1rem] font-semibold text-white disabled:opacity-60'
+  const bigBtn = 'btn-primary text-base'
 
   return (
-    <div className="flex h-full flex-col items-center overflow-y-auto bg-[#fbfbfd] px-6 py-10 text-center">
+    <div className="flex h-full flex-col items-center overflow-y-auto px-6 py-10 text-center">
       <div className="my-auto flex w-full max-w-[35rem] flex-col items-center">
-        <div className="flex h-[4.75rem] w-[4.75rem] items-center justify-center rounded-full border-[3px] border-[#2f8a1c] bg-[#d5e8d0] text-[#2f8a1c]">
-          <Icon name="check" size={46} />
+        <div className="flex h-[4.75rem] w-[4.75rem] items-center justify-center rounded-full bg-success-600/20 text-success-500">
+          <Icon name="checkCircle" size={44} />
         </div>
-        <h1 className="mt-4 text-[1.65rem] font-bold text-[#2f8a1c]">Pembayaran Berhasil</h1>
+        <h1 className="mt-4 text-2xl font-bold text-ink-50">Pembayaran Berhasil</h1>
         {showQueue && order.queueNumber ? (
-          <div className="mt-6 min-w-[11rem] rounded-2xl border-2 border-[#8d9be0] bg-white px-6 py-3">
-            <p className="text-[1.05rem] tracking-wide text-ink-100">Nomor Antrean</p>
-            <p className="mt-2 text-[2rem] font-medium leading-none text-ink-50">#{order.queueNumber}</p>
+          <div className="mt-6 min-w-[11rem] rounded-2xl border border-brand-500/30 bg-brand-600/12 px-6 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-400">Nomor Antrean</p>
+            <p className="mt-2 text-5xl font-bold leading-none text-ink-50">#{order.queueNumber}</p>
             {order.notes ? <p className="mt-2 text-base font-semibold text-ink-200">{order.notes}</p> : null}
           </div>
         ) : null}
         {order.pagerNumber != null && (
-          <p className="mt-3 rounded-full bg-grape-600/10 px-4 py-1 text-sm font-semibold text-grape-400">Pager #{order.pagerNumber}</p>
+          <p className="mt-3 rounded-full bg-brand-600/12 px-4 py-1 text-sm font-semibold text-brand-700">Pager #{order.pagerNumber}</p>
         )}
-        <p className="mt-6 text-[0.95rem] text-ink-50">Transaksi {order.orderNumber}</p>
-        <p className="mt-2 text-[1.4rem] font-bold text-ink-50">{formatRupiah(order.grandTotal)}</p>
+        <p className="mt-6 text-ink-400">Transaksi {order.orderNumber}</p>
+        <p className="mt-2 text-3xl font-bold text-success-500">{formatRupiah(order.grandTotal)}</p>
 
         {showRating && currentUser && (
           <div className="mt-4">
@@ -141,21 +141,21 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         <div className="mt-3 flex w-full flex-col gap-4">
           <div className={`grid gap-1.5 ${hasKitchen ? 'grid-cols-2' : 'grid-cols-1'}`}>
             {hasKitchen && (
-              <button className={`${bigBtn} bg-grape-600 hover:bg-grape-700`} disabled={kitchenBusy} onClick={() => void handlePrintKitchen()}>
+              <button className={bigBtn} disabled={kitchenBusy} onClick={() => void handlePrintKitchen()}>
                 Cetak Struk ke Dapur/Bar
               </button>
             )}
-            <button className={`${bigBtn} bg-royal-600 hover:bg-royal-700`} disabled={receiptBusy} onClick={() => setShowPreview(true)}>
+            <button className={bigBtn} disabled={receiptBusy} onClick={() => setShowPreview(true)}>
               {receiptJob ? 'Cetak Ulang Struk Pelanggan' : 'Cetak Struk Pelanggan'}
             </button>
           </div>
           {proTools && currentUser && (
-            <button className={`${bigBtn} bg-royal-600 hover:bg-royal-700`} onClick={() => setSendingReceipt(true)}>
+            <button className={bigBtn} onClick={() => setSendingReceipt(true)}>
               Kirim Struk via WhatsApp
             </button>
           )}
           <button
-            className="flex min-h-[3.25rem] items-center justify-center rounded-lg border border-royal-600 bg-white text-[1.1rem] font-semibold text-royal-400 hover:bg-royal-600/5"
+            className="btn min-h-touch border-2 border-brand-600 bg-ink-900 px-5 text-base text-brand-400 hover:bg-brand-600/5"
             onClick={handleNewTransaction}
           >
             Transaksi Baru

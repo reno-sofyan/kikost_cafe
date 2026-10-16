@@ -486,12 +486,12 @@ export function CashierScreen() {
   const pagerOn = features.pager && !!settings && settings.pagerConfig.connectionType !== 'none'
 
   return (
-    <div className="flex h-full bg-white">
-      <div className="flex min-w-0 flex-1 flex-col bg-[#fbfbfd]">
+    <div className="flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex flex-none flex-wrap items-center gap-2.5 px-3 pb-3 pt-5">
           <div className="relative min-w-[12rem] flex-1">
             <input
-              className="min-h-[3.1rem] w-full rounded-full border border-ink-300 bg-white px-5 text-[1.05rem] text-ink-50 placeholder:text-ink-200 focus:border-ocean-600 focus:outline-none focus:ring-2 focus:ring-ocean-600/20"
+              className="input-field !rounded-full !px-5"
               placeholder="Cari produk yang sudah terdaftar.."
               aria-label="Cari produk, SKU, atau pindai barcode"
               autoFocus={features.quickSale}
@@ -503,13 +503,13 @@ export function CashierScreen() {
             />
           </div>
           <button
-            className="min-h-[2.75rem] whitespace-nowrap rounded-lg border-2 border-brand-600 bg-white px-3 text-[0.95rem] font-medium text-brand-600 hover:bg-brand-600/5"
+            className="btn btn-compact whitespace-nowrap border-2 border-brand-600 bg-ink-900 px-4 text-sm text-brand-400 hover:bg-brand-600/5"
             onClick={() => setShowOpenBills(true)}
           >
             Pesanan Terbuka
           </button>
           <button
-            className="flex min-h-[2.75rem] items-center gap-1.5 whitespace-nowrap rounded-lg bg-brand-600 px-3 text-[0.95rem] font-medium text-white hover:bg-brand-700"
+            className="btn-primary btn-compact whitespace-nowrap !px-4 text-sm"
             onClick={handleNewOrderClick}
           >
             <Icon name="plus" size={18} />
@@ -523,8 +523,8 @@ export function CashierScreen() {
               key={c.id}
               onClick={() => setCategoryId(c.id)}
               aria-pressed={categoryId === c.id}
-              className={`min-h-[2.4rem] min-w-[5.6rem] whitespace-nowrap rounded-lg border px-4 text-[0.95rem] font-semibold transition-colors ${
-                categoryId === c.id ? 'border-brand-600 bg-brand-600/10 text-brand-700' : 'border-ink-300 bg-white text-ink-100 hover:bg-ink-800'
+              className={`btn btn-compact min-w-[5.6rem] whitespace-nowrap border !px-4 text-sm ${
+                categoryId === c.id ? 'border-brand-600 bg-brand-600 text-white' : 'border-ink-600 bg-ink-900 text-ink-100 hover:bg-ink-800'
               }`}
             >
               {c.name}
@@ -533,22 +533,22 @@ export function CashierScreen() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2.5">
+          <div className="grid grid-cols-3 gap-2.5">
             {products.map((product) => (
               <button
                 key={product.id}
                 onClick={() => void handleProductTap(product)}
-                className={`relative flex flex-col items-stretch rounded-xl border border-ink-300 bg-white p-2.5 text-left transition-shadow hover:shadow-md ${product.isAvailable ? '' : 'opacity-50'}`}
+                className={`card relative flex flex-col items-stretch p-2.5 text-left transition-shadow hover:shadow-pop ${product.isAvailable ? '' : 'opacity-50'}`}
               >
-                <div className="mb-2.5 flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-lg bg-[#d9d9d9]">
+                <div className="mb-2.5 flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-lg bg-ink-800">
                   {product.photoDataUrl ? (
                     <img src={product.photoDataUrl} alt={product.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   ) : (
-                    <Icon name={features.quickSale ? 'box' : 'coffee'} size={30} className="text-white/80" />
+                    <Icon name={features.quickSale ? 'box' : 'coffee'} size={30} className="text-ink-400" />
                   )}
                 </div>
                 <span className="line-clamp-2 px-1 text-[0.95rem] font-semibold leading-snug text-ink-50">{product.name}</span>
-                <span className="px-1 text-[0.8rem] font-bold text-grape-400">{formatRupiah(productPriceFor(product, orderIsOnline, orderPlatform))}</span>
+                <span className="px-1 text-sm font-bold text-brand-400">{formatRupiah(productPriceFor(product, orderIsOnline, orderPlatform))}</span>
                 {orderIsOnline && productPriceFor(product, true, orderPlatform) !== product.price ? <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-accent-400">Harga online</span> : null}
                 {productTagsOf(product.tags).length > 0 && (
                   <span className="mt-1 flex flex-wrap gap-1 px-1">
@@ -561,7 +561,7 @@ export function CashierScreen() {
                 )}
                 {!product.isAvailable && <span className="px-1 text-xs font-semibold text-red-400">Habis</span>}
                 {product.isFavorite && (
-                  <span className="absolute right-4 top-4 rounded-full bg-white/90 p-1 text-accent-500">
+                  <span className="absolute right-4 top-4 rounded-full bg-ink-900/90 p-1 text-accent-500">
                     <Icon name="star" size={13} fill="currentColor" />
                   </span>
                 )}
@@ -572,10 +572,10 @@ export function CashierScreen() {
         </div>
       </div>
 
-      <div className="flex w-80 flex-none flex-col border-l border-ink-500 bg-white lg:w-[22rem] xl:w-[27rem]">
+      <div className="flex w-[24rem] flex-none flex-col border-l border-ink-700 bg-ink-900 lg:w-[28rem] xl:w-[32rem]">
         {!activeOrderId || !order ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ocean-50 text-ocean-400">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-600/12 text-brand-400">
               <Icon name="receipt" size={30} />
             </span>
             <div>
@@ -585,19 +585,19 @@ export function CashierScreen() {
               </p>
             </div>
             {!features.quickSale && (
-              <button className="flex min-h-[3rem] items-center gap-2 rounded-full bg-ocean-600 px-6 font-semibold text-white hover:bg-ocean-700" onClick={handleNewOrderClick}>
+              <button className="flex min-h-[3rem] items-center gap-2 rounded-full bg-brand-600 px-6 font-semibold text-white hover:bg-brand-700" onClick={handleNewOrderClick}>
                 <Icon name="plus" size={18} /> Buat Pesanan
               </button>
             )}
           </div>
         ) : (
           <>
-            <div className="flex-none border-b border-ink-600 px-4 pb-2.5 pt-4">
+            <div className="flex-none border-b border-ink-700 px-4 pb-2.5 pt-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[1.2rem] font-semibold text-ink-50">
                   {features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
                 </span>
-                {features.orderTypes.length > 1 && <span className="text-sm text-ocean-400">{ORDER_TYPE_LABELS[order.type]}</span>}
+                {features.orderTypes.length > 1 && <span className="text-sm text-brand-400">{ORDER_TYPE_LABELS[order.type]}</span>}
               </div>
               <div className="mt-0.5 flex flex-wrap gap-x-1.5 text-[0.85rem] text-ink-300">
                 <span>{order.orderNumber}</span>
@@ -614,7 +614,7 @@ export function CashierScreen() {
                 {pagerOn && (
                   <button
                     className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.8rem] font-semibold ${
-                      order.pagerNumber != null ? 'border-grape-600 bg-grape-600 text-white' : 'border-dashed border-grape-600 text-grape-400'
+                      order.pagerNumber != null ? 'border-brand-600 bg-brand-600 text-white' : 'border-dashed border-brand-500 text-brand-400'
                     }`}
                     disabled={order.pagerCalledAt != null}
                     onClick={() => void handlePagerClick()}
@@ -647,7 +647,7 @@ export function CashierScreen() {
               {activeItems.length === 0 && <p className="py-6 text-center text-sm text-ink-300">Keranjang kosong — tap produk di kiri.</p>}
               <div className="space-y-3">
                 {activeItems.map((item) => (
-                  <div key={item.id} className="rounded-xl bg-[#f4f6fb] px-3.5 py-3">
+                  <div key={item.id} className="rounded-xl bg-ink-800 px-3.5 py-3">
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 text-[1.05rem] font-semibold leading-snug text-ink-50">{item.productName}</p>
                       <span className="flex-none text-[1.05rem] font-semibold text-ink-50">{formatRupiah(item.lineTotal)}</span>
@@ -679,15 +679,15 @@ export function CashierScreen() {
                         )}
                         <div className="flex items-center gap-1">
                           <button
-                            className="flex h-8 w-8 items-center justify-center rounded-md bg-grape-600 text-white hover:bg-grape-700"
+                            className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700"
                             aria-label={`Kurangi jumlah ${item.productName}`}
                             onClick={() => void handleQtyChange(item, -1)}
                           >
                             <Icon name="minus" size={14} />
                           </button>
-                          <span className="w-9 text-center text-[1rem] font-medium text-ocean-400">{item.qty}</span>
+                          <span className="w-9 text-center text-[1rem] font-semibold text-ink-50">{item.qty}</span>
                           <button
-                            className="flex h-8 w-8 items-center justify-center rounded-md bg-grape-600 text-white hover:bg-grape-700"
+                            className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700"
                             aria-label={`Tambah jumlah ${item.productName}`}
                             onClick={() => void handleQtyChange(item, 1)}
                           >
@@ -703,7 +703,7 @@ export function CashierScreen() {
 
             <div className="flex-none space-y-2 px-2 pb-3 pt-2">
               <OrderPerks order={order} features={features} />
-              <div className="space-y-1 px-1.5 text-[0.95rem] text-ocean-400">
+              <div className="space-y-1 px-1.5 text-[0.95rem] text-ink-300">
                 <SummaryRow label="Subtotal" value={order.subtotal} />
                 {discountLinesOf(order).map((d) => (
                   <SummaryRow key={d.label} label={d.label} value={-d.amount} />
@@ -712,7 +712,7 @@ export function CashierScreen() {
                 {order.taxAmount > 0 && <SummaryRow label={`Pajak (${order.taxPercent}%)`} value={order.taxAmount} />}
                 {order.roundingAdjustment !== 0 && <SummaryRow label="Pembulatan" value={order.roundingAdjustment} />}
               </div>
-              <div className="mx-1.5 flex items-center justify-between border-t border-ink-500 pt-2 text-[1.1rem] font-bold text-ocean-400">
+              <div className="mx-1.5 flex items-center justify-between border-t border-ink-700 pt-2 text-[1.1rem] font-bold text-ink-50">
                 <span>Total</span>
                 <span>{formatRupiah(order.grandTotal)}</span>
               </div>
@@ -741,7 +741,7 @@ export function CashierScreen() {
                   <div className={`grid gap-1.5 px-1.5 ${showKitchen && features.preBill ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {showKitchen && (
                       <button
-                        className="min-h-[2.6rem] rounded-lg border-2 border-royal-600 bg-white px-2 text-[0.95rem] font-medium text-royal-400 hover:bg-royal-600/5"
+                        className="min-h-[2.6rem] rounded-xl border-2 border-brand-600 bg-ink-900 px-2 text-[0.95rem] font-semibold text-brand-400 hover:bg-brand-600/5"
                         onClick={async () => {
                           const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
                           toast.success(
@@ -756,7 +756,7 @@ export function CashierScreen() {
                     )}
                     {features.preBill && (
                       <button
-                        className="min-h-[2.6rem] rounded-lg bg-royal-600 px-2 text-[0.95rem] font-medium text-white hover:bg-royal-700 disabled:opacity-50"
+                        className="min-h-[2.6rem] rounded-xl bg-brand-600 px-2 text-[0.95rem] font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
                         disabled={activeItems.length === 0}
                         onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}
                       >
@@ -768,7 +768,7 @@ export function CashierScreen() {
               })()}
               <div className="px-1 pt-1.5">
                 <button
-                  className="min-h-[3.5rem] w-full rounded-full bg-ocean-600 text-[1.2rem] font-semibold text-white shadow-sm hover:bg-ocean-700 disabled:opacity-50"
+                  className="min-h-[3.5rem] w-full rounded-full bg-brand-600 text-[1.2rem] font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
                   disabled={activeItems.length === 0}
                   onClick={() => navigate(`/kasir/${order.id}/bayar`)}
                   aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
@@ -781,7 +781,7 @@ export function CashierScreen() {
                   Tagihan Tertunda (Bayar Nanti)
                 </button>
               )}
-              <button className="w-full py-2 text-[0.95rem] font-medium text-red-500 hover:text-red-400" onClick={() => void handleCancelOrderClick()}>
+              <button className="w-full py-2 text-[0.95rem] font-medium text-red-400 hover:text-red-300" onClick={() => void handleCancelOrderClick()}>
                 Batalkan Pesanan
               </button>
             </div>
@@ -980,7 +980,7 @@ export function CashierScreen() {
 }
 
 const CART_OUTLINE_BTN =
-  'min-h-[2.6rem] rounded-lg border-2 border-ink-500 bg-white px-2 text-[0.95rem] font-medium text-ink-200 hover:bg-ink-800 disabled:opacity-50'
+  'min-h-[2.6rem] rounded-xl border border-ink-600 bg-ink-900 px-2 text-[0.95rem] font-semibold text-ink-100 hover:bg-ink-800 disabled:opacity-40'
 
 function SummaryRow({ label, value }: { label: string; value: number }) {
   return (
