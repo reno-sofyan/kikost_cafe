@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   qrOrderBaseUrl: '',
   receiptPaperSize: '58mm',
   receiptFooterNote: 'Terima kasih atas kunjungan Anda',
-  autoLockMinutes: 5,
+  autoLockMinutes: 30,
   printerConfig: {
     connectionType: 'none',
     paperSize: '58mm',

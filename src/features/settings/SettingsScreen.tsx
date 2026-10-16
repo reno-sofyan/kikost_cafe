@@ -237,7 +237,7 @@ function FiscalForm() {
   const [transactionPrefix, setTransactionPrefix] = useState('')
   const [receiptPaperSize, setReceiptPaperSize] = useState<ReceiptPaperSize>('58mm')
   const [receiptFooterNote, setReceiptFooterNote] = useState('')
-  const [autoLockMinutes, setAutoLockMinutes] = useState(5)
+  const [autoLockMinutes, setAutoLockMinutes] = useState(30)
   const [blindClose, setBlindClose] = useState(false)
   const [cashVarianceTolerance, setCashVarianceTolerance] = useState(5000)
   const [allowPartialPayment, setAllowPartialPayment] = useState(false)
@@ -314,7 +314,7 @@ function FiscalForm() {
         <input className="input-field" value={receiptFooterNote} onChange={(e) => setReceiptFooterNote(e.target.value)} />
       </label>
       <label className="block">
-        <span className="mb-1 block text-sm text-ink-300">Kunci Layar Otomatis Setelah (menit, 0 = nonaktif)</span>
+        <span className="mb-1 block text-sm text-ink-300">Kunci layar otomatis bila tak disentuh selama (menit) — isi 0 agar tidak pernah terkunci sendiri</span>
         <input type="number" min={0} className="input-field" value={autoLockMinutes} onChange={(e) => setAutoLockMinutes(Number(e.target.value))} />
       </label>
 
