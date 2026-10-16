@@ -10,11 +10,14 @@ import {
   listSyncDevices,
   pingBackend,
   renameSyncDevice,
+  serverHasForeignCatalog,
   revokeSyncDevice,
   type SyncDevice,
 } from '@/sync/client'
 import { triggerManualSync } from '@/sync/engine'
 import { enqueueFullResync } from '@/sync/outbox'
+import { discardUntouchedSampleCatalog, isSampleCatalogUntouched, sampleCatalogIds } from '@/db/sampleCatalog'
+import { toast } from '@/state/toastStore'
 import {
   clearDeviceSyncConfig,
   getApiBaseUrl,
@@ -94,6 +97,10 @@ export function SyncPanel() {
       if (await pingBackend()) {
         setResyncState('running')
         try {
+          // Tablet tambahan: katalog contoh yang belum dipakai diganti katalog dari server.
+          if ((await isSampleCatalogUntouched()) && (await serverHasForeignCatalog(sampleCatalogIds()))) {
+            if (await discardUntouchedSampleCatalog()) toast.success('Katalog contoh di tablet ini diganti katalog dari server.')
+          }
           const count = await enqueueFullResync()
           markFullResyncDone()
           setResyncCount(count)

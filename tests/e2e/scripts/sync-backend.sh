@@ -8,6 +8,10 @@ CONTAINER="cafe-pos-e2e-db"
 PGPORT="${E2E_DB_PORT:-55433}"
 APIPORT="${E2E_API_PORT:-8091}"
 DEVICE_KEY="${E2E_DEVICE_KEY:-e2e-sync-key-abcdef0123456789}"
+# Tenant terpisah untuk spec kantin & dua tablet, supaya katalognya tak tertarik ke tablet spec lain.
+KANTIN_KEY="${E2E_KANTIN_DEVICE_KEY:-e2e-kantin-key-abcdef0123456789}"
+MULTI_KEY="${E2E_MULTI_DEVICE_KEY:-e2e-multi-key-abcdef0123456789}"
+OPS_TOKEN="${E2E_OPS_TOKEN:-e2e-ops-token-0123456789abcdef0123456789}"
 
 cleanup() {
   [ -n "${API_PID:-}" ] && kill "$API_PID" 2>/dev/null || true
@@ -30,7 +34,8 @@ export DATABASE_URL="postgres://cafe_pos_e2e:cafe_pos_e2e@localhost:$PGPORT/cafe
 export NODE_ENV=production
 export HOST=127.0.0.1
 export PORT="$APIPORT"
-export SYNC_DEVICE_KEYS="$DEVICE_KEY"
+export SYNC_DEVICE_KEYS="$DEVICE_KEY,kantin-e2e:$KANTIN_KEY,multi-e2e:$MULTI_KEY"
+export OPS_TOKEN
 export CORS_ORIGINS="http://localhost:4173"
 export LOG_LEVEL=warn
 

@@ -1,5 +1,5 @@
 import { expect, request, test, type Page } from '@playwright/test'
-import { completeOnboarding, openShift } from './helpers'
+import { completeOnboarding, configureBackend, openShift, waitForNoPending } from './helpers'
 import { E2E_API_URL, E2E_DEVICE_KEY } from '../../playwright.sync.config'
 
 /** Ambil semua entitas `orders` dari server (source of truth kanonik). */
@@ -12,17 +12,6 @@ async function serverOrders(): Promise<{ id: string; status: string; orderNumber
   const body = await res.json()
   await ctx.dispose()
   return (body.entities.orders ?? []) as { id: string; status: string; orderNumber: string }[]
-}
-
-async function configureBackend(page: Page) {
-  await page.getByRole('link', { name: 'Pengaturan' }).click()
-  await page.getByRole('button', { name: 'Sinkronisasi' }).click()
-  await page.getByLabel('URL Backend').fill(E2E_API_URL)
-  await page.getByLabel('Kunci Perangkat').fill(E2E_DEVICE_KEY)
-  await page.getByRole('button', { name: 'Uji Koneksi' }).click()
-  await expect(page.getByText('Koneksi backend berhasil.')).toBeVisible()
-  await page.getByRole('button', { name: 'Simpan' }).click()
-  await expect(page.getByText('Konfigurasi disimpan.')).toBeVisible()
 }
 
 async function payTakeaway(page: Page) {
@@ -44,18 +33,10 @@ async function payTakeaway(page: Page) {
   await expect(page.getByRole('heading', { name: 'Pembayaran Berhasil' })).toBeVisible({ timeout: 10_000 })
 }
 
-async function waitForNoPending(page: Page) {
-  await page.getByRole('link', { name: 'Pengaturan' }).click()
-  await page.getByRole('button', { name: 'Sinkronisasi' }).click()
-  await page.getByRole('button', { name: 'Sinkronkan Sekarang' }).click()
-  await expect(page.getByText('Menunggu sinkronisasi: 0')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText('Gagal sinkronisasi: 0')).toBeVisible()
-}
-
 test('transaksi tersinkron ke server tepat satu kali (online & setelah offline)', async ({ page, context }) => {
   await completeOnboarding(page)
   await openShift(page)
-  await configureBackend(page)
+  await configureBackend(page, E2E_API_URL, E2E_DEVICE_KEY)
 
   // 1. Transaksi ONLINE → tersinkron.
   await payTakeaway(page)

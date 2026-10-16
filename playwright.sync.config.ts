@@ -7,6 +7,13 @@ import { defineConfig, devices } from '@playwright/test'
 const WEB_PORT = 4173
 const API_PORT = 8091
 export const E2E_DEVICE_KEY = 'e2e-sync-key-abcdef0123456789'
+/** Kunci perangkat tenant `kantin-e2e` — data spec kantin terpisah dari tenant `default`. */
+export const E2E_KANTIN_DEVICE_KEY = 'e2e-kantin-key-abcdef0123456789'
+export const E2E_KANTIN_TENANT = 'kantin-e2e'
+/** Kunci perangkat tenant `multi-e2e` — spec dua tablet dalam satu usaha. */
+export const E2E_MULTI_DEVICE_KEY = 'e2e-multi-key-abcdef0123456789'
+/** Token konsol operator /ops — sama dengan default di tests/e2e/scripts/sync-backend.sh. */
+export const E2E_OPS_TOKEN = 'e2e-ops-token-0123456789abcdef0123456789'
 export const E2E_API_URL = `http://localhost:${API_PORT}`
 
 export default defineConfig({

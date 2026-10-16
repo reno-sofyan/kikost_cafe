@@ -3,6 +3,7 @@ import { updateSettings } from '@/db/repositories/settings'
 import { createUser } from '@/db/repositories/users'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { seedInitialCatalog } from '@/db/seed'
+import { rememberSampleCatalog } from '@/db/sampleCatalog'
 import { createKantinStarterCategories } from '@/db/repositories/categories'
 import { useSessionStore } from '@/state/sessionStore'
 import { isValidPinFormat } from '@/lib/pinHash'
@@ -132,6 +133,7 @@ export function OnboardingWizard() {
           })
           if (withSampleCatalog) await seedInitialCatalog(businessType)
           else if (businessType === 'kantin' && withKantinCategories) await createKantinStarterCategories()
+          if (withSampleCatalog || (businessType === 'kantin' && withKantinCategories)) await rememberSampleCatalog()
           login(admin)
         })(),
         20_000,

@@ -111,6 +111,16 @@ export async function pullSyncChanges(since: number): Promise<SyncPullResponse> 
   return data
 }
 
+/**
+ * Server sudah berisi katalog dari perangkat lain (kategori/produk dengan ID yang tak
+ * dikenal `ownIds`). Dipakai sebelum dorongan awal untuk mencegah katalog contoh ganda.
+ */
+export async function serverHasForeignCatalog(ownIds: Set<string>): Promise<boolean> {
+  const { entities } = await pullSyncChanges(0)
+  const rows = [...(entities.categories ?? []), ...(entities.products ?? [])] as { id?: string }[]
+  return rows.some((r) => typeof r.id === 'string' && !ownIds.has(r.id))
+}
+
 export async function pingBackend(): Promise<boolean> {
   try {
     const response = await authorizedFetch('/api/health', { method: 'GET' })

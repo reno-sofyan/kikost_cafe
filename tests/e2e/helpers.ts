@@ -3,15 +3,18 @@ import { expect, type Page } from '@playwright/test'
 /** Selesaikan onboarding (context IndexedDB harus kosong) → login admin otomatis. */
 export async function completeOnboarding(
   page: Page,
-  opts: { businessName?: string; taxPercent?: string; servicePercent?: string; pin?: string } = {},
+  opts: { businessName?: string; taxPercent?: string; servicePercent?: string; pin?: string; businessType?: 'Kafe & Restoran' | 'Kantin' | 'Minimarket & Ritel' } = {},
 ): Promise<void> {
-  const { businessName = 'Usaha E2E', taxPercent = '11', servicePercent = '5', pin = '246810' } = opts
+  const { businessName = 'Usaha E2E', taxPercent = '11', servicePercent = '5', pin = '246810', businessType } = opts
   await page.goto('/')
   await page.getByRole('button', { name: 'Lanjut' }).click() // welcome
+  if (businessType) await page.getByRole('button', { name: new RegExp(`^${businessType}`) }).click()
   await page.getByLabel('Nama Usaha', { exact: true }).fill(businessName)
   await page.getByRole('button', { name: 'Lanjut' }).click() // profile
   await page.getByLabel('Pajak (%)').fill(taxPercent)
-  await page.getByLabel('Service Charge (%)').fill(servicePercent)
+  // Kantin & minimarket tak memakai service charge — isiannya disembunyikan.
+  const service = page.getByLabel('Service Charge (%)')
+  if (await service.isVisible()) await service.fill(servicePercent)
   await page.getByRole('button', { name: 'Lanjut' }).click() // fiscal
   await page.getByRole('button', { name: 'Lanjut' }).click() // qris
   await page.getByRole('button', { name: 'Lanjut' }).click() // printer
@@ -82,4 +85,25 @@ export async function waitForOrderItems(page: Page, count: number): Promise<void
   await expect
     .poll(async () => (await idbAll<{ removed?: boolean }>(page, 'orderItems')).filter((i) => !i.removed).length)
     .toBe(count)
+}
+
+/** Hubungkan tablet ke backend di Pengaturan → Sinkronisasi (dipakai spec *.sync.spec.ts). */
+export async function configureBackend(page: Page, apiUrl: string, deviceKey: string): Promise<void> {
+  await page.getByRole('link', { name: 'Pengaturan' }).click()
+  await page.getByRole('button', { name: 'Sinkronisasi' }).click()
+  await page.getByLabel('URL Backend').fill(apiUrl)
+  await page.getByLabel('Kunci Perangkat').fill(deviceKey)
+  await page.getByRole('button', { name: 'Uji Koneksi' }).click()
+  await expect(page.getByText('Koneksi backend berhasil.')).toBeVisible()
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await expect(page.getByText('Konfigurasi disimpan.')).toBeVisible()
+}
+
+/** Sinkronkan sekarang lalu tunggu antrean kosong tanpa kegagalan. */
+export async function waitForNoPending(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Pengaturan' }).click()
+  await page.getByRole('button', { name: 'Sinkronisasi' }).click()
+  await page.getByRole('button', { name: 'Sinkronkan Sekarang' }).click()
+  await expect(page.getByText('Menunggu sinkronisasi: 0')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Gagal sinkronisasi: 0')).toBeVisible()
 }
