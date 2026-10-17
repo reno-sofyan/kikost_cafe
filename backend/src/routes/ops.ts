@@ -4,6 +4,7 @@ import { getPool } from '../db/pool.js'
 import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
 import { generateOwnerCode, getOwnerCodeStatus, revokeOwnerCode } from '../lib/ownerCancelCodes.js'
 import { createOwnerAccess, listOwnerAccess, revokeOwnerAccess } from '../lib/ownerAccess.js'
+import { loadTenantBusinessType, ownerConsoleAreaFor, ownerConsolePath } from '../lib/ownerConsole.js'
 import {
   buildTenantExport,
   COUNTED_CANCEL_SQL,
@@ -291,7 +292,9 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
       const created = await createOwnerAccess(getPool(), tenantId, label)
       request.log.info({ tenantId, accessId: created.id }, 'ops: akses pemilik dibuat')
       reply.header('cache-control', 'no-store')
-      return created
+      // Alamat konsol mengikuti jenis usaha (kafe/kantin/umum) — token hanya diterima di sana.
+      const consolePath = ownerConsolePath(ownerConsoleAreaFor(await loadTenantBusinessType(getPool(), tenantId)))
+      return { ...created, consolePath }
     },
   )
 

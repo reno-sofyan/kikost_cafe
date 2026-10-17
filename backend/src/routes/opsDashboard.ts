@@ -536,7 +536,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
       if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
     }
   }
-  // ---- Akses konsol Pemilik (/owner#k=<token>) ----
+  // ---- Akses konsol Pemilik (/owner/kafe|/owner/kantin|/owner #k=<token>) ----
   function resetOwnerAccess() {
     document.getElementById('oaShow').classList.add('hide');
     document.getElementById('oaLink').textContent = '';
@@ -569,7 +569,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     try {
       const r = await api('/tenant/' + encodeURIComponent(id) + '/owner-access', 'POST', { label: document.getElementById('oaLabel').value });
       if (id !== currentTenantId) return;
-      document.getElementById('oaLink').textContent = location.origin + '/owner#k=' + r.token;
+      document.getElementById('oaLink').textContent = location.origin + (r.consolePath || '/owner') + '#k=' + r.token;
       document.getElementById('oaCopy').textContent = 'Salin tautan';
       document.getElementById('oaShow').classList.remove('hide');
       document.getElementById('oaLabel').value = '';

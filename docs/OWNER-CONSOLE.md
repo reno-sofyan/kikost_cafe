@@ -4,10 +4,28 @@ Halaman web untuk **pemilik usaha**. Isinya sama dengan panel satu usaha di `/op
 hanya untuk usahanya sendiri. `/ops` tetap khusus developer/operator (lihat
 [OPS-CONSOLE.md](OPS-CONSOLE.md)).
 
+## Alamat dipisah per jenis usaha
+
+| Jenis usaha | Alamat | Isi khusus |
+|---|---|---|
+| Kafe & Resto | `/owner/kafe` | Ringkasan meja terisi, tamu & tip hari ini; tab **Meja** (status meja + pesanan berjalan) |
+| Kantin | `/owner/kantin` | Ringkasan Tagihan Tertunda & bukti bayar hari ini; tab **Tagihan Tertunda** dan **Bukti Bayar** (foto QRIS/transfer) |
+| Minimarket / lainnya | `/owner` | Isi umum saja |
+
+Token hanya diterima di alamat jenis usahanya. Token kantin yang dibuka di `/owner/kafe`
+(atau sebaliknya) dijawab **403** tanpa data, lalu halaman menawarkan tautan ke konsol yang
+benar. Tautan lama `/owner#k=…` milik kafe/kantin otomatis dipindah ke alamat barunya.
+Token disimpan di `localStorage` terpisah per alamat. Jenis usaha dibaca dari pengaturan
+yang tersinkron dari tablet (`settings.businessType`).
+
 Yang bisa dilakukan Pemilik dari HP:
 
 - Lihat omzet & transaksi hari ini, grafik omzet 7 hari, jumlah pembatalan, kasir online.
 - Daftar 60 transaksi terbaru, log aktivitas, dan rekap pembatalan/retur (7/30/90 hari).
+- **Tab Penjualan** (periode bebas, maks 92 hari): omzet, transaksi, rata-rata, diskon,
+  rincian metode bayar & jenis pesanan, produk terlaris, dan jam ramai. Isinya
+  menyesuaikan jenis usaha: **Kafe** menampilkan tamu, per pelayan, tip, dan platform
+  online; **Kantin** menampilkan Tagihan Tertunda yang belum dilunasi.
 - Unduh PDF transaksi / pembatalan untuk periode mana pun (maks 92 hari).
 - **Buat kode pembatalan sendiri.** Kodenya sama dengan yang dibuat di `/ops`: satu kode
   aktif per usaha, sekali pakai, dan tablet perlu internet saat kode dipakai.
@@ -16,7 +34,7 @@ Yang bisa dilakukan Pemilik dari HP:
 
 1. Buka `/ops`, lalu pilih usahanya → **Akses Konsol Pemilik**.
 2. Isi label (mis. "HP Bu Sari"), lalu klik **Buat Tautan**. Tautan
-   `https://pos.kikost.com/owner#k=kio_…` **hanya tampil sekali**. Salin, lalu kirim
+   `https://pos.kikost.com/owner/kantin#k=kio_…` (alamat mengikuti jenis usaha) **hanya tampil sekali**. Salin, lalu kirim
    langsung ke Pemilik.
 3. Pemilik membuka tautan itu. Token disimpan di `localStorage` HP Pemilik dan langsung
    dihapus dari bilah alamat, jadi Pemilik tetap masuk sampai menekan **Keluar**.
@@ -47,13 +65,26 @@ Bila tautan bocor atau HP hilang, cabut lalu buat tautan baru.
 | GET | `/owner` | Shell HTML (tanpa data) |
 | GET | `/owner/api/overview` | Nama & jenis usaha, omzet/transaksi hari ini, 7 hari, pembatalan, perangkat |
 | GET | `/owner/api/detail` | Total omzet, 60 transaksi & 120 log aktivitas terbaru |
+| GET | `/owner/api/sales?from=&to=` | Rekap penjualan periode (WIB, `YYYY-MM-DD`), profil kafe/kantin |
 | GET | `/owner/api/cancellations?days=30` | Rekap pembatalan (sama dengan `/ops`) |
 | GET | `/owner/api/export/{transactions,cancellations}.pdf?from=&to=` | PDF periode (WIB) |
 | GET/POST/DELETE | `/owner/api/owner-code` | Status / buat / hapus kode pembatalan Pemilik |
 
-Semua `/owner/api/*` memakai `Authorization: Bearer <token kio_…>`.
+Tabel di atas berlaku di ketiga alamat (`/owner/kafe/api/...`, `/owner/kantin/api/...`,
+`/owner/api/...`). Endpoint khusus:
 
-Kode: `backend/src/routes/owner.ts`, `backend/src/lib/ownerAccess.ts`. Laporan per usaha
+| Method | Path | Isi |
+|---|---|---|
+| GET | `/owner/kafe/api/tables` | Status meja + pesanan yang sedang berjalan |
+| GET | `/owner/kantin/api/pay-later` | Tagihan Tertunda terbuka + yang dilunasi 30 hari terakhir |
+| GET | `/owner/kantin/api/proofs?from=&to=` | Daftar bukti bayar QRIS/transfer (tanpa foto) |
+| GET | `/owner/kantin/api/proofs/:id/photo` | Foto bukti bayar (JPEG/PNG) |
+
+`/overview` di kafe/kantin juga mengembalikan `area` dan `highlights` khusus jenisnya.
+Semua `.../api/*` memakai `Authorization: Bearer <token kio_…>`.
+
+Kode: `backend/src/routes/owner.ts` (didaftarkan sekali per alamat), `backend/src/lib/ownerAccess.ts`,
+`backend/src/lib/ownerConsole.ts` (pemetaan jenis usaha → alamat + data khusus kafe/kantin). Laporan per usaha
 dipakai bersama dengan `/ops` di `backend/src/lib/tenantReports.ts`. HTML sumbernya
 `backend/src/routes/ownerDashboard.html`. Setelah mengeditnya, jalankan
 `node scripts/embed-dashboards.mjs` (di `backend/`) untuk membangkitkan ulang `ownerDashboard.ts`

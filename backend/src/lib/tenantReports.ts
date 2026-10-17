@@ -1,5 +1,6 @@
 import type { Pool } from 'pg'
 import { buildCancellationReport, buildReturnRows, type CancellationReport } from './opsCancellations.js'
+import { buildSalesReport, type SalesReport } from './salesReport.js'
 import { buildCancellationsPdf, buildTransactionsPdf, type TransactionReport, type TransactionRow } from './opsPdf.js'
 
 /**
@@ -236,6 +237,52 @@ export async function loadTransactionReport(pool: Pool, tenantId: string, sinceM
     discountCount: paid.filter((r) => r.discountAmount > 0).length,
     discountValue: paid.reduce((s, r) => s + r.discountAmount, 0),
   }
+}
+
+/** Rekap penjualan (lunas) untuk rentang [sinceMs, untilMs) — isinya mengikuti jenis usaha tenant. */
+export async function loadSalesReport(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<SalesReport> {
+  const [settings, orders, payLater] = await Promise.all([
+    pool.query<{ business_type: string | null }>(
+      `SELECT payload->>'businessType' AS business_type FROM sync_entity_state
+        WHERE tenant_id = $1 AND entity = 'settings' AND entity_id = 'singleton' AND deleted = FALSE`,
+      [tenantId],
+    ),
+    pool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM sync_entity_state
+        WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
+          AND payload->>'status' IN ('paid', 'completed')
+          AND ${PAID_OR_CREATED_MS} >= $2 AND ${PAID_OR_CREATED_MS} < $3
+        LIMIT 5000`,
+      [tenantId, sinceMs, untilMs],
+    ),
+    pool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM sync_entity_state
+        WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
+          AND payload->>'status' = 'open' AND jsonb_typeof(payload->'payLater') = 'object'
+        LIMIT 500`,
+      [tenantId],
+    ),
+  ])
+  const ids = orders.rows.map((r) => String(r.payload.id ?? ''))
+  const [items, payments] = ids.length
+    ? await Promise.all(
+        (['orderItems', 'payments'] as const).map((entity) =>
+          pool.query<{ payload: Record<string, unknown> }>(
+            `SELECT payload FROM sync_entity_state
+              WHERE tenant_id = $1 AND entity = $2 AND deleted = FALSE
+                AND payload->>'orderId' = ANY($3::text[])`,
+            [tenantId, entity, ids],
+          ),
+        ),
+      )
+    : [{ rows: [] }, { rows: [] }]
+  return buildSalesReport({
+    businessType: settings.rows[0]?.business_type ?? null,
+    orders: orders.rows.map((r) => r.payload),
+    items: items!.rows.map((r) => r.payload),
+    payments: payments!.rows.map((r) => r.payload),
+    openPayLater: payLater.rows.map((r) => r.payload),
+  })
 }
 
 /** Detail satu tenant: total omzet, 60 transaksi terbaru, 120 log aktivitas terbaru. */

@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#4338ca" />
 <meta name="robots" content="noindex, nofollow" />
 <meta name="referrer" content="no-referrer" />
-<title>Kione Pemilik</title>
+<title>__OWNER_TITLE__ · Kione</title>
 <style>
   :root {
     --bg: #f4f6fb; --surface: #ffffff; --surface-2: #eef1f7; --border: #e1e6ef;
@@ -94,8 +94,9 @@
   .ocode .big span { display: block; margin-top: 6px; font-size: .76rem; color: var(--ink-2); line-height: 1.4; }
 
   /* Tab */
-  .tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 14px; margin: 4px 0 12px; }
-  .tabs button { flex: 1; border: 0; background: transparent; padding: 9px 8px; border-radius: 10px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 14px; margin: 4px 0 12px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: 1 0 auto; border: 0; background: transparent; padding: 9px 8px; border-radius: 10px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
   .tabs button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 
   .exportbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; margin-bottom: 12px; }
@@ -145,6 +146,32 @@
   .corr .ci { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
   .corr .ci span:last-child { white-space: nowrap; }
   .corr .cm { color: var(--ink-3); font-size: .72rem; margin-bottom: 3px; }
+  /* Penjualan */
+  .blist .br { position: relative; display: flex; justify-content: space-between; gap: 8px; font-size: .8rem; padding: 5px 8px; margin: 2px -8px; border-radius: 8px; overflow: hidden; }
+  .blist .br i { position: absolute; inset: 0 auto 0 0; background: var(--brand-soft); z-index: 0; }
+  .blist .br span { position: relative; z-index: 1; }
+  .blist .br span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .blist .br span:last-child { white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .hours { padding: 14px 16px; margin-bottom: 12px; }
+  .hours h4 { margin: 0; font-size: .74rem; color: var(--ink-3); font-weight: 600; }
+  .hours .chart { height: 110px; flex-basis: 110px; gap: 4px; }
+  .sales-tbl { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .sales-tbl th { text-align: left; font-size: .72rem; color: var(--ink-3); font-weight: 600; padding: 4px 0 8px; }
+  .sales-tbl td { padding: 7px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .sales-tbl th:not(:first-child), .sales-tbl td:not(:first-child) { text-align: right; padding-left: 10px; white-space: nowrap; }
+  /* Meja (kafe) */
+  .tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tbl { padding: 12px 14px; border-left: 4px solid var(--border); }
+  .tbl.busy { border-left-color: var(--warn); }
+  .tbl.bill { border-left-color: var(--bad); }
+  .tbl.clean { border-left-color: var(--ink-4); }
+  .tbl .nm { font-weight: 700; display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+  .tbl .nm small { font-weight: 500; font-size: .7rem; color: var(--ink-3); }
+  .tbl .st { font-size: .74rem; color: var(--ink-3); margin-top: 4px; }
+  .tbl .ord { font-size: .78rem; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  /* Bukti bayar (kantin) */
+  .proof img { display: block; max-width: 100%; max-height: 420px; margin: 8px 0 4px; border-radius: 10px; border: 1px solid var(--border); }
+  .linkbtn { border: 0; background: none; padding: 0; color: var(--brand); font-weight: 600; font-size: .78rem; cursor: pointer; }
   .sect { margin: 18px 0 8px; font-size: .78rem; font-weight: 600; color: var(--ink-3); }
 
   @media (max-width: 760px) {
@@ -160,6 +187,7 @@
     .exportbar button.primary { flex: 1 1 100%; padding: 11px; }
     .toolbar .muted { flex-basis: 100%; }
     .actions .lbl { display: none; }
+    .tabs button { padding: 9px 4px; font-size: .82rem; }
   }
 </style>
 </head>
@@ -167,7 +195,7 @@
   <!-- Gerbang -->
   <div id="gate" class="gate card hide">
     <div class="logo">K</div>
-    <h2>Konsol Pemilik</h2>
+    <h2>__OWNER_TITLE__</h2>
     <p>Buka tautan akses yang diberikan admin Kione, atau tempel tautan / kode akses di bawah ini.</p>
     <input id="token" type="password" placeholder="Tautan atau kode akses" autocomplete="off" />
     <button class="primary" id="gateBtn" onclick="login()">Masuk</button>
@@ -207,11 +235,7 @@
       </div>
     </div>
 
-    <div class="tabs">
-      <button id="tabOrders" class="active" onclick="showTab('orders')">Transaksi</button>
-      <button id="tabCancels" onclick="showTab('cancels')">Pembatalan</button>
-      <button id="tabActivity" onclick="showTab('activity')">Aktivitas</button>
-    </div>
+    <div class="tabs" id="tabs"></div>
     <div id="exportBar" class="exportbar card">
       <span class="t" id="expTitle">Unduh laporan PDF</span>
       <select id="expPreset" onchange="onPresetChange()" aria-label="Periode">
@@ -229,15 +253,34 @@
       <div class="msg" id="expMsg"></div>
     </div>
     <div id="paneOrders"></div>
+    <div id="paneSales" class="hide"></div>
+    <div id="paneTables" class="hide"></div>
+    <div id="panePayLater" class="hide"></div>
+    <div id="paneProofs" class="hide"></div>
     <div id="paneCancels" class="hide"></div>
     <div id="paneActivity" class="hide"></div>
   </div>
 
 <script>
-  const TK = 'kione_owner_token';
+  // Area konsol ditanam server: 'kafe' (/owner/kafe), 'kantin' (/owner/kantin), 'umum' (/owner).
+  // Token hanya diterima di area jenis usahanya, jadi disimpan terpisah per area.
+  const AREA = '__OWNER_AREA__';
+  const BASE = AREA === 'umum' ? '/owner' : '/owner/' + AREA;
+  const tokenKey = (area) => area === 'umum' ? 'kione_owner_token' : 'kione_owner_token_' + area;
+  const TK = tokenKey(AREA);
   let cancelDays = 30;
-  let cancelsLoaded = false;
+  let salesPreset = 'today';
+  let proofPreset = 'today';
   let currentTab = 'orders';
+  const loaded = {};
+
+  const TABS = [['orders', 'Transaksi', 'paneOrders'], ['sales', 'Penjualan', 'paneSales']]
+    .concat(AREA === 'kafe' ? [['tables', 'Meja', 'paneTables']] : [])
+    .concat(AREA === 'kantin' ? [['payLater', 'Tagihan Tertunda', 'panePayLater'], ['proofs', 'Bukti Bayar', 'paneProofs']] : [])
+    .concat([['cancels', 'Pembatalan', 'paneCancels'], ['activity', 'Aktivitas', 'paneActivity']]);
+  const LOADERS = { cancels: () => loadCancels(), sales: () => loadSales(), tables: () => loadTables(), payLater: () => loadPayLater(), proofs: () => loadProofs() };
+  document.getElementById('tabs').innerHTML = TABS.map(([key, label]) =>
+    '<button data-tab="' + key + '" onclick="showTab(\'' + key + '\')">' + label + '</button>').join('');
 
   // Tersimpan di localStorage agar Pemilik tetap masuk di HP-nya; fallback memori bila diblokir.
   let memToken = '';
@@ -277,14 +320,42 @@
   }
 
   const REJECTED = 'Tautan akses tidak berlaku lagi. Minta tautan baru ke admin Kione.';
-  async function api(path, method) {
+  /** Token milik jenis usaha lain (403 + consolePath). Di /owner (tautan lama) pindah otomatis;
+   *  di /owner/kafe atau /owner/kantin ditolak dan Pemilik diarahkan ke konsolnya sendiri. */
+  async function wrongArea(res) {
+    let j = {};
+    try { j = await res.json(); } catch {}
+    const target = j.consolePath;
+    if (!target) return false;
+    const tk = token();
+    setToken('');
+    if (AREA === 'umum') {
+      try { localStorage.setItem(tokenKey(target.split('/')[2] || 'umum'), tk); } catch {}
+      location.replace(target + '#k=' + tk);
+      return true;
+    }
+    showGate(j.error || 'Tautan ini bukan untuk konsol ini.');
+    const err = document.getElementById('gateErr');
+    const a = document.createElement('a');
+    a.href = target; a.textContent = 'Buka konsol yang sesuai →';
+    err.appendChild(document.createElement('br'));
+    a.onclick = (e) => { e.preventDefault(); location.href = target + '#k=' + tk; };
+    err.appendChild(a);
+    return true;
+  }
+  async function apiRes(path, method) {
     let res;
     try {
-      res = await fetch('/owner/api' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+      res = await fetch(BASE + '/api' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
     } catch {
       throw new Error('Tidak bisa menghubungi server. Periksa koneksi internet.');
     }
     if (res.status === 401) { setToken(''); showGate(REJECTED); throw new Error('401'); }
+    if (res.status === 403 && await wrongArea(res)) throw new Error('401');
+    return res;
+  }
+  async function api(path, method) {
+    const res = await apiRes(path, method);
     if (res.status === 429) throw new Error('Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.');
     if (!res.ok) throw new Error('Server bermasalah (HTTP ' + res.status + '). Coba lagi nanti.');
     return res.json();
@@ -322,8 +393,8 @@
     showApp();
     loadOwnerCode();
     loadDetail();
-    cancelsLoaded = false;
-    if (currentTab === 'cancels') loadCancels();
+    for (const k of Object.keys(loaded)) delete loaded[k];
+    showTab(currentTab);
   }
   function refresh() {
     start().catch((e) => { if (String(e.message) !== '401') alertMsg(e.message); });
@@ -335,20 +406,36 @@
     const d = await api('/overview');
     const name = d.businessName || d.tenantId;
     document.getElementById('bizName').textContent = name;
-    document.title = name + ' · Kione Pemilik';
+    document.title = name + ' · __OWNER_TITLE__';
     const bt = document.getElementById('bizType');
     bt.textContent = BT[d.businessType] || '';
     bt.classList.toggle('hide', !BT[d.businessType]);
-    document.getElementById('updated').textContent = 'Diperbarui ' + fmtTime(Date.now());
-
     const c = d.cancellations;
     const dev = d.devices;
-    document.getElementById('kpis').innerHTML = [
+    const h = d.highlights || {};
+    const devText = dev.online + '/' + dev.total + ' kasir online';
+    document.getElementById('updated').textContent = 'Diperbarui ' + fmtTime(Date.now()) + (AREA === 'kafe' ? ' · ' + devText : '');
+
+    const k = [
       kpi('Omzet hari ini', compact(d.today.revenue), rupiah(d.today.revenue)),
       kpi('Transaksi hari ini', d.today.txns.toLocaleString('id-ID'), d.today.txns ? 'rata-rata ' + compact(d.today.revenue / d.today.txns) : ''),
-      kpi('Batal hari ini', c.todayCount, c.todayCount ? compact(c.todayValue) : c.last7DaysCount + ' dalam 7 hari', c.todayCount > 0),
-      kpi('Kasir online', dev.online + ' / ' + dev.total, dev.online ? 'aktif' : 'terakhir ' + ago(dev.lastSeenAt)),
-    ].join('');
+    ];
+    if (AREA === 'kafe') {
+      k.push(
+        kpi('Meja terisi', h.tables.occupied + ' / ' + h.tables.total, h.tables.total ? 'saat ini' : 'belum ada meja'),
+        kpi('Tamu hari ini', h.guestsToday.toLocaleString('id-ID'), d.today.txns && h.guestsToday ? compact(d.today.revenue / h.guestsToday) + ' per tamu' : ''),
+        kpi('Tip hari ini', compact(h.tipsToday), 'di luar omzet'),
+      );
+    }
+    if (AREA === 'kantin') {
+      k.push(
+        kpi('Tagihan tertunda', h.payLater.count, h.payLater.count ? compact(h.payLater.value) + ' belum dibayar' : 'semua lunas', h.payLater.count > 0),
+        kpi('Bukti bayar hari ini', h.proofsToday.count, h.proofsToday.withoutPhoto ? h.proofsToday.withoutPhoto + ' tanpa foto' : 'QRIS & transfer', h.proofsToday.withoutPhoto > 0),
+      );
+    }
+    k.push(kpi('Batal hari ini', c.todayCount, c.todayCount ? compact(c.todayValue) : c.last7DaysCount + ' dalam 7 hari', c.todayCount > 0));
+    if (AREA !== 'kafe') k.push(kpi('Kasir online', dev.online + ' / ' + dev.total, dev.online ? 'aktif' : 'terakhir ' + ago(dev.lastSeenAt)));
+    document.getElementById('kpis').innerHTML = k.join('');
     renderChart(d.last7Days);
   }
   const kpi = (label, val, note, alert) =>
@@ -412,15 +499,14 @@
   }
 
   function showTab(which) {
+    if (!TABS.some(([key]) => key === which)) which = 'orders';
     currentTab = which;
-    for (const [tab, pane, key] of [['tabOrders', 'paneOrders', 'orders'], ['tabCancels', 'paneCancels', 'cancels'], ['tabActivity', 'paneActivity', 'activity']]) {
-      document.getElementById(tab).classList.toggle('active', which === key);
-      document.getElementById(pane).classList.toggle('hide', which !== key);
-    }
-    document.getElementById('exportBar').classList.toggle('hide', which === 'activity');
+    for (const [key, , pane] of TABS) document.getElementById(pane).classList.toggle('hide', which !== key);
+    for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('active', b.dataset.tab === which);
+    document.getElementById('exportBar').classList.toggle('hide', which !== 'orders' && which !== 'cancels');
     document.getElementById('expTitle').textContent = which === 'cancels' ? 'Unduh PDF pembatalan' : 'Unduh PDF transaksi';
     setExpMsg('');
-    if (which === 'cancels' && !cancelsLoaded) loadCancels();
+    if (LOADERS[which] && !loaded[which]) LOADERS[which]();
   }
 
   // ---- Kode pembatalan Pemilik ----
@@ -493,10 +579,7 @@
     const btn = document.getElementById('expBtn');
     btn.disabled = true; btn.textContent = 'Membuat PDF…'; setExpMsg('');
     try {
-      const res = await fetch('/owner/api/export/' + kind + '.pdf?from=' + from + '&to=' + to, {
-        headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store',
-      });
-      if (res.status === 401) { setToken(''); showGate(REJECTED); return; }
+      const res = await apiRes('/export/' + kind + '.pdf?from=' + from + '&to=' + to);
       if (!res.ok) {
         let msg = 'Gagal membuat PDF (HTTP ' + res.status + ').';
         try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
@@ -510,8 +593,8 @@
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
       setExpMsg('Terunduh: ' + name);
-    } catch {
-      setExpMsg('Tidak bisa menghubungi server. Periksa koneksi internet.', true);
+    } catch (e) {
+      if (String(e.message) !== '401') setExpMsg(e.message, true);
     } finally { btn.disabled = false; btn.textContent = 'Unduh PDF'; }
   }
 
@@ -528,7 +611,7 @@
     if (days) cancelDays = days;
     const pane = document.getElementById('paneCancels');
     pane.innerHTML = '<div class="card loading">Memuat…</div>';
-    try { renderCancels(await api('/cancellations?days=' + cancelDays)); cancelsLoaded = true; }
+    try { renderCancels(await api('/cancellations?days=' + cancelDays)); loaded.cancels = true; }
     catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat pembatalan.</div>'; }
   }
   function groupHtml(title, groups) {
@@ -589,6 +672,181 @@
           '<span>Kasir <b>' + esc(r.cashierName || '—') + '</b></span></div></div>';
     }).join('');
     pane.innerHTML = head + kp + groups + list + returnsHtml;
+  }
+
+  // ---- Penjualan (isi dibedakan: kafe vs kantin) ----
+  const SALES_PRESETS = [['today', 'Hari ini'], ['7d', '7 hari'], ['30d', '30 hari'], ['month', 'Bulan ini']];
+  async function loadSales(preset) {
+    if (preset) salesPreset = preset;
+    const pane = document.getElementById('paneSales');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    const [from, to] = presetRange(salesPreset);
+    try { renderSales(await api('/sales?from=' + from + '&to=' + to)); loaded.sales = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat penjualan.</div>'; }
+  }
+  /** Daftar dengan batang proporsional; `val` = angka pembanding, `right` = teks kanan. */
+  function barList(title, rows, empty) {
+    const max = Math.max(1, ...rows.map((r) => r.val));
+    return '<div class="card group blist"><h4>' + esc(title) + '</h4>' +
+      (rows.length ? rows.map((r) => '<div class="br"><i style="width:' + Math.round((r.val / max) * 100) + '%"></i>' +
+        '<span>' + esc(r.name) + '</span><span>' + esc(r.right) + '</span></div>').join('')
+        : '<div class="muted">' + esc(empty || '—') + '</div>') + '</div>';
+  }
+  function hoursChart(byHour) {
+    const busy = byHour.filter((h) => h.count > 0);
+    if (!busy.length) return '';
+    const from = Math.min(...busy.map((h) => h.hour)), to = Math.max(...busy.map((h) => h.hour));
+    const slots = byHour.slice(from, to + 1);
+    const max = Math.max(1, ...slots.map((h) => h.count));
+    const peak = slots.reduce((a, h) => (h.count > a.count ? h : a), slots[0]);
+    return '<div class="card hours"><h4>Jam ramai · tersibuk ' + String(peak.hour).padStart(2, '0') + '.00 (' + peak.count + ' transaksi)</h4>' +
+      '<div class="chart">' + slots.map((h) =>
+        '<div class="col' + (h.hour === peak.hour ? ' today' : '') + '" title="' + esc(String(h.hour).padStart(2, '0') + '.00: ' + h.count + ' transaksi · ' + rupiah(h.revenue)) + '">' +
+        '<span class="v">' + (h.count || '') + '</span>' +
+        '<div class="barwrap"><div class="bar" style="height:' + Math.max(2, Math.round((h.count / max) * 100)) + '%"></div></div>' +
+        '<span class="d">' + String(h.hour).padStart(2, '0') + '</span></div>').join('') + '</div></div>';
+  }
+  function renderSales(d) {
+    const cafe = d.profile === 'cafe', kantin = d.profile === 'kantin';
+    const seg = '<div class="seg">' + SALES_PRESETS.map(([k, label]) =>
+      '<button class="' + (k === salesPreset ? 'active' : '') + '" onclick="loadSales(\'' + k + '\')">' + label + '</button>').join('') + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Penjualan lunas · ' + esc(d.label) + '</span>' + seg + '</div>';
+    const t = d.totals;
+    const k = [
+      kpi('Omzet', compact(t.revenue), rupiah(t.revenue)),
+      kpi('Transaksi', t.count.toLocaleString('id-ID'), t.count ? 'rata-rata ' + compact(t.avgTicket) : ''),
+      kpi('Diskon', compact(t.discount), ''),
+    ];
+    if (cafe) k.push(kpi('Tip', compact(t.tips), 'di luar omzet'), kpi('Tamu dine-in', t.guests.toLocaleString('id-ID'), ''));
+    if (kantin) k.push(kpi('Tagihan tertunda', d.payLater.count, d.payLater.count ? compact(d.payLater.value) + ' belum dibayar' : 'semua lunas', d.payLater.count > 0));
+    const kp = '<div class="ckpis">' + k.join('') + '</div>';
+
+    const typeRows = d.byType.map((x) => ({ name: x.label, val: x.revenue, right: x.count + '× · ' + compact(x.revenue) }));
+    const groups = '<div class="groups">' +
+      barList(kantin ? 'Makan di tempat / bungkus' : 'Jenis pesanan', typeRows) +
+      barList('Metode bayar', d.byMethod.map((m) => ({ name: m.label, val: m.amount, right: m.count + '× · ' + compact(m.amount) }))) +
+      barList('Produk terlaris', d.topProducts.slice(0, 10).map((p) => ({ name: p.name, val: p.qty, right: p.qty.toLocaleString('id-ID') + ' · ' + compact(p.revenue) }))) +
+      '</div>';
+
+    let extra = '';
+    if (cafe) {
+      extra += '<div class="sect">Per pelayan</div>' + (d.byWaiter.length
+        ? '<div class="card list"><table class="sales-tbl"><thead><tr><th>Pelayan</th><th>Pesanan</th><th>Omzet</th><th>Tip</th></tr></thead><tbody>' +
+          d.byWaiter.map((w) => '<tr><td>' + esc(w.name) + '</td><td>' + w.count + '</td><td>' + rupiah(w.revenue) + '</td><td>' + rupiah(w.tips) + '</td></tr>').join('') +
+          '</tbody></table></div>'
+        : '<div class="card empty">Belum ada pesanan yang mencatat pelayan pada periode ini.</div>');
+    }
+
+    const pane = document.getElementById('paneSales');
+    if (!t.count) { pane.innerHTML = head + kp + '<div class="card empty">Belum ada penjualan lunas pada periode ini.</div>' + extra; return; }
+    pane.innerHTML = head + kp + groups + hoursChart(d.byHour) + extra;
+  }
+
+  // ---- Meja (kafe) ----
+  const TABLE_ST = { available: ['Kosong', ''], occupied: ['Terisi', 'busy'], awaiting_payment: ['Menunggu bayar', 'bill'], needs_cleaning: ['Perlu dibersihkan', 'clean'] };
+  async function loadTables() {
+    const pane = document.getElementById('paneTables');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    try { renderTables((await api('/tables')).tables); loaded.tables = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat status meja.</div>'; }
+  }
+  function renderTables(tables) {
+    const pane = document.getElementById('paneTables');
+    if (!tables.length) { pane.innerHTML = '<div class="card empty">Belum ada meja. Meja diatur di tablet kasir (menu Meja).</div>'; return; }
+    const busy = tables.filter((t) => t.status !== 'available');
+    const running = busy.reduce((a, t) => a + (t.order && t.order.status === 'open' ? t.order.grandTotal : 0), 0);
+    const head = '<div class="toolbar"><span class="muted">' + busy.length + ' dari ' + tables.length + ' meja terisi' +
+      (running ? ' · pesanan berjalan ' + rupiah(running) : '') + '</span>' +
+      '<button class="linkbtn" onclick="loadTables()">Muat ulang</button></div>';
+    const areas = [];
+    for (const t of tables) {
+      const key = t.area || 'Tanpa area';
+      let g = areas.find((x) => x.key === key);
+      if (!g) areas.push(g = { key, rows: [] });
+      g.rows.push(t);
+    }
+    pane.innerHTML = head + areas.map((g) =>
+      (areas.length > 1 ? '<div class="sect">' + esc(g.key) + '</div>' : '') +
+      '<div class="tables">' + g.rows.map((t) => {
+        const st = TABLE_ST[t.status] || [t.status, ''];
+        const since = t.occupiedSince && t.status !== 'available' ? ' · ' + ago(t.occupiedSince).replace(' lalu', '') : '';
+        const o = t.order && t.status !== 'available'
+          ? '<div class="ord">' + esc(t.order.orderNumber || '—') + ' · <b>' + rupiah(t.order.grandTotal) + '</b>' +
+            (t.order.waiterName ? '<div class="muted">' + esc(t.order.waiterName) + '</div>' : '') + '</div>'
+          : '';
+        return '<div class="card tbl ' + st[1] + '"><div class="nm">' + esc(t.name) + '<small>' +
+          (t.guestCount ? t.guestCount + '/' : '') + (t.capacity || '–') + ' kursi</small></div>' +
+          '<div class="st">' + esc(st[0] + since) + '</div>' + o + '</div>';
+      }).join('') + '</div>').join('');
+  }
+
+  // ---- Tagihan Tertunda (kantin) ----
+  async function loadPayLater() {
+    const pane = document.getElementById('panePayLater');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    try { renderPayLater(await api('/pay-later')); loaded.payLater = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat tagihan tertunda.</div>'; }
+  }
+  function payLaterItem(r, settled) {
+    return '<div class="item"><div class="main"><div class="t1">' + esc(r.name) +
+      (settled ? ' <span class="tag paid">Lunas</span>' : ' <span class="tag open">Belum dibayar</span>') + '</div>' +
+      '<div class="t2">' + esc(r.orderNumber || '—') + ' · dicatat ' + esc(fmtTime(r.markedAt)) + (r.markedByName ? ' oleh ' + esc(r.markedByName) : '') +
+      (settled ? ' · dilunasi ' + esc(fmtTime(r.paidAt)) : ' · ' + esc(ago(r.markedAt))) +
+      (r.note ? '<br>' + esc(r.note) : '') + '</div></div>' +
+      '<div class="amt">' + rupiah(r.value) + '</div></div>';
+  }
+  function renderPayLater(d) {
+    const pane = document.getElementById('panePayLater');
+    const kp = '<div class="ckpis">' +
+      kpi('Belum dibayar', d.open.length, d.open.length ? compact(d.openValue) : 'semua lunas', d.open.length > 0) +
+      kpi('Dilunasi 30 hari', d.settled.length, compact(d.settled.reduce((a, r) => a + r.value, 0))) + '</div>';
+    pane.innerHTML = kp +
+      '<div class="sect">Belum dibayar (' + d.open.length + ') · terlama di atas</div>' +
+      (d.open.length ? '<div class="card list">' + d.open.map((r) => payLaterItem(r, false)).join('') + '</div>'
+                     : '<div class="card empty">Tidak ada tagihan tertunda.</div>') +
+      (d.settled.length ? '<div class="sect">Dilunasi 30 hari terakhir</div><div class="card list">' + d.settled.map((r) => payLaterItem(r, true)).join('') + '</div>' : '');
+  }
+
+  // ---- Bukti bayar QRIS/transfer (kantin) ----
+  const PROOF_PRESETS = [['today', 'Hari ini'], ['yesterday', 'Kemarin'], ['7d', '7 hari']];
+  const METHOD = { qris: 'QRIS', transfer: 'Transfer' };
+  async function loadProofs(preset) {
+    if (preset) proofPreset = preset;
+    const pane = document.getElementById('paneProofs');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    const [from, to] = presetRange(proofPreset);
+    try { renderProofs(await api('/proofs?from=' + from + '&to=' + to)); loaded.proofs = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat bukti bayar.</div>'; }
+  }
+  function renderProofs(d) {
+    const seg = '<div class="seg">' + PROOF_PRESETS.map(([k, label]) =>
+      '<button class="' + (k === proofPreset ? 'active' : '') + '" onclick="loadProofs(\'' + k + '\')">' + label + '</button>').join('') + '</div>';
+    const noPhoto = d.proofs.filter((x) => !x.hasPhoto).length;
+    const head = '<div class="toolbar"><span class="muted">Bukti bayar QRIS & transfer · ' + esc(d.label) +
+      (noPhoto ? ' · <b style="color:var(--bad)">' + noPhoto + ' tanpa foto</b>' : '') + '</span>' + seg + '</div>';
+    const pane = document.getElementById('paneProofs');
+    if (!d.proofs.length) { pane.innerHTML = head + '<div class="card empty">Belum ada bukti bayar pada periode ini.</div>'; return; }
+    pane.innerHTML = head + '<div class="card list">' + d.proofs.map((x) =>
+      '<div class="item proof"><div class="main"><div class="t1">' + esc(x.orderNumber || '—') +
+      ' <span class="tag">' + esc(METHOD[x.method] || 'Non-tunai') + '</span>' +
+      (x.hasPhoto ? '' : ' <span class="tag void">Tanpa foto</span>') + '</div>' +
+      '<div class="t2">' + esc(fmtTime(x.createdAt)) + ' · ' + esc(x.takenByName || '—') +
+      (x.noPhotoReason ? '<br>Alasan: ' + esc(x.noPhotoReason) : '') + '</div>' +
+      (x.hasPhoto ? '<div id="ph-' + esc(x.id) + '"><button class="linkbtn" onclick="showProofPhoto(\'' + esc(x.id) + '\')">Lihat foto</button></div>' : '') +
+      '</div><div class="amt">' + rupiah(x.amount) + '</div></div>').join('') + '</div>';
+  }
+  async function showProofPhoto(id) {
+    const box = document.getElementById('ph-' + id);
+    if (!box) return;
+    box.innerHTML = '<span class="muted">Memuat foto…</span>';
+    try {
+      const res = await apiRes('/proofs/' + encodeURIComponent(id) + '/photo');
+      if (!res.ok) throw new Error('Foto tidak bisa dimuat (HTTP ' + res.status + ').');
+      const url = URL.createObjectURL(await res.blob());
+      box.innerHTML = '<img alt="Foto bukti bayar" src="' + url + '" />';
+    } catch (e) {
+      if (String(e.message) !== '401') box.innerHTML = '<span class="err">' + esc(e.message) + '</span>';
+    }
   }
 
   document.getElementById('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });

@@ -152,8 +152,11 @@ export async function buildServer(): Promise<FastifyInstance> {
     )
   }
 
-  // ---- Konsol Pemilik usaha (/owner) — satu tenant, masuk lewat tautan bertoken dari /ops ----
-  await app.register(registerOwnerRoutes, { prefix: '/owner' })
+  // ---- Konsol Pemilik usaha — satu tenant, masuk lewat tautan bertoken dari /ops.
+  // Dipisah per jenis usaha; token hanya diterima di area jenis usahanya. ----
+  await app.register(registerOwnerRoutes, { prefix: '/owner/kafe', area: 'kafe' })
+  await app.register(registerOwnerRoutes, { prefix: '/owner/kantin', area: 'kantin' })
+  await app.register(registerOwnerRoutes, { prefix: '/owner', area: 'umum' })
 
   // Bersihkan tabel throttle berkala.
   const pruneTimer = setInterval(pruneAuthThrottle, 5 * 60_000)
