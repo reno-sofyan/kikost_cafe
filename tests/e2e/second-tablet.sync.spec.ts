@@ -24,8 +24,14 @@ test('tablet kedua dengan katalog contoh memakai katalog server, tanpa kategori 
   await completeOnboarding(tablet1, { businessType: 'Kantin' })
   await configureBackend(tablet1, E2E_API_URL, E2E_MULTI_DEVICE_KEY)
   await waitForNoPending(tablet1)
+  // "Menunggu sinkronisasi: 0" bisa tampil sesaat sebelum push berjalan selesai — tunggu server terisi.
+  await expect
+    .poll(async () => {
+      const c = await serverCatalog()
+      return c.categories.length > 0 && c.products.length > 0
+    }, { timeout: 15_000 })
+    .toBe(true)
   const before = await serverCatalog()
-  expect(before.categories.length).toBeGreaterThan(0)
 
   // Tablet kedua: onboarding juga dengan katalog contoh (bawaan), lalu dihubungkan.
   const second = await browser.newContext()

@@ -14,6 +14,13 @@ async function serverOrders(): Promise<{ id: string; status: string; orderNumber
   return (body.entities.orders ?? []) as { id: string; status: string; orderNumber: string }[]
 }
 
+/** Tunggu sampai server berisi `n` pesanan lunas. "Menunggu sinkronisasi: 0" bisa tampil
+ *  sesaat sebelum push yang sedang berjalan selesai, jadi server dibaca berulang. */
+async function waitServerPaid(n: number) {
+  await expect.poll(async () => (await serverOrders()).filter((o) => o.status === 'paid').length, { timeout: 15_000 }).toBe(n)
+  return (await serverOrders()).filter((o) => o.status === 'paid')
+}
+
 async function payTakeaway(page: Page) {
   await page.getByRole('link', { name: 'Kasir' }).click()
   await page.getByRole('button', { name: 'Pesanan Baru', exact: true }).click()
@@ -42,8 +49,7 @@ test('transaksi tersinkron ke server tepat satu kali (online & setelah offline)'
   await payTakeaway(page)
   await waitForNoPending(page)
 
-  let orders = await serverOrders()
-  expect(orders.filter((o) => o.status === 'paid')).toHaveLength(1)
+  await waitServerPaid(1)
 
   // 2. Transaksi OFFLINE → antre → sinkron setelah online, tanpa duplikat.
   await context.setOffline(true)
@@ -52,9 +58,7 @@ test('transaksi tersinkron ke server tepat satu kali (online & setelah offline)'
   await context.setOffline(false)
   await waitForNoPending(page)
 
-  orders = await serverOrders()
-  const paid = orders.filter((o) => o.status === 'paid')
-  expect(paid).toHaveLength(2)
+  const paid = await waitServerPaid(2)
   // Tidak ada nomor transaksi ganda.
   expect(new Set(paid.map((o) => o.orderNumber)).size).toBe(2)
 
