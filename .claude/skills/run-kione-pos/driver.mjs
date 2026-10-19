@@ -93,7 +93,8 @@ async function ensureLoggedIn() {
     await page.getByRole('button', { name: 'Buka Shift' }).click() // buka OpenShiftModal
     await page.waitForSelector('text=Modal Awal')
     await page.getByRole('button', { name: 'Buka Shift' }).last().click() // submit modal
-    await page.waitForFunction(() => /Shift aktif/.test(document.body.innerText), { timeout: 10000 })
+    // "Shift aktif sejak…" hanya ada di dropdown Menu akun (tertutup), jadi tunggu tombol Tutup Shift di ShiftScreen.
+    await page.getByRole('button', { name: 'Tutup Shift', exact: true }).waitFor({ timeout: 10000 })
     await page.getByRole('link', { name: 'Kasir', exact: true }).click()
   }
   await page.waitForSelector('input[placeholder*="Cari produk"]', { timeout: 10000 })

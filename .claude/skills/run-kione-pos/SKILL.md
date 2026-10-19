@@ -70,6 +70,10 @@ node .claude/skills/run-kione-pos/driver.mjs reset
 | `goto <path>` | Runs `smoke`'s login/shift setup first, then either clicks the matching sidebar nav item (`/produk`, `/laporan`, `/dapur`, `/meja`, `/pengaturan`, `/riwayat`, `/stok`, `/pengeluaran`, `/pelanggan`, `/pesanan-qr`, `/cetak`) or `page.goto`s the path directly if it's not one of those. Screenshot → `screenshots/<path>.png`. |
 | `reset` | Deletes the persistent browser profile (`.profile/`) so the next `smoke`/`goto` starts from onboarding again. Use this when you need a truly clean-state run (e.g. testing the onboarding wizard itself). |
 
+Set `KIONE_URL` (e.g. `KIONE_URL=http://localhost:8000`) if the dev
+server is on another port. Each origin has its own IndexedDB, so a new
+port starts from onboarding again.
+
 The driver reuses a **persistent Chromium profile** at
 `.claude/skills/run-kione-pos/.profile/` (gitignored) across
 invocations — real IndexedDB, so once onboarding has run once, every
@@ -127,6 +131,11 @@ confusing which one a failure came from).
   'Buka Shift'})` alone is ambiguous once the modal is open (the
   page's trigger button is still in the DOM behind it) — the driver
   disambiguates with `.last()` for the modal's submit button.
+- **"Shift aktif sejak…" is not on the page after opening a shift** —
+  it only renders inside the closed "Menu akun" dropdown
+  (`src/app/AppShell.tsx`). Wait for the `Tutup Shift` button on
+  `ShiftScreen` instead (that's what the driver does); waiting on the
+  dropdown text times out on every fresh-onboarding run.
 - **`PinPad` has no auto-submit.** Typing 4 digits doesn't log you in —
   there's an explicit "Masuk" button (disabled until `value.length >=
   4`). Digit buttons are plain `<button>{digit}</button>`, so
