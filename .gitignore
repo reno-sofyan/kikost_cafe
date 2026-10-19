@@ -58,3 +58,8 @@ android/*.keystore
 # PWA dev build artifacts (vite-plugin-pwa)
 dev-dist/
 build-output/
+
+# Gambar referensi lokal (bukan aset aplikasi)
+/interior.HEIC
+/src/kasir.png
+/src/transaksi-berhasil.png
