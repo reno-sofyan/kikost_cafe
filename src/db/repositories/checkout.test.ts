@@ -217,3 +217,26 @@ describe('voidOrder & returnOrderItems', () => {
     expect(record.refundId).toBe(refunds[0].id)
   })
 })
+
+describe('cetak 2 struk saat lunas (kitchenCopyOnPayment)', () => {
+  it('printer kasir mendapat struk pelanggan lalu tiket dapur', async () => {
+    const { savePrinter } = await import('./printers')
+    const { getSettings, updateSettings } = await import('./settings')
+    await savePrinter(
+      { name: 'Kasir', station: 'cashier', connectionType: 'network', bluetoothAddress: null, bluetoothName: null, networkHost: '10.0.0.3', networkPort: 9100, paperSize: '58mm', active: true, fallbackPrinterId: null },
+      { userId: 'u1', userName: 'Kasir' },
+    )
+    const settings = await getSettings()
+    await updateSettings({ businessType: 'kantin', printerConfig: { ...settings.printerConfig, kitchenCopyOnPayment: true } })
+    await seedProduct({ id: 'p-own', stockQty: 10, price: 20000 })
+    const { order } = await buildOpenOrder('p-own', 2)
+
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: 40000 }], confirmedByUserId: 'u1' })
+
+    const jobs = (await db.printJobs.where('orderId').equals(order.id).toArray()).sort((a, b) => a.createdAt - b.createdAt || Number(a.kind !== 'receipt') - Number(b.kind !== 'receipt'))
+    expect(jobs.map((j) => [j.kind, j.station])).toEqual([
+      ['receipt', 'cashier'],
+      ['kitchen_ticket', 'cashier'],
+    ])
+  })
+})

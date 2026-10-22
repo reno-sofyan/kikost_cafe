@@ -79,22 +79,31 @@ export async function finalizePayment(params: {
 
   // Antre cetak nota bila order selesai & ada printer kasir aktif — kegagalan
   // printer TIDAK membatalkan pembayaran (job tetap tersimpan untuk retry).
-  if (result.order.lifecycleStatus === 'COMPLETED') {
-    try {
-      const settings = await getSettings()
-      // Usaha tanpa dapur (minimarket) tak pernah mencetak tiket dapur otomatis.
-      if (settings.printerConfig.autoPrintKitchenOrder && featuresForBusinessType(settings.businessType).kitchen) {
-        await sendOrderToKitchen(params.orderId, { userId: params.confirmedByUserId, userName: '' })
-      }
-      if (await activePrinterForStation('cashier')) {
-        await enqueueReceiptForOrder(params.orderId, { userId: params.confirmedByUserId, userName: '' })
-      }
-    } catch {
-      /* diabaikan — pembayaran sudah tercatat */
-    }
-  }
+  if (result.order.lifecycleStatus === 'COMPLETED') await printAfterPayment(params.orderId, params.confirmedByUserId)
 
   return { order: result.order, payments: result.payments }
+}
+
+/**
+ * Cetakan otomatis saat order lunas. Dengan `kitchenCopyOnPayment`, printer kasir
+ * mencetak struk pelanggan lalu tiket dapur untuk item yang belum ke dapur.
+ */
+async function printAfterPayment(orderId: string, userId: string): Promise<void> {
+  const actor = { userId, userName: '' }
+  try {
+    const settings = await getSettings()
+    // Usaha tanpa dapur (minimarket) tak pernah mencetak tiket dapur otomatis.
+    const kitchen = featuresForBusinessType(settings.businessType).kitchen
+    const cashierPrinter = await activePrinterForStation('cashier')
+    const kitchenCopy = kitchen && !!settings.printerConfig.kitchenCopyOnPayment && !!cashierPrinter
+    if (!kitchenCopy && kitchen && settings.printerConfig.autoPrintKitchenOrder) {
+      await sendOrderToKitchen(orderId, actor)
+    }
+    if (cashierPrinter) await enqueueReceiptForOrder(orderId, actor)
+    if (kitchenCopy) await sendOrderToKitchen(orderId, actor, { station: 'cashier' })
+  } catch {
+    /* diabaikan — pembayaran sudah tercatat */
+  }
 }
 
 /**
@@ -115,20 +124,7 @@ export async function payOrderBill(params: {
   await assertPaymentProof(params)
   const result = await payBill(params)
 
-  if (result.order.lifecycleStatus === 'COMPLETED') {
-    try {
-      const settings = await getSettings()
-      // Usaha tanpa dapur (minimarket) tak pernah mencetak tiket dapur otomatis.
-      if (settings.printerConfig.autoPrintKitchenOrder && featuresForBusinessType(settings.businessType).kitchen) {
-        await sendOrderToKitchen(result.order.id, { userId: params.confirmedByUserId, userName: '' })
-      }
-      if (await activePrinterForStation('cashier')) {
-        await enqueueReceiptForOrder(result.order.id, { userId: params.confirmedByUserId, userName: '' })
-      }
-    } catch {
-      /* diabaikan — pembayaran sudah tercatat */
-    }
-  }
+  if (result.order.lifecycleStatus === 'COMPLETED') await printAfterPayment(result.order.id, params.confirmedByUserId)
   return { order: result.order, payments: result.payments }
 }
 

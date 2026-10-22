@@ -2,6 +2,7 @@ import { onlineChannelLabel } from '@/lib/onlineOrders'
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listOpenOrders, listOrderItems } from '@/db/repositories/orders'
+import { listOrdersFromClosedShifts } from '@/db/repositories/shifts'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince, formatDateTime } from '@/lib/datetime'
 import { Icon } from '@/components/ui/Icon'
@@ -24,6 +25,7 @@ interface Props {
 
 export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Props) {
   const allOpen = useLiveQuery(() => listOpenOrders(), []) ?? []
+  const carriedIds = new Set((useLiveQuery(() => listOrdersFromClosedShifts(), []) ?? []).map((o) => o.id))
   const cancelEmpty = useEmptyOrderCancel()
   const [tab, setTab] = useState<'open' | 'payLater'>('open')
   const payLaterOrders = showPayLater ? allOpen.filter((o) => o.payLater) : []
@@ -63,6 +65,7 @@ export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Pro
               <OpenBillRow
                 key={order.id}
                 order={order}
+                carriedOver={carriedIds.has(order.id)}
                 onSelect={() => onSelect(order.id)}
                 onCancel={() => void cancelEmpty.start(order)}
               />
@@ -74,7 +77,17 @@ export function OpenBillsDrawer({ showPayLater = false, onSelect, onClose }: Pro
   )
 }
 
-function OpenBillRow({ order, onSelect, onCancel }: { order: Order; onSelect: () => void; onCancel: () => void }) {
+function OpenBillRow({
+  order,
+  carriedOver,
+  onSelect,
+  onCancel,
+}: {
+  order: Order
+  carriedOver: boolean
+  onSelect: () => void
+  onCancel: () => void
+}) {
   const items = useLiveQuery(() => listOrderItems(order.id), [order.id])
   // `undefined` = masih memuat — jangan sempat menampilkan "Kosong"/tombol batal untuk pesanan berisi item.
   const isEmpty = items !== undefined && items.filter((i) => !i.removed && !i.voided).length === 0
@@ -92,6 +105,7 @@ function OpenBillRow({ order, onSelect, onCancel }: { order: Order; onSelect: ()
           {order.notes ? ` • ${order.notes}` : ''}
           {isEmpty ? ' • Kosong' : ''}
         </div>
+        {carriedOver && <div className="mt-1 text-xs font-semibold text-yellow-400">Dari shift sebelumnya</div>}
         {order.payLater && (
           <div className="mt-1 text-sm">
             <span className="font-semibold text-accent-500">Tagihan Tertunda • {order.payLater.name}</span>

@@ -4,7 +4,7 @@ import { newId } from '@/lib/id'
 import { getDeviceId } from '@/sync/device'
 import { getSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
-import type { CashMovement, CashMovementType, Shift } from '@/types/domain'
+import type { CashMovement, CashMovementType, Order, Shift } from '@/types/domain'
 import { getTrustedNow } from '@/lib/clockGuard'
 
 /**
@@ -101,30 +101,67 @@ export class CashVarianceApprovalRequiredError extends Error {
   }
 }
 
+export class OpenOrdersCarryOverRequiredError extends Error {
+  constructor(public readonly count: number) {
+    super(`Masih ada ${count} pesanan terbuka yang belum selesai. Konfirmasi untuk membawanya ke shift berikutnya.`)
+    this.name = 'OpenOrdersCarryOverRequiredError'
+  }
+}
+
+/** Pesanan terbuka (selain tagihan tertunda) yang akan terbawa bila shift ini ditutup. */
+export async function listCarryOverOrders(shiftId: string): Promise<Order[]> {
+  return db.orders
+    .where('shiftId')
+    .equals(shiftId)
+    .filter((o) => o.status === 'open' && !o.payLater)
+    .sortBy('createdAt')
+}
+
 /**
- * Menutup shift. Ditolak bila masih ada open bill di shift ini. Selisih kas
- * absolut di atas `settings.cashVarianceTolerance` butuh penyetuju supervisor.
+ * Pesanan terbuka yang terbawa dari shift yang sudah ditutup — diingatkan saat
+ * shift baru dibuka. Pelunasannya pindah ke shift yang sedang buka (lihat `payBill`).
+ */
+export async function listOrdersFromClosedShifts(): Promise<Order[]> {
+  const open = (await db.orders.where('status').equals('open').toArray()).filter((o) => !o.payLater && o.shiftId)
+  if (open.length === 0) return []
+  const shifts = await db.shifts.bulkGet([...new Set(open.map((o) => o.shiftId as string))])
+  const closedIds = new Set(shifts.filter((s) => s?.status === 'closed').map((s) => s!.id))
+  return open.filter((o) => closedIds.has(o.shiftId as string)).sort((a, b) => a.createdAt - b.createdAt)
+}
+
+/**
+ * Menutup shift. Pesanan terbuka di shift ini boleh terbawa ke shift berikutnya,
+ * tapi harus dikonfirmasi (`carryOverOpenOrders`) — kecuali yang sudah dibayar
+ * sebagian: kasnya sudah masuk laci shift ini, jadi wajib dilunasi dulu. Selisih
+ * kas absolut di atas `settings.cashVarianceTolerance` butuh penyetuju supervisor.
  */
 export async function closeShift(params: {
   shiftId: string
   closingCashActual: number
   notes: string
   varianceApprover?: { userId: string; userName: string }
+  /** Kasir sudah melihat peringatan & setuju pesanan terbuka dibawa ke shift berikutnya. */
+  carryOverOpenOrders?: boolean
+  /** Pencatat di log audit saat ada pesanan terbuka yang terbawa. */
+  actor?: { userId: string; userName: string }
 }): Promise<Shift> {
   const tolerance = (await getSettings()).cashVarianceTolerance
-  return db.transaction('rw', db.shifts, db.orders, db.syncQueue, db.auditLogs, async () => {
+  return db.transaction('rw', [db.shifts, db.orders, db.bills, db.syncQueue, db.auditLogs], async () => {
     const shift = await db.shifts.get(params.shiftId)
     if (!shift) throw new Error('Shift tidak ditemukan')
     if (shift.status === 'closed') throw new Error('Shift sudah ditutup sebelumnya')
 
-    const openOrdersInShift = await db.orders
-      .where('shiftId')
-      .equals(params.shiftId)
-      // Tagihan tertunda (kantin) boleh tetap belum lunas lintas shift.
-      .filter((o) => o.status === 'open' && !o.payLater)
-      .count()
-    if (openOrdersInShift > 0) {
-      throw new Error('Masih ada open bill yang belum diselesaikan. Selesaikan seluruh pesanan terbuka terlebih dahulu.')
+    // Tagihan tertunda (kantin) tak dihitung — memang boleh belum lunas lintas shift.
+    const carryOver = await listCarryOverOrders(params.shiftId)
+    if (carryOver.length > 0) {
+      const bills = await db.bills.where('orderId').anyOf(carryOver.map((o) => o.id)).toArray()
+      const partial = carryOver.filter((o) => bills.some((b) => b.orderId === o.id && b.paymentStatus === 'PARTIALLY_PAID'))
+      if (partial.length > 0) {
+        throw new Error(
+          `Pesanan ${partial.map((o) => o.orderNumber).join(', ')} sudah dibayar sebagian. Lunasi dulu sebelum menutup shift.`,
+        )
+      }
+      if (!params.carryOverOpenOrders) throw new OpenOrdersCarryOverRequiredError(carryOver.length)
     }
 
     const variance = params.closingCashActual - shift.expectedCash
@@ -143,6 +180,17 @@ export async function closeShift(params: {
     }
     await db.shifts.put(updatedShift)
     await enqueueSync('shifts', shift.id, updatedShift)
+
+    if (carryOver.length > 0) {
+      await recordAuditLog({
+        userId: params.actor?.userId ?? shift.cashierId,
+        userName: params.actor?.userName ?? shift.cashierName,
+        action: 'shift.close.carryOver',
+        entityType: 'shift',
+        entityId: shift.id,
+        details: `${carryOver.length} pesanan terbuka dibawa ke shift berikutnya: ${carryOver.map((o) => o.orderNumber).join(', ')}.`,
+      })
+    }
 
     if (params.varianceApprover) {
       await recordAuditLog({

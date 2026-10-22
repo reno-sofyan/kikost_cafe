@@ -24,6 +24,7 @@ import { Icon } from '@/components/ui/Icon'
 import type { Printer, PrinterStation, ReceiptPaperSize, RouteStation } from '@/types/domain'
 import { RouteStationSelect } from '@/features/printing/RouteStationSelect'
 import { PRINTER_STATIONS } from '@/types/domain'
+import { featuresForBusinessType } from '@/lib/businessType'
 
 const isNative = Capacitor.isNativePlatform()
 const STATION_LABELS: Record<PrinterStation, string> = { cashier: 'Kasir', kitchen: 'Kitchen', bar: 'Bar' }
@@ -115,6 +116,7 @@ export function PrinterSettings() {
             {printers.length === 0 && <p className="text-sm text-ink-500">Belum ada printer.</p>}
           </div>
           <ReceiptLogoCard />
+          <KitchenCopyCard />
           <CashDrawerCard />
         </>
       )}
@@ -188,6 +190,32 @@ function ReceiptLogoCard() {
           onChange={(e) => void updateSettings({ printerConfig: { ...settings.printerConfig, printLogo: e.target.checked } })}
         />
         Cetak logo di struk
+      </label>
+    </div>
+  )
+}
+
+/** Satu printer untuk semua: setelah lunas, struk pelanggan lalu tiket dapur keluar di printer kasir. */
+function KitchenCopyCard() {
+  const settings = useLiveQuery(() => getSettings(), [])
+  if (!settings || !featuresForBusinessType(settings.businessType).kitchen) return null
+
+  return (
+    <div className="card space-y-3 p-4">
+      <div>
+        <p className="font-semibold text-ink-50">Cetak 2 Struk saat Lunas</p>
+        <p className="text-xs text-ink-500">
+          Printer kasir mencetak struk untuk pelanggan, lalu tiket dapur (tanpa harga) untuk item yang belum dikirim ke
+          dapur. Cocok bila hanya punya satu printer.
+        </p>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-ink-300">
+        <input
+          type="checkbox"
+          checked={!!settings.printerConfig.kitchenCopyOnPayment}
+          onChange={(e) => void updateSettings({ printerConfig: { ...settings.printerConfig, kitchenCopyOnPayment: e.target.checked } })}
+        />
+        Struk pelanggan + tiket dapur
       </label>
     </div>
   )

@@ -33,8 +33,9 @@ function toLine(item: OrderItem): KitchenTicketLine {
 export async function sendOrderToKitchen(
   orderId: string,
   actor: { userId: string; userName: string },
-  /** `holdCourses`: hanya lepas tahap saji paling awal; tahap berikutnya ditahan (lihat lib/courses.ts). */
-  opts: { holdCourses?: boolean } = {},
+  /** `holdCourses`: hanya lepas tahap saji paling awal; tahap berikutnya ditahan (lihat lib/courses.ts).
+   *  `station`: kirim semua tiket ke station ini, mengabaikan rute kategori (item `direct` tetap dilewati). */
+  opts: { holdCourses?: boolean; station?: PrinterStation } = {},
 ): Promise<{ stations: PrinterStation[]; itemCount: number; course: number | null; heldCount: number }> {
   const order = await db.orders.get(orderId)
   if (!order) throw new Error('Pesanan tidak ditemukan')
@@ -57,9 +58,10 @@ export async function sendOrderToKitchen(
     const station = await stationForCategory(product?.categoryId ?? null)
     // Kategori diubah ke `direct` setelah item ditambahkan → tetap tak dikirim.
     if (station === 'direct') continue
-    const list = byStation.get(station) ?? []
+    const target = opts.station ?? station
+    const list = byStation.get(target) ?? []
     list.push(item)
-    byStation.set(station, list)
+    byStation.set(target, list)
   }
   if (byStation.size === 0) return none
 

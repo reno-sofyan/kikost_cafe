@@ -147,7 +147,13 @@ async function readyJobsByPrinter(): Promise<Map<string, PrintJob[]>> {
   // memakan puluhan detik saat printer bermasalah).
   const candidates = (await db.printJobs.where('status').anyOf(['QUEUED', 'RETRYING']).sortBy('createdAt'))
     .filter(backoffReady)
-    .sort((a, b) => Number(a.status === 'RETRYING') - Number(b.status === 'RETRYING'))
+    .sort(
+      (a, b) =>
+        Number(a.status === 'RETRYING') - Number(b.status === 'RETRYING') ||
+        a.createdAt - b.createdAt ||
+        // Dibuat di milidetik yang sama (struk + tiket dapur saat lunas): struk pelanggan dulu.
+        Number(a.kind !== 'receipt') - Number(b.kind !== 'receipt'),
+    )
   const byPrinter = new Map<string, PrintJob[]>()
   for (const job of candidates) {
     const key = await physicalPrinterKey(job)

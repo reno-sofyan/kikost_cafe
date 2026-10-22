@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { addCashMovement, closeShift, getOpenShift, openShift } from './shifts'
+import { addCashMovement, closeShift, getOpenShift, listOrdersFromClosedShifts, openShift, OpenOrdersCarryOverRequiredError } from './shifts'
 import { cancelEmptyOrder, startOrder } from './orders'
 import { createTable } from './tables'
 import { resetLocalDb } from '@/test/db'
@@ -44,12 +44,10 @@ describe('addCashMovement', () => {
 })
 
 describe('closeShift + pesanan kosong', () => {
-  it('pesanan terbuka KOSONG (dibuat tapi tak pernah diisi item) memblokir tutup shift', async () => {
+  it('pesanan terbuka KOSONG (dibuat tapi tak pernah diisi item) butuh konfirmasi untuk tutup shift', async () => {
     const s = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 100000 })
     await startOrder({ type: 'takeaway', cashierId: 'u1', cashierName: 'Kasir', shiftId: s.id })
-    await expect(closeShift({ shiftId: s.id, closingCashActual: 100000, notes: '' })).rejects.toThrow(
-      'Masih ada open bill yang belum diselesaikan',
-    )
+    await expect(closeShift({ shiftId: s.id, closingCashActual: 100000, notes: '' })).rejects.toThrow(OpenOrdersCarryOverRequiredError)
   })
 
   it('cancelEmptyOrder membatalkan pesanan kosong itu → shift bisa ditutup', async () => {
@@ -77,5 +75,55 @@ describe('closeShift + pesanan kosong', () => {
     const { addOrderItem } = await import('./orders')
     await addOrderItem({ orderId: order.id, productId: 'p1', productName: 'Kopi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
     await expect(cancelEmptyOrder(order.id, { userId: 'u1', userName: 'Kasir' })).rejects.toThrow('masih berisi item')
+  })
+})
+
+describe('closeShift + pesanan terbuka terbawa', () => {
+  async function shiftWithOpenOrder() {
+    const s = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 100000 })
+    const order = await startOrder({ type: 'takeaway', cashierId: 'u1', cashierName: 'Kasir', shiftId: s.id })
+    const { addOrderItem } = await import('./orders')
+    await addOrderItem({ orderId: order.id, productId: 'p1', productName: 'Kopi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+    return { s, order }
+  }
+
+  it('dengan konfirmasi, shift tertutup & pesanan tetap terbuka lalu diingatkan di shift baru', async () => {
+    const { s, order } = await shiftWithOpenOrder()
+    const closed = await closeShift({ shiftId: s.id, closingCashActual: 100000, notes: '', carryOverOpenOrders: true })
+    expect(closed.status).toBe('closed')
+    const carried = await listOrdersFromClosedShifts()
+    expect(carried.map((o) => o.id)).toEqual([order.id])
+    const { db } = await import('@/db/schema')
+    expect((await db.auditLogs.where('action').equals('shift.close.carryOver').count())).toBe(1)
+  })
+
+  it('pelunasan di shift baru memindahkan pesanan & kas tunai ke shift baru', async () => {
+    const { s, order } = await shiftWithOpenOrder()
+    await closeShift({ shiftId: s.id, closingCashActual: 100000, notes: '', carryOverOpenOrders: true })
+    const { finalizePayment } = await import('./checkout')
+    const { db } = await import('@/db/schema')
+    const fresh = (await db.orders.get(order.id))!
+
+    await expect(
+      finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: fresh.grandTotal }], confirmedByUserId: 'u1' }),
+    ).rejects.toThrow('Buka shift baru')
+
+    const next = await openShift({ cashierId: 'u2', cashierName: 'Kasir 2', openingCash: 50000 })
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: fresh.grandTotal }], confirmedByUserId: 'u2' })
+    const paid = await db.orders.get(order.id)
+    expect(paid?.status).toBe('paid')
+    expect(paid?.shiftId).toBe(next.id)
+    expect((await db.shifts.get(next.id))?.expectedCash).toBe(50000 + fresh.grandTotal)
+    expect((await db.shifts.get(s.id))?.expectedCash).toBe(100000)
+    await expect(listOrdersFromClosedShifts()).resolves.toEqual([])
+  })
+
+  it('pesanan yang sudah dibayar sebagian tetap memblokir tutup shift', async () => {
+    const { s, order } = await shiftWithOpenOrder()
+    const { finalizePayment } = await import('./checkout')
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: 5000 }], confirmedByUserId: 'u1', allowPartial: true })
+    await expect(
+      closeShift({ shiftId: s.id, closingCashActual: 105000, notes: '', carryOverOpenOrders: true }),
+    ).rejects.toThrow('sudah dibayar sebagian')
   })
 })

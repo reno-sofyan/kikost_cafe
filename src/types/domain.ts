@@ -197,6 +197,9 @@ export interface PrinterConfig extends PrinterConnectionSettings {
   /** Buka laci kasir (lewat printer kasir) tiap pembayaran tunai. `undefined`
    *  (pengaturan lama) = aktif. */
   openDrawerOnCash?: boolean
+  /** Setelah lunas: cetak struk pelanggan lalu tiket dapur (semua item yang belum
+   *  ke dapur) di printer kasir — untuk usaha dengan satu printer. */
+  kitchenCopyOnPayment?: boolean
 }
 
 // ---- Integrasi pager restoran (Wireless Calling System) ----

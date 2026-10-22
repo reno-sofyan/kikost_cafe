@@ -45,7 +45,7 @@ test('modifier picker: Large + Boba menambah harga & tersimpan di item', async (
   expect(items[0].modifiers.reduce((s, m) => s + m.priceDelta, 0)).toBe(10000)
 })
 
-test('tutup shift DITOLAK bila masih ada open bill', async ({ page }) => {
+test('tutup shift dengan open bill: diperingatkan, pesanan terbawa ke shift berikutnya', async ({ page }) => {
   test.slow()
   await completeOnboarding(page)
   await openShift(page)
@@ -60,11 +60,19 @@ test('tutup shift DITOLAK bila masih ada open bill', async ({ page }) => {
   const dialog = page.locator('div.rounded-2xl.bg-ink-900').filter({
     has: page.getByRole('heading', { name: 'Tutup Shift' }),
   })
-  await dialog.getByRole('button', { name: /Tutup Shift & Cetak/ }).click()
+  await expect(dialog.getByText(/Masih ada 1 pesanan terbuka/)).toBeVisible()
+  await dialog.getByLabel('Kas Aktual (hasil hitung fisik)').fill('500000')
+  await dialog.getByRole('button', { name: /Tetap Tutup Shift & Cetak/ }).click()
 
-  await expect(page.getByText(/Masih ada open bill/)).toBeVisible()
-  const shifts = await idbAll<ShiftRow>(page, 'shifts')
-  expect(shifts.filter((s) => s.status === 'open')).toHaveLength(1)
+  await expect.poll(async () => (await idbAll<ShiftRow>(page, 'shifts')).filter((s) => s.status === 'open').length).toBe(0)
+
+  // Ringkasan untuk Pemilik muncul otomatis setelah tutup shift (kafe) — tutup dulu.
+  const summary = page.locator('div.rounded-2xl.bg-ink-900').filter({ has: page.getByRole('heading', { name: 'Ringkasan untuk Pemilik' }) })
+  await summary.getByRole('button', { name: 'Tutup', exact: true }).click()
+
+  // Buka shift baru → diingatkan ada pesanan terbuka dari shift sebelumnya.
+  await openShift(page)
+  await expect(page.getByText('Ada Pesanan Terbuka dari Shift Sebelumnya')).toBeVisible()
 })
 
 test('tutup shift setelah dibayar: selisih dihitung, shift closed', async ({ page }) => {

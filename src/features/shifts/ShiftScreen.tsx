@@ -6,7 +6,9 @@ import {
   CashVarianceApprovalRequiredError,
   closeShift,
   getOpenShift,
+  listCarryOverOrders,
   listCashMovements,
+  listOrdersFromClosedShifts,
   openShift,
 } from '@/db/repositories/shifts'
 import { getSettings } from '@/db/repositories/settings'
@@ -22,7 +24,7 @@ import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { printShiftReport } from '@/features/shifts/printShiftReport'
-import type { User } from '@/types/domain'
+import type { Order, User } from '@/types/domain'
 
 export function ShiftScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
@@ -39,6 +41,9 @@ export function ShiftScreen() {
   // Ringkasan untuk pemilik: muncul otomatis setelah tutup shift, bisa dibuka lagi dari shift terakhir.
   const [summaryShiftId, setSummaryShiftId] = useState<string | null>(null)
   const lastClosed = useLiveQuery(() => (proTools ? getLastClosedShift() : null), [proTools, openShiftData?.id])
+  // Pesanan terbuka yang terbawa dari shift yang sudah ditutup — diingatkan saat shift baru dibuka.
+  const carriedOrders = useLiveQuery(() => listOrdersFromClosedShifts(), []) ?? []
+  const [showCarriedReminder, setShowCarriedReminder] = useState(false)
 
   if (openShiftData === undefined) {
     return <div className="flex h-full items-center justify-center text-ink-400">Memuat...</div>
@@ -81,6 +86,16 @@ export function ShiftScreen() {
             )}
           </div>
 
+          {carriedOrders.length > 0 && (
+            <button
+              className="card w-full border-yellow-600/50 bg-yellow-900/20 p-4 text-left text-sm text-yellow-300"
+              onClick={() => setShowCarriedReminder(true)}
+            >
+              <span className="font-semibold">{carriedOrders.length} pesanan terbuka dari shift sebelumnya belum selesai.</span>{' '}
+              Lunasi atau batalkan lewat menu Pesanan Terbuka di Kasir.
+            </button>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <button className="btn-secondary" onClick={() => setShowCashMovement('in')}>
               Kas Masuk
@@ -118,6 +133,7 @@ export function ShiftScreen() {
           onConfirm={async (openingCash) => {
             const shift = await openShift({ cashierId: currentUser.id, cashierName: currentUser.name, openingCash })
             setShowOpenForm(false)
+            if ((await listOrdersFromClosedShifts()).length > 0) setShowCarriedReminder(true)
             if (featuresForBusinessType((await getSettings()).businessType).shiftReminder) {
               toast.success(
                 `Shift dibuka ${currentUser.name} pukul ${formatTime(shift.openedAt)} • kas awal ${formatRupiah(openingCash)}. Pengingat tutup shift muncul pukul ${SHIFT_REMINDER_HOUR}.00.`,
@@ -146,10 +162,24 @@ export function ShiftScreen() {
           blindClose={blindClose}
           onClose={() => setShowCloseForm(false)}
           onError={setError}
+          actor={{ userId: currentUser.id, userName: currentUser.name }}
           onClosed={(id) => {
             if (proTools) setSummaryShiftId(id)
           }}
         />
+      )}
+
+      {showCarriedReminder && carriedOrders.length > 0 && (
+        <Modal onClose={() => setShowCarriedReminder(false)}>
+          <h2 className="mb-2 text-lg font-bold text-ink-50">Ada Pesanan Terbuka dari Shift Sebelumnya</h2>
+          <p className="mb-3 text-sm text-ink-400">
+            Pesanan berikut belum selesai saat shift sebelumnya ditutup. Pelunasannya akan masuk ke shift ini.
+          </p>
+          <OpenOrderList orders={carriedOrders} />
+          <button className="btn-primary mt-4 w-full" onClick={() => setShowCarriedReminder(false)}>
+            Mengerti
+          </button>
+        </Modal>
       )}
 
       {summaryShiftId && <OwnerSummaryModal shiftId={summaryShiftId} ownerWhatsapp={settings?.ownerWhatsapp ?? ''} onClose={() => setSummaryShiftId(null)} />}
@@ -216,6 +246,7 @@ function CloseShiftModal({
   shiftId,
   expectedCash,
   blindClose,
+  actor,
   onClose,
   onError,
   onClosed,
@@ -223,6 +254,7 @@ function CloseShiftModal({
   shiftId: string
   expectedCash: number
   blindClose: boolean
+  actor: { userId: string; userName: string }
   onClose: () => void
   onError: (message: string | null) => void
   onClosed: (shiftId: string) => void
@@ -233,11 +265,20 @@ function CloseShiftModal({
   const [varianceApproval, setVarianceApproval] = useState<number | null>(null)
   const variance = actualCash - expectedCash
   const showVariance = entered
+  const carryOver = useLiveQuery(() => listCarryOverOrders(shiftId), [shiftId]) ?? []
 
   async function handleClose(approver?: { userId: string; userName: string }) {
     onError(null)
     try {
-      const closed = await closeShift({ shiftId, closingCashActual: actualCash, notes, varianceApprover: approver })
+      // Peringatan pesanan terbuka sudah tampil di modal ini — menekan tombol tutup = setuju membawanya.
+      const closed = await closeShift({
+        shiftId,
+        closingCashActual: actualCash,
+        notes,
+        varianceApprover: approver,
+        carryOverOpenOrders: carryOver.length > 0,
+        actor,
+      })
       printShiftReport(await buildShiftSummary(closed.id))
       onClosed(closed.id)
       onClose()
@@ -254,6 +295,15 @@ function CloseShiftModal({
     <>
     <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">Tutup Shift</h2>
+        {carryOver.length > 0 && (
+          <div className="mb-3 rounded-lg bg-yellow-900/30 px-3 py-2 text-sm text-yellow-300">
+            <p className="mb-2 font-semibold">Masih ada {carryOver.length} pesanan terbuka yang belum selesai</p>
+            <OpenOrderList orders={carryOver} />
+            <p className="mt-2 text-xs">
+              Pesanan ini tetap terbuka dan dibawa ke shift berikutnya — pembayarannya masuk ke shift yang melunasinya.
+            </p>
+          </div>
+        )}
         {!blindClose && <p className="mb-3 text-sm text-ink-400">Kas seharusnya: {formatRupiah(expectedCash)}</p>}
         {blindClose && !entered && (
           <p className="mb-3 text-sm text-ink-400">
@@ -305,7 +355,7 @@ function CloseShiftModal({
                 Batal
               </button>
               <button className="btn-danger flex-[2]" onClick={() => void handleClose()}>
-                Tutup Shift &amp; Cetak Laporan
+                {carryOver.length > 0 ? 'Tetap Tutup Shift & Cetak Laporan' : 'Tutup Shift & Cetak Laporan'}
               </button>
             </div>
           </>
@@ -363,5 +413,22 @@ function OwnerSummaryModal({ shiftId, ownerWhatsapp, onClose }: { shiftId: strin
         )}
       </div>
     </Modal>
+  )
+}
+
+function OpenOrderList({ orders }: { orders: Order[] }) {
+  return (
+    <ul className="max-h-40 space-y-1 overflow-y-auto">
+      {orders.map((o) => (
+        <li key={o.id} className="flex justify-between gap-2 text-sm">
+          <span>
+            {o.orderNumber}
+            {o.queueNumber ? ` • Antrean #${o.queueNumber}` : ''}
+            {o.notes ? ` • ${o.notes}` : ''}
+          </span>
+          <span className="font-semibold">{formatRupiah(o.grandTotal)}</span>
+        </li>
+      ))}
+    </ul>
   )
 }

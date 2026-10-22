@@ -169,11 +169,17 @@ export async function payBill(params: {
 
       const now = getTrustedNow()
 
-      // Tagihan tertunda bisa dilunasi shift lain: pindahkan order ke shift yang sedang
-      // buka supaya kas tunai, ringkasan shift, & laporan ikut shift pelunasan
-      // (shift asal sudah boleh ditutup). Shift asal tetap tercatat di `payLater.shiftId`.
-      if (order.payLater && order.status === 'open') {
-        const current = await getOpenShift()
+      // Tagihan tertunda & pesanan terbuka yang terbawa dari shift yang sudah ditutup
+      // dilunasi di shift lain: pindahkan order ke shift yang sedang buka supaya kas
+      // tunai, ringkasan shift, & laporan ikut shift pelunasan. Shift asal tagihan
+      // tertunda tetap tercatat di `payLater.shiftId`.
+      if (order.status === 'open') {
+        const origin = order.shiftId ? await db.shifts.get(order.shiftId) : undefined
+        const carriedOver = !order.payLater && origin?.status === 'closed'
+        const current = order.payLater || carriedOver ? await getOpenShift() : null
+        if (carriedOver && !current) {
+          throw new Error('Shift pesanan ini sudah ditutup. Buka shift baru terlebih dahulu untuk melunasinya.')
+        }
         if (current && current.id !== order.shiftId) {
           order = { ...order, shiftId: current.id, updatedAt: now }
           await db.orders.put(order)

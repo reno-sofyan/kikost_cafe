@@ -178,10 +178,10 @@ describe('tagihan tertunda (kantin)', () => {
     expect((await db.shifts.get(shiftA.id))?.expectedCash).toBe(0)
   })
 
-  it('pesanan terbuka biasa tetap menghalangi tutup shift', async () => {
+  it('pesanan terbuka biasa butuh konfirmasi untuk tutup shift', async () => {
     const shift = await openShift({ cashierId: 'u1', cashierName: 'Kasir', openingCash: 0 })
     await orderWithItem(shift)
-    await expect(closeShift({ shiftId: shift.id, closingCashActual: 0, notes: '' })).rejects.toThrow('open bill')
+    await expect(closeShift({ shiftId: shift.id, closingCashActual: 0, notes: '' })).rejects.toThrow('pesanan terbuka yang belum selesai')
   })
 })
 
