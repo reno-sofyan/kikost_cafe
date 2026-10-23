@@ -22,6 +22,7 @@ import { featuresForBusinessType } from '@/lib/businessType'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { exportAccountingJournalCsv, exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
 import { ColumnChart, ShareTable, type ColumnDatum } from '@/features/reports/ReportCharts'
+import { PAYMENT_METHOD_LABELS, paymentMethodRows } from '@/features/reports/paymentMethods'
 import { toast } from '@/state/toastStore'
 import type { OrderType } from '@/types/domain'
 
@@ -33,16 +34,6 @@ const PRESET_LABELS: Record<Preset, string> = {
   week: '7 Hari',
   month: 'Bulan Ini',
   custom: 'Kustom',
-}
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: 'Tunai',
-  qris: 'QRIS',
-  transfer: 'Transfer',
-  card: 'Kartu',
-  platform: 'Aplikasi Online',
-  deposit: 'Saldo Member',
-  giftcard: 'Voucher Hadiah',
 }
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
@@ -415,7 +406,7 @@ export function ReportsScreen() {
                 labelHeader="Metode"
                 detailHeader="Transaksi"
                 valueHeader="Jumlah"
-                rows={report.byPaymentMethod.map((m) => ({ key: m.method, label: PAYMENT_METHOD_LABELS[m.method] ?? m.method, detail: formatNumber(m.count), value: m.amount }))}
+                rows={paymentMethodRows(report, features.paymentMethods).map((m) => ({ key: m.method, label: PAYMENT_METHOD_LABELS[m.method] ?? m.method, detail: formatNumber(m.count), value: m.amount }))}
               />
             </div>
             {report.byOrderType.length > 1 && (

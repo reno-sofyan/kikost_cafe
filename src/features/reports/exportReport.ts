@@ -10,6 +10,7 @@ import { accountingExportToCsv, buildAccountingExport } from '@/db/repositories/
 import { buildKitchenSpeedReport, buildTableTurnover, STATION_LABELS, type TableTurnover } from '@/db/repositories/serviceInsights'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
+import { PAYMENT_METHOD_LABELS, paymentMethodRows } from '@/features/reports/paymentMethods'
 import type { KitchenSpeed } from '@/lib/kitchenSpeed'
 
 export async function exportAccountingJournalCsv(range: DateRange): Promise<{ balanced: boolean }> {
@@ -56,6 +57,11 @@ async function serviceInsightsFor(report: SalesReport): Promise<{ speed: Kitchen
   const speed = features.kitchen ? await buildKitchenSpeedReport(report.range) : null
   const turnover = features.tables ? await buildTableTurnover(report.range) : null
   return { speed: speed && speed.overall.count > 0 ? speed : null, turnover: turnover && turnover.visits > 0 ? turnover : null }
+}
+
+/** Metode pembayaran laporan sesuai metode bayar yang tersedia di jenis usaha ini. */
+async function reportPaymentMethods(report: SalesReport): Promise<SalesReport['byPaymentMethod']> {
+  return paymentMethodRows(report, featuresForBusinessType((await getSettings()).businessType).paymentMethods)
 }
 
 export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
@@ -160,7 +166,7 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   for (const t of report.byOrderType) lines.push(csvRow(ORDER_TYPE_LABELS[t.type] ?? t.type, t.revenue, t.transactionCount))
   lines.push('')
   lines.push(csvRow('Metode Pembayaran', 'Jumlah', 'Transaksi'))
-  for (const m of report.byPaymentMethod) lines.push(csvRow(PDF_PAYMENT_METHOD_LABELS[m.method] ?? m.method, m.amount, m.count))
+  for (const m of await reportPaymentMethods(report)) lines.push(csvRow(PAYMENT_METHOD_LABELS[m.method] ?? m.method, m.amount, m.count))
   lines.push('')
   lines.push(csvRow('Tanggal', 'Omzet', 'Jumlah Transaksi'))
   for (const d of report.byDay) lines.push(csvRow(d.dateKey, d.revenue, d.transactionCount))
@@ -192,16 +198,6 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
 
   // BOM supaya Excel membaca UTF-8 dengan benar.
   await saveTextFile(`laporan-penjualan${fileSuffix(report)}-${formatDate(report.range.from)}.csv`, `\uFEFF${lines.join('\n')}`, 'text/csv')
-}
-
-const PDF_PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: 'Tunai',
-  qris: 'QRIS',
-  transfer: 'Transfer',
-  card: 'Kartu',
-  platform: 'Aplikasi Online',
-  deposit: 'Saldo Member',
-  giftcard: 'Voucher Hadiah',
 }
 
 const PAGE_MARGIN = 15
@@ -629,7 +625,7 @@ export async function exportSalesReportPdf(
       { header: 'Transaksi', width: 40, align: 'right' },
       { header: 'Jumlah', width: 50, align: 'right' },
     ],
-    report.byPaymentMethod.map((m) => [PDF_PAYMENT_METHOD_LABELS[m.method] ?? m.method, String(m.count), formatRupiah(m.amount)]),
+    (await reportPaymentMethods(report)).map((m) => [PAYMENT_METHOD_LABELS[m.method] ?? m.method, String(m.count), formatRupiah(m.amount)]),
   )
 
   if (report.byDay.length > 1) {
