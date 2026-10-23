@@ -6,6 +6,7 @@ import { findGiftCard, getCustomerDeposit } from '@/db/repositories/deposits'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { onlineChannelLabel } from '@/lib/onlineOrders'
 import { qrOrderBaseUrlIsUsable } from '@/lib/qrOrderUrl'
+import { billAdditions } from '@/lib/billAdditions'
 import { getApiBaseUrl } from '@/sync/deviceConfig'
 import type { AppSettings, KitchenTicketPayload, Order, OrderItem, Payment } from '@/types/domain'
 
@@ -55,6 +56,8 @@ export interface ReceiptData {
   isVoided: boolean
   /** Tagihan sementara (pre-bill): dicetak SEBELUM dibayar — tanpa rincian pembayaran. */
   isPreBill?: boolean
+  /** Tagihan TAMBAHAN: `lines` hanya item sejak tagihan terakhir; total tetap total keseluruhan. */
+  additions?: { subtotal: number } | null
   /** Pelayan yang melayani (bila dicatat). */
   waiterName?: string | null
   guestCount?: number | null
@@ -137,23 +140,25 @@ export function buildSampleKitchenTicket(settings: AppSettings, printerName: str
 export async function buildReceiptData(
   order: Order,
   settings: AppSettings,
-  opts: { isReprint?: boolean; preBill?: boolean } = {},
+  opts: { isReprint?: boolean; preBill?: boolean; additionsOnly?: boolean } = {},
 ): Promise<ReceiptData> {
   const items = await db.orderItems.where('orderId').equals(order.id).toArray()
   const payments = await db.payments.where('orderId').equals(order.id).toArray()
   const table = order.tableId ? await db.cafeTables.get(order.tableId) : undefined
   const features = featuresForBusinessType(settings.businessType)
 
-  const lines: ReceiptLine[] = items
-    .filter((item) => !item.voided && !item.removed)
-    .map((item: OrderItem) => ({
-      name: item.productName,
-      qty: item.qty,
-      unitPrice: item.unitPrice,
-      lineTotal: item.lineTotal,
-      modifierLines: item.modifiers.map((m) => `  ${m.groupName}: ${m.optionName}${m.priceDelta > 0 ? ` (+${m.priceDelta})` : ''}`),
-      note: item.notes || null,
-    }))
+  const toLine = (item: OrderItem, qty = item.qty, lineTotal = item.lineTotal): ReceiptLine => ({
+    name: item.productName,
+    qty,
+    unitPrice: item.unitPrice,
+    lineTotal,
+    modifierLines: item.modifiers.map((m) => `  ${m.groupName}: ${m.optionName}${m.priceDelta > 0 ? ` (+${m.priceDelta})` : ''}`),
+    note: item.notes || null,
+  })
+  const additions = opts.preBill && opts.additionsOnly ? billAdditions(order, items) : null
+  const lines: ReceiptLine[] = additions
+    ? additions.map((a) => toLine(a.item, a.qty, a.lineTotal))
+    : items.filter((item) => !item.voided && !item.removed).map((item) => toLine(item))
 
   const giftCardBalances: { code: string; balance: number }[] = []
   if (!opts.preBill) {
@@ -205,6 +210,7 @@ export async function buildReceiptData(
     footerNote: settings.receiptFooterNote,
     isVoided: order.status === 'void',
     isPreBill: opts.preBill ?? false,
+    additions: additions ? { subtotal: additions.reduce((s, a) => s + a.lineTotal, 0) } : null,
     waiterName: order.waiterName?.trim() || null,
     onlineChannel: onlineChannelLabel(order) || null,
     guestCount: order.type === 'dine_in' ? order.guestCount : null,

@@ -1,3 +1,4 @@
+import { billSnapshotOf } from '@/lib/billAdditions'
 import Dexie from 'dexie'
 import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
@@ -905,14 +906,20 @@ export async function setOrderWaiter(orderId: string, waiter: { id: string; name
  * menandai meja "menunggu pembayaran", dan menulis audit log — tagihan yang
  * dicetak berulang kali layak terlihat oleh Pemilik.
  */
-export async function markBillPrinted(orderId: string, actor: { userId: string; userName: string }): Promise<number> {
-  return db.transaction('rw', db.orders, db.cafeTables, db.syncQueue, db.auditLogs, async () => {
+export async function markBillPrinted(
+  orderId: string,
+  actor: { userId: string; userName: string },
+  opts: { additionsOnly?: boolean } = {},
+): Promise<number> {
+  return db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.auditLogs], async () => {
     const order = await db.orders.get(orderId)
     if (!order) throw new Error('Pesanan tidak ditemukan')
     if (order.status !== 'open') throw new Error('Tagihan hanya bisa dicetak untuk pesanan yang belum dibayar.')
     const now = getTrustedNow()
     const count = (order.billPrintCount ?? 0) + 1
-    await db.orders.update(orderId, { billPrintedAt: now, billPrintCount: count, updatedAt: now })
+    // Potret qty: item yang ditambahkan setelah ini menjadi "Tagihan Tambahan" berikutnya.
+    const billSnapshot = billSnapshotOf(await db.orderItems.where('orderId').equals(orderId).toArray())
+    await db.orders.update(orderId, { billPrintedAt: now, billPrintCount: count, billSnapshot, updatedAt: now })
     const updated = await db.orders.get(orderId)
     if (updated) await enqueueSync('orders', orderId, updated)
 
@@ -929,7 +936,7 @@ export async function markBillPrinted(orderId: string, actor: { userId: string; 
       action: 'order.bill.print',
       entityType: 'order',
       entityId: orderId,
-      details: `Tagihan sementara ${order.orderNumber} dicetak (ke-${count}).`,
+      details: `${opts.additionsOnly ? 'Tagihan tambahan' : 'Tagihan sementara'} ${order.orderNumber} dicetak (ke-${count}).`,
     })
     return count
   })

@@ -90,7 +90,7 @@ export function buildEscPosReceipt(data: ReceiptData, logo?: MonoBitmap | null):
     b.bold(true).line('** TRANSAKSI DIBATALKAN **').bold(false)
   }
   if (data.isPreBill) {
-    b.bold(true).line('TAGIHAN SEMENTARA').line('BELUM DIBAYAR').bold(false)
+    b.bold(true).line(data.additions ? 'TAGIHAN TAMBAHAN' : 'TAGIHAN SEMENTARA').line('BELUM DIBAYAR').bold(false)
   }
   b.doubleHeight(true).bold(true).line(data.businessName).bold(false).doubleHeight(false)
   if (data.address) b.line(data.address)
@@ -118,18 +118,26 @@ export function buildEscPosReceipt(data: ReceiptData, logo?: MonoBitmap | null):
   }
   b.line(divider(width))
 
-  b.line(twoColumns('Subtotal', formatRupiah(data.subtotal), width))
-  if (data.discountAmount > 0) {
-    for (const d of data.discountLines?.length ? data.discountLines : [{ label: 'Diskon', amount: data.discountAmount }]) {
-      b.line(twoColumns(d.label, `-${formatRupiah(d.amount)}`, width))
+  if (data.additions) {
+    // Tagihan tambahan: subtotal item tambahan, lalu total keseluruhan pesanan.
+    b.line(twoColumns('Subtotal tambahan', formatRupiah(data.additions.subtotal), width))
+    b.line('='.repeat(width))
+    b.bold(true).line(twoColumns('TOTAL KESELURUHAN', formatRupiah(data.grandTotal), width)).bold(false)
+    if (data.taxAmount > 0 || data.serviceChargeAmount > 0) b.line('(termasuk pajak & service)')
+  } else {
+    b.line(twoColumns('Subtotal', formatRupiah(data.subtotal), width))
+    if (data.discountAmount > 0) {
+      for (const d of data.discountLines?.length ? data.discountLines : [{ label: 'Diskon', amount: data.discountAmount }]) {
+        b.line(twoColumns(d.label, `-${formatRupiah(d.amount)}`, width))
+      }
     }
+    if (data.serviceChargeAmount > 0) {
+      b.line(twoColumns(`Service (${data.serviceChargePercent}%)`, formatRupiah(data.serviceChargeAmount), width))
+    }
+    if (data.taxAmount > 0) b.line(twoColumns(`Pajak (${data.taxPercent}%)`, formatRupiah(data.taxAmount), width))
+    if (data.roundingAdjustment !== 0) b.line(twoColumns('Pembulatan', formatRupiah(data.roundingAdjustment), width))
+    b.bold(true).line(twoColumns('TOTAL', formatRupiah(data.grandTotal), width)).bold(false)
   }
-  if (data.serviceChargeAmount > 0) {
-    b.line(twoColumns(`Service (${data.serviceChargePercent}%)`, formatRupiah(data.serviceChargeAmount), width))
-  }
-  if (data.taxAmount > 0) b.line(twoColumns(`Pajak (${data.taxPercent}%)`, formatRupiah(data.taxAmount), width))
-  if (data.roundingAdjustment !== 0) b.line(twoColumns('Pembulatan', formatRupiah(data.roundingAdjustment), width))
-  b.bold(true).line(twoColumns('TOTAL', formatRupiah(data.grandTotal), width)).bold(false)
   b.line(divider(width))
 
   if (data.isPreBill) {
@@ -214,6 +222,12 @@ export function buildEscPosKitchenTicket(p: KitchenTicketPayload): Uint8Array {
   b.bold(true).raw(GS, 0x21, title.length * 2 <= width ? 0x11 : 0x01).line(title).raw(GS, 0x21, 0x00).bold(false)
   b.line('='.repeat(width))
   b.align('left')
+  // Tiket tambahan: dapur perlu tahu pesanan mana yang ditambah.
+  if (p.isAddition) {
+    b.line(`No   : ${p.orderNumber}`)
+    if (p.tableOrQueue) b.bold(true).raw(GS, 0x21, 0x01).line(p.tableOrQueue).raw(GS, 0x21, 0x00).bold(false)
+    b.line(divider(width))
+  }
 
   p.lines.forEach((line, i) => {
     if (i > 0) b.line()

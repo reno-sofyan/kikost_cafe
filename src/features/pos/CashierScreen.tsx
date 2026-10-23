@@ -50,6 +50,7 @@ import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { PayLaterModal } from '@/features/pos/PayLaterModal'
 import { ItemNoteModal } from '@/features/pos/ItemNoteModal'
+import { billAdditions } from '@/lib/billAdditions'
 import { useEmptyOrderCancel } from '@/features/pos/useEmptyOrderCancel'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
@@ -748,6 +749,7 @@ export function CashierScreen() {
                 </button>
               </div>
               {(() => {
+                const hasBillAdditions = !!order.billPrintCount && billAdditions(order, activeItems).length > 0
                 const showKitchen = features.kitchen && activeItems.some((i) => !i.skipKitchen && i.kitchenPrintedAt == null)
                 if (!showKitchen && !features.preBill) return null
                 return (
@@ -774,6 +776,14 @@ export function CashierScreen() {
                         onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}
                       >
                         {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
+                      </button>
+                    )}
+                    {features.preBill && hasBillAdditions && (
+                      <button
+                        className="col-span-full min-h-[2.6rem] rounded-xl border-2 border-brand-600 bg-ink-900 px-2 text-[0.95rem] font-semibold text-brand-400 hover:bg-brand-600/5"
+                        onClick={() => void prepareReceiptData(order, { preBill: true, additionsOnly: true }).then(setPreBill)}
+                      >
+                        Cetak Tagihan Tambahan
                       </button>
                     )}
                   </div>

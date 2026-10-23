@@ -11,7 +11,7 @@ export function receiptToText(data: ReceiptData): string {
   if (data.address) out.push(data.address)
   if (data.phone) out.push(data.phone)
   out.push('')
-  out.push(`${data.isPreBill ? 'Tagihan sementara' : 'Struk'} ${data.orderNumber}`)
+  out.push(`${data.additions ? 'Tagihan tambahan' : data.isPreBill ? 'Tagihan sementara' : 'Struk'} ${data.orderNumber}`)
   out.push(data.createdAtLabel)
   const where = [data.orderTypeLabel, data.tableLabel, data.queueLabel, data.onlineChannel].filter(Boolean).join(' • ')
   if (where) out.push(where)
@@ -23,6 +23,11 @@ export function receiptToText(data: ReceiptData): string {
     if (line.note) out.push(`   Catatan: ${line.note}`)
   }
   out.push('')
+  if (data.additions) {
+    out.push(`Subtotal tambahan: ${formatRupiah(data.additions.subtotal)}`)
+    out.push(`*Total keseluruhan: ${formatRupiah(data.grandTotal)}*`)
+    return out.join('\n')
+  }
   out.push(`Subtotal: ${formatRupiah(data.subtotal)}`)
   if (data.discountLines?.length) for (const d of data.discountLines) out.push(`${d.label}: -${formatRupiah(d.amount)}`)
   else if (data.discountAmount > 0) out.push(`Diskon: -${formatRupiah(data.discountAmount)}`)

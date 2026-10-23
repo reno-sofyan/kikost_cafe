@@ -20,7 +20,10 @@ async function resolveCashierPrinterDriver(): Promise<PrinterDriver> {
   return resolvePrinterDriver(printer)
 }
 
-export async function prepareReceiptData(order: Order, opts: { isReprint?: boolean; preBill?: boolean } = {}): Promise<ReceiptData> {
+export async function prepareReceiptData(
+  order: Order,
+  opts: { isReprint?: boolean; preBill?: boolean; additionsOnly?: boolean } = {},
+): Promise<ReceiptData> {
   const settings = await getSettings()
   return buildReceiptData(order, settings, opts)
 }

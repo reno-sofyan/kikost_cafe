@@ -13,7 +13,7 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
     rows.push('<div class="voided">** TRANSAKSI DIBATALKAN **</div>')
   }
   if (data.isPreBill) {
-    rows.push('<div class="voided">TAGIHAN SEMENTARA<br />BELUM DIBAYAR</div>')
+    rows.push(`<div class="voided">${data.additions ? 'TAGIHAN TAMBAHAN' : 'TAGIHAN SEMENTARA'}<br />BELUM DIBAYAR</div>`)
   }
   if (data.isReprint) {
     rows.push('<div class="center bold">*** CETAK ULANG ***</div>')
@@ -45,22 +45,29 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   }
   rows.push('<hr />')
 
-  rows.push(`<div class="row"><span>Subtotal</span><span>${formatRupiah(data.subtotal)}</span></div>`)
-  if (data.discountAmount > 0) {
-    for (const d of data.discountLines?.length ? data.discountLines : [{ label: 'Diskon', amount: data.discountAmount }]) {
-      rows.push(`<div class="row"><span>${escapeHtml(d.label)}</span><span>-${formatRupiah(d.amount)}</span></div>`)
+  if (data.additions) {
+    rows.push(`<div class="row"><span>Subtotal tambahan</span><span>${formatRupiah(data.additions.subtotal)}</span></div>`)
+    rows.push('<hr />')
+    rows.push(`<div class="row bold big"><span>TOTAL KESELURUHAN</span><span>${formatRupiah(data.grandTotal)}</span></div>`)
+    if (data.taxAmount > 0 || data.serviceChargeAmount > 0) rows.push('<div class="sub">(termasuk pajak &amp; service)</div>')
+  } else {
+    rows.push(`<div class="row"><span>Subtotal</span><span>${formatRupiah(data.subtotal)}</span></div>`)
+    if (data.discountAmount > 0) {
+      for (const d of data.discountLines?.length ? data.discountLines : [{ label: 'Diskon', amount: data.discountAmount }]) {
+        rows.push(`<div class="row"><span>${escapeHtml(d.label)}</span><span>-${formatRupiah(d.amount)}</span></div>`)
+      }
     }
+    if (data.serviceChargeAmount > 0) {
+      rows.push(`<div class="row"><span>Service (${data.serviceChargePercent}%)</span><span>${formatRupiah(data.serviceChargeAmount)}</span></div>`)
+    }
+    if (data.taxAmount > 0) {
+      rows.push(`<div class="row"><span>Pajak (${data.taxPercent}%)</span><span>${formatRupiah(data.taxAmount)}</span></div>`)
+    }
+    if (data.roundingAdjustment !== 0) {
+      rows.push(`<div class="row"><span>Pembulatan</span><span>${formatRupiah(data.roundingAdjustment)}</span></div>`)
+    }
+    rows.push(`<div class="row bold big"><span>TOTAL</span><span>${formatRupiah(data.grandTotal)}</span></div>`)
   }
-  if (data.serviceChargeAmount > 0) {
-    rows.push(`<div class="row"><span>Service (${data.serviceChargePercent}%)</span><span>${formatRupiah(data.serviceChargeAmount)}</span></div>`)
-  }
-  if (data.taxAmount > 0) {
-    rows.push(`<div class="row"><span>Pajak (${data.taxPercent}%)</span><span>${formatRupiah(data.taxAmount)}</span></div>`)
-  }
-  if (data.roundingAdjustment !== 0) {
-    rows.push(`<div class="row"><span>Pembulatan</span><span>${formatRupiah(data.roundingAdjustment)}</span></div>`)
-  }
-  rows.push(`<div class="row bold big"><span>TOTAL</span><span>${formatRupiah(data.grandTotal)}</span></div>`)
   rows.push('<hr />')
 
   if (data.isPreBill && data.payments.length > 0) {

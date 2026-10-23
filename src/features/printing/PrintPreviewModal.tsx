@@ -34,12 +34,13 @@ export function PrintPreviewModal({ data, orderId, onClose }: Props) {
     try {
       if (data.isPreBill && orderId && currentUser) {
         const actor = { userId: currentUser.id, userName: currentUser.name }
+        const opts = { additionsOnly: !!data.additions }
         if (hasQueuedPrinter) {
-          await enqueuePreBillForOrder(orderId, actor)
-          setInfo('Tagihan dikirim ke printer kasir.')
+          await enqueuePreBillForOrder(orderId, actor, opts)
+          setInfo(opts.additionsOnly ? 'Tagihan tambahan dikirim ke printer kasir.' : 'Tagihan dikirim ke printer kasir.')
         } else {
           await printReceiptData(data)
-          await markBillPrinted(orderId, actor)
+          await markBillPrinted(orderId, actor, opts)
         }
         return
       }
@@ -59,7 +60,7 @@ export function PrintPreviewModal({ data, orderId, onClose }: Props) {
   return (
     <Modal onClose={onClose} className="flex max-h-[90vh] w-full max-w-sm flex-col rounded-2xl bg-ink-900">
         <div className="flex-none border-b border-ink-800 px-4 py-3">
-          <h2 className="font-bold text-ink-50">{data.isPreBill ? 'Tagihan Sementara' : 'Pratinjau Struk'}</h2>
+          <h2 className="font-bold text-ink-50">{data.additions ? 'Tagihan Tambahan' : data.isPreBill ? 'Tagihan Sementara' : 'Pratinjau Struk'}</h2>
         </div>
         <div className="flex-1 overflow-y-auto bg-white p-4">
           <div

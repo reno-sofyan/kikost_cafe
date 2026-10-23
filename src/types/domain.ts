@@ -338,6 +338,8 @@ export interface KitchenTicketPayload {
   ticketLabel: string
   paperSize: ReceiptPaperSize
   lines: KitchenTicketLine[]
+  /** Tiket tambahan (ke-2 dst.): cetak nomor pesanan & meja/antrean supaya dapur tahu untuk siapa. */
+  isAddition?: boolean
 }
 
 export type UnitOfMeasure = 'pcs' | 'g' | 'kg' | 'ml' | 'l'
@@ -959,6 +961,8 @@ export interface Order {
   /** Tagihan sementara (pre-bill) terakhir dicetak & berapa kali — sebelum dibayar. */
   billPrintedAt?: number | null
   billPrintCount?: number
+  /** Qty tiap item (id → qty) saat tagihan terakhir dicetak — dasar "Tagihan Tambahan". */
+  billSnapshot?: Record<string, number> | null
   notes: string
   idempotencyKey: string
   parentOrderId: string | null

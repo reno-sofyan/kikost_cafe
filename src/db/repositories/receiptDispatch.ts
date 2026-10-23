@@ -55,19 +55,22 @@ export async function enqueueReceiptForOrder(
 export async function enqueuePreBillForOrder(
   orderId: string,
   actor: { userId: string; userName: string },
+  /** `additionsOnly`: Tagihan Tambahan — hanya item sejak tagihan terakhir. */
+  opts: { additionsOnly?: boolean } = {},
 ): Promise<{ enqueued: boolean; noPrinter: boolean }> {
   const order = await db.orders.get(orderId)
   if (!order) return { enqueued: false, noPrinter: false }
   const settings = await getSettings()
-  const data = await buildReceiptData(order, settings, { preBill: true })
-  const count = await markBillPrinted(orderId, actor)
+  // Data dibangun SEBELUM markBillPrinted memperbarui potret qty.
+  const data = await buildReceiptData(order, settings, { preBill: true, additionsOnly: opts.additionsOnly })
+  const count = await markBillPrinted(orderId, actor, opts)
 
   await db.transaction('rw', [db.printJobs, db.printers, db.syncQueue, db.auditLogs], async () => {
     await enqueuePrintJob({
       kind: 'receipt',
       station: 'cashier',
       payload: data,
-      title: `Tagihan ${order.orderNumber}${count > 1 ? ` (ke-${count})` : ''}`,
+      title: `${opts.additionsOnly ? 'Tagihan tambahan' : 'Tagihan'} ${order.orderNumber}${count > 1 ? ` (ke-${count})` : ''}`,
       orderId,
       idempotencyKey: `pb_${orderId}_${count}`,
       requestedBy: actor.userId,

@@ -1,6 +1,7 @@
 import { useSessionStore } from '@/state/sessionStore'
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { billAdditions } from '@/lib/billAdditions'
 import { getOrder, listOrderItems, mergeOrders } from '@/db/repositories/orders'
 import { listTables, markAvailable, markNeedsCleaning, moveTable, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
 import { formatRupiah } from '@/lib/currency'
@@ -70,6 +71,11 @@ export function TableDetailModal({ table, onClose, onOpenInCashier }: Props) {
               {order && preBillEnabled && !orderIsEmpty && order.status === 'open' && (
                 <button className="btn-secondary" onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}>
                   {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
+                </button>
+              )}
+              {order && preBillEnabled && order.status === 'open' && !!order.billPrintCount && billAdditions(order, orderItems).length > 0 && (
+                <button className="btn-secondary" onClick={() => void prepareReceiptData(order, { preBill: true, additionsOnly: true }).then(setPreBill)}>
+                  Cetak Tagihan Tambahan
                 </button>
               )}
               {(table.status === 'occupied' || table.status === 'awaiting_payment') && (

@@ -7,7 +7,7 @@ import { formatTime } from '@/lib/datetime'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { activePrinterForStation, stationForCategory } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
-import type { KitchenTicket, KitchenTicketLine, KitchenTicketPayload, OrderItem, PrinterStation } from '@/types/domain'
+import type { KitchenTicket, KitchenTicketLine, KitchenTicketPayload, Order, OrderItem, PrinterStation } from '@/types/domain'
 
 /** Judul tiket per station; printer kasir (usaha satu printer) cukup "PESANAN". */
 const STATION_TITLES: Record<PrinterStation, string> = { kitchen: 'DAPUR', bar: 'BAR', cashier: '' }
@@ -17,6 +17,13 @@ const SOURCE_LABELS: Record<string, string> = {
   qr_table: 'QR Meja',
   takeaway: 'Bawa Pulang',
   delivery: 'Online',
+}
+
+/** "MEJA 5 / ANTREAN #12" — penanda pesanan di tiket tambahan. */
+async function tableOrQueueOf(order: Order): Promise<string> {
+  const table = order.tableId ? await db.cafeTables.get(order.tableId) : undefined
+  const tableName = table ? (/^meja\b/i.test(table.name) ? table.name : `Meja ${table.name}`) : ''
+  return [tableName, order.queueNumber ? `Antrean #${order.queueNumber}` : ''].filter(Boolean).join(' / ').toUpperCase()
 }
 
 function toLine(item: OrderItem): KitchenTicketLine {
@@ -69,6 +76,7 @@ export async function sendOrderToKitchen(
   if (byStation.size === 0) return none
 
   const now = Date.now()
+  const where = await tableOrQueueOf(order)
   await db.transaction(
     'rw',
     [db.orders, db.orderItems, db.kitchenTickets, db.printJobs, db.printers, db.syncQueue, db.auditLogs],
@@ -100,7 +108,7 @@ export async function sendOrderToKitchen(
         const payload: KitchenTicketPayload = {
           outletName: businessDisplayName(settings),
           orderNumber: order.orderNumber,
-          tableOrQueue: order.queueNumber ? `Antrean #${order.queueNumber}` : '',
+          tableOrQueue: where,
           customerName: order.notes || '',
           orderedAtLabel: formatTime(order.createdAt),
           cashierName: order.cashierName,
@@ -108,6 +116,7 @@ export async function sendOrderToKitchen(
           ticketLabel: (seq > 1 ? `PESANAN TAMBAHAN #${seq}` : `PESANAN ${STATION_TITLES[station]}`.trim()) + courseLabel,
           paperSize: settings.receiptPaperSize,
           lines: stationItems.map(toLine),
+          isAddition: seq > 1,
         }
         await enqueuePrintJob({
           kind: 'kitchen_ticket',
@@ -159,6 +168,7 @@ export async function reprintKitchenTicket(
     .filter((j) => j.isReprint)
     .count()
 
+  const where = await tableOrQueueOf(order)
   await db.transaction('rw', [db.printJobs, db.printers, db.syncQueue, db.auditLogs], async () => {
     await enqueuePrintJob({
       kind: 'kitchen_ticket',
@@ -166,7 +176,7 @@ export async function reprintKitchenTicket(
       payload: {
         outletName: businessDisplayName(settings),
         orderNumber: order.orderNumber,
-        tableOrQueue: order.queueNumber ? `Antrean #${order.queueNumber}` : '',
+        tableOrQueue: where,
         customerName: order.notes || '',
         orderedAtLabel: formatTime(order.createdAt),
         cashierName: order.cashierName,
@@ -174,6 +184,7 @@ export async function reprintKitchenTicket(
         ticketLabel: `CETAK ULANG #${ticket.sequenceNo}`,
         paperSize: settings.receiptPaperSize,
         lines: items.filter((i) => !i.voided).map(toLine),
+        isAddition: ticket.sequenceNo > 1,
       } satisfies KitchenTicketPayload,
       title: `Cetak ulang tiket #${ticket.sequenceNo} — ${order.orderNumber}`,
       orderId: order.id,
