@@ -168,6 +168,10 @@ export interface AppSettings {
   activeOutletId?: string
   receiptPaperSize: ReceiptPaperSize
   receiptFooterNote: string
+  /** Cetak QR "beri ulasan" (halaman /ulasan/<orderId>) di kaki struk lunas. */
+  receiptReviewQr?: boolean
+  /** Tautan "tulis ulasan" Google Maps — ditawarkan ke tamu yang memberi bintang 4–5. */
+  googleReviewUrl?: string
   autoLockMinutes: number
   printerConfig: PrinterConfig
   pagerConfig: PagerConfig

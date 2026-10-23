@@ -1,5 +1,6 @@
 import { formatRupiah } from '@/lib/currency'
 import type { ReceiptData } from '@/features/printing/receiptData'
+import QRCode from 'qrcode'
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -88,8 +89,21 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
   if (data.depositBalance != null) rows.push(`<div class="center">Sisa saldo member ${formatRupiah(data.depositBalance)}</div>`)
   for (const g of data.giftCardBalances ?? []) rows.push(`<div class="center">Sisa voucher ${escapeHtml(g.code)} ${formatRupiah(g.balance)}</div>`)
   if (data.footerNote) rows.push(`<div class="center">${escapeHtml(data.footerNote)}</div>`)
+  if (data.reviewUrl) {
+    rows.push('<div class="center bold review">Beri ulasan untuk kami</div>')
+    rows.push(`<div class="center">${qrSvg(data.reviewUrl)}</div>`)
+  }
 
   return rows.join('\n')
+}
+
+/** QR sebagai SVG sinkron (tanpa canvas) — dipakai pratinjau & cetak lewat dialog sistem. */
+function qrSvg(text: string): string {
+  const { modules } = QRCode.create(text, { errorCorrectionLevel: 'M' })
+  const n = modules.size
+  let path = ''
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (modules.get(y, x)) path += `M${x + 2} ${y + 2}h1v1h-1z`
+  return `<svg class="qr" width="120" height="120" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + 4} ${n + 4}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${path}" fill="#000"/></svg>`
 }
 
 export function renderReceiptDocument(data: ReceiptData): string {
@@ -108,6 +122,8 @@ export function renderReceiptDocument(data: ReceiptData): string {
   .sub { padding-left: 8px; font-size: 10px; color: #333; }
   .voided { text-align: center; font-weight: 700; border: 1px solid #000; padding: 2px; margin-bottom: 4px; }
   .logo { display: block; margin: 0 auto 4px; max-height: 48px; max-width: 100%; }
+  .review { margin-top: 6px; }
+  .qr { display: block; margin: 2px auto 0; width: 28mm; height: 28mm; }
   hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
 </style>
 </head>

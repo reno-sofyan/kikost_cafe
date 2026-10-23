@@ -5,6 +5,8 @@ import { businessDisplayName } from '@/db/repositories/settings'
 import { findGiftCard, getCustomerDeposit } from '@/db/repositories/deposits'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { onlineChannelLabel } from '@/lib/onlineOrders'
+import { qrOrderBaseUrlIsUsable } from '@/lib/qrOrderUrl'
+import { getApiBaseUrl } from '@/sync/deviceConfig'
 import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
 
 export interface ReceiptLine {
@@ -60,6 +62,8 @@ export interface ReceiptData {
   tipTotal?: number
   /** Kanal pesanan online, mis. "GoFood #F-123". */
   onlineChannel?: string | null
+  /** Halaman ulasan tamu untuk struk ini (QR di kaki struk). Kosong = tak dicetak. */
+  reviewUrl?: string | null
 }
 
 const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
@@ -186,5 +190,17 @@ export async function buildReceiptData(
     onlineChannel: onlineChannelLabel(order) || null,
     guestCount: order.type === 'dine_in' ? order.guestCount : null,
     tipTotal: payments.filter((p) => p.amount > 0).reduce((s, p) => s + (p.tipAmount ?? 0), 0),
+    reviewUrl: !opts.preBill && order.status === 'paid' && settings.receiptReviewQr ? reviewUrlFor(order.id, settings) : null,
   }
+}
+
+/**
+ * Alamat halaman ulasan untuk QR di struk. Memakai alamat server sinkronisasi
+ * (di APK origin aplikasi `https://localhost` tak bisa dibuka tamu), lalu basis
+ * URL QR meja, lalu origin perangkat. `null` bila tak ada alamat publik.
+ */
+export function reviewUrlFor(orderId: string, settings: Pick<AppSettings, 'qrOrderBaseUrl'>): string | null {
+  const candidates = [getApiBaseUrl(), settings.qrOrderBaseUrl, typeof window !== 'undefined' ? window.location.origin : '']
+  const base = candidates.map((c) => (c ?? '').trim().replace(/\/+$/, '')).find((c) => c !== '' && qrOrderBaseUrlIsUsable(c))
+  return base ? `${base}/ulasan/${orderId}` : null
 }

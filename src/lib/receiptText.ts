@@ -45,5 +45,9 @@ export function receiptToText(data: ReceiptData): string {
     out.push('')
     out.push(data.footerNote)
   }
+  if (data.reviewUrl) {
+    out.push('')
+    out.push(`Beri ulasan untuk kami: ${data.reviewUrl}`)
+  }
   return out.join('\n')
 }

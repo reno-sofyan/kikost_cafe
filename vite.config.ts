@@ -43,10 +43,10 @@ export default defineConfig({
         skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: '/index.html',
-        // Halaman pesan-mandiri pelanggan (/order/*), API, konsol operator (/ops)
+        // Halaman pesan-mandiri pelanggan (/order/*), ulasan tamu (/ulasan/*), API, konsol operator (/ops)
         // & konsol Pemilik (/owner) — keduanya disajikan backend — selalu lewat
         // jaringan; jangan disajikan dari index.html yang ter-cache.
-        navigateFallbackDenylist: [/^\/order\//, /^\/api\//, /^\/ops(\/|$)/, /^\/owner(\/|$)/],
+        navigateFallbackDenylist: [/^\/order\//, /^\/ulasan\//, /^\/api\//, /^\/ops(\/|$)/, /^\/owner(\/|$)/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),

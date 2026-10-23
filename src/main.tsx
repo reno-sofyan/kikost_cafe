@@ -61,6 +61,19 @@ if (window.location.pathname.startsWith('/order/')) {
       </React.StrictMode>,
     )
   })
+} else if (window.location.pathname.startsWith('/ulasan/')) {
+  // Halaman ulasan tamu dari QR struk: publik, tanpa login/Dexie/sync — sama seperti /order/.
+  document.body.classList.add('customer-view')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff')
+  void Promise.all([import('@/features/review/ReviewApp'), import('@/features/review/reviewPath')]).then(([{ ReviewApp }, { reviewIdFromPath }]) => {
+    ReactDOM.createRoot(rootEl).render(
+      <React.StrictMode>
+        <ErrorBoundary scope="halaman ulasan">
+          <ReviewApp orderId={reviewIdFromPath(window.location.pathname)} />
+        </ErrorBoundary>
+      </React.StrictMode>,
+    )
+  })
 } else if (window.location.pathname.startsWith('/layar-pelanggan')) {
   // Layar pelanggan: jendela kedua di perangkat kasir. Hanya MEMBACA database lokal —
   // tanpa login, sinkronisasi, atau mesin cetak (semua itu tetap milik jendela kasir).

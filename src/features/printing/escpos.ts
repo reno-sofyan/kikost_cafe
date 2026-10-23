@@ -50,6 +50,17 @@ class EscPosBuilder {
     return this.raw(ESC, 0x64, lines)
   }
 
+  /** QR model 2 (`GS ( k`). Printer yang tak mendukung mengabaikannya — URL tetap dicetak sebagai teks. */
+  qr(data: string, moduleSize: number): this {
+    const bytes = Array.from(new TextEncoder().encode(data))
+    const len = bytes.length + 3
+    this.raw(GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0x00)
+    this.raw(GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, moduleSize)
+    this.raw(GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31)
+    this.raw(GS, 0x28, 0x6b, len & 0xff, len >> 8, 0x31, 0x50, 0x30, ...bytes)
+    return this.raw(GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30)
+  }
+
   bytesRaw(values: Uint8Array): this {
     for (const v of values) this.bytes.push(v)
     return this
@@ -146,6 +157,10 @@ export function buildEscPosReceipt(data: ReceiptData, logo?: MonoBitmap | null):
   if (data.depositBalance != null) b.line(`Sisa saldo member ${formatRupiah(data.depositBalance)}`)
   for (const g of data.giftCardBalances ?? []) b.line(`Sisa voucher ${g.code} ${formatRupiah(g.balance)}`)
   if (data.footerNote) b.line(data.footerNote)
+  if (data.reviewUrl) {
+    b.line().bold(true).line('Beri ulasan untuk kami').bold(false)
+    b.qr(data.reviewUrl, data.paperSize === '58mm' ? 4 : 6).line()
+  }
   b.feed(3).cut()
 
   return b.toBytes()

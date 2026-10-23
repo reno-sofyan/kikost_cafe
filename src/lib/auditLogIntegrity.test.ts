@@ -102,3 +102,16 @@ describe('verifyAuditLog — pengelompokan per perangkat', () => {
     expect(summary.okCount).toBe(4)
   })
 })
+
+describe('computeEntryHash — format kanonik', () => {
+  // Nilai yang sama dikunci di backend/test/public-reviews.test.ts: server menulis
+  // ulasan QR struk sebagai entri Log Aktivitas dengan rantai hash sendiri, jadi
+  // kedua implementasi wajib menghasilkan hash identik.
+  it('vektor uji tetap', async () => {
+    const hash = await computeEntryHash({
+      id: 'a1', userId: 'server-ulasan', userName: 'Tamu (QR struk)', action: 'feedback.rating', entityType: 'feedback', entityId: 'o1',
+      details: 'Penilaian tamu ★5/5 untuk TRX-00001. Komentar: Enak', createdAt: 1761200000000, deviceId: 'server-ulasan', deviceSeq: 1, prevHash: null,
+    })
+    expect(hash).toBe('cdb981ef6141f5872e14b729c1db534eccca381a5a24efbf68815b873c287dd8')
+  })
+})

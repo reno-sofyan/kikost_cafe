@@ -12,6 +12,8 @@ import {
   submitTableCall,
   type SubmitItemInput,
 } from '../lib/publicOrders.js'
+import { getReviewPage, ORDER_ID_RE, submitReview } from '../lib/publicReviews.js'
+import { withTransaction } from '../db/pool.js'
 
 const TOKEN_RE = /^[a-f0-9]{16,64}$/i
 
@@ -33,6 +35,11 @@ const submitSchema = z.object({
 })
 
 const callSchema = z.object({ type: z.enum(['waiter', 'bill']) })
+
+const reviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(300).optional().default(''),
+})
 
 /**
  * Rute publik pemesanan mandiri via QR. TANPA device key — gerbangnya adalah
@@ -149,6 +156,43 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
       await submitTableCall({ token, type: parsed.data.type, ip: clientIp(request) })
       reply.code(201)
       return { ok: true }
+    } catch (err) {
+      return handleErr(reply, err)
+    }
+  })
+
+  // ---- Ulasan tamu dari QR struk (/ulasan/:orderId) ----
+  app.get('/api/ulasan/:id', publicLimit, async (request, reply) => {
+    const id = (request.params as { id: string }).id
+    if (!ORDER_ID_RE.test(id)) {
+      reply.code(404)
+      return { error: 'Struk tidak dikenal.' }
+    }
+    const client = await getPool().connect()
+    try {
+      return await getReviewPage(client, id)
+    } catch (err) {
+      return handleErr(reply, err)
+    } finally {
+      client.release()
+    }
+  })
+
+  app.post('/api/ulasan/:id', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const id = (request.params as { id: string }).id
+    if (!ORDER_ID_RE.test(id)) {
+      reply.code(404)
+      return { error: 'Struk tidak dikenal.' }
+    }
+    const parsed = reviewSchema.safeParse(request.body)
+    if (!parsed.success) {
+      reply.code(400)
+      return { error: 'Pilih 1 sampai 5 bintang.' }
+    }
+    try {
+      const page = await withTransaction((client) => submitReview(client, id, parsed.data))
+      reply.code(201)
+      return page
     } catch (err) {
       return handleErr(reply, err)
     }

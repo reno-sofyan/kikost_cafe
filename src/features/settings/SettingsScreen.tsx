@@ -237,6 +237,8 @@ function FiscalForm() {
   const [transactionPrefix, setTransactionPrefix] = useState('')
   const [receiptPaperSize, setReceiptPaperSize] = useState<ReceiptPaperSize>('58mm')
   const [receiptFooterNote, setReceiptFooterNote] = useState('')
+  const [receiptReviewQr, setReceiptReviewQr] = useState(false)
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('')
   const [autoLockMinutes, setAutoLockMinutes] = useState(30)
   const [blindClose, setBlindClose] = useState(false)
   const [cashVarianceTolerance, setCashVarianceTolerance] = useState(5000)
@@ -252,6 +254,8 @@ function FiscalForm() {
     setTransactionPrefix(settings.transactionPrefix)
     setReceiptPaperSize(settings.receiptPaperSize)
     setReceiptFooterNote(settings.receiptFooterNote)
+    setReceiptReviewQr(settings.receiptReviewQr ?? false)
+    setGoogleReviewUrl(settings.googleReviewUrl ?? '')
     setAutoLockMinutes(settings.autoLockMinutes)
     setBlindClose(settings.blindClose)
     setCashVarianceTolerance(settings.cashVarianceTolerance)
@@ -313,6 +317,26 @@ function FiscalForm() {
         <span className="mb-1 block text-sm text-ink-300">Catatan Kaki Struk</span>
         <input className="input-field" value={receiptFooterNote} onChange={(e) => setReceiptFooterNote(e.target.value)} />
       </label>
+      <div className="rounded-xl border border-ink-800 p-3">
+        <label className="flex items-center gap-2 text-sm text-ink-200">
+          <input type="checkbox" checked={receiptReviewQr} onChange={(e) => setReceiptReviewQr(e.target.checked)} />
+          Cetak QR ulasan di struk
+        </label>
+        <p className="mt-1 text-xs text-ink-500">
+          Tamu memindai QR untuk memberi bintang & komentar. Ulasan masuk ke Laporan → Penilaian Tamu. Butuh sinkronisasi server aktif.
+        </p>
+        <label className="mt-3 block">
+          <span className="mb-1 block text-sm text-ink-300">Tautan ulasan Google Maps (opsional)</span>
+          <input
+            className="input-field"
+            inputMode="url"
+            placeholder="https://g.page/r/…/review"
+            value={googleReviewUrl}
+            onChange={(e) => setGoogleReviewUrl(e.target.value)}
+          />
+          <span className="mt-1 block text-xs text-ink-500">Tamu yang memberi bintang 4–5 diajak menulis ulasan di Google Maps.</span>
+        </label>
+      </div>
       <label className="block">
         <span className="mb-1 block text-sm text-ink-300">Kunci layar otomatis bila tak disentuh selama (menit) — isi 0 agar tidak pernah terkunci sendiri</span>
         <input type="number" min={0} className="input-field" value={autoLockMinutes} onChange={(e) => setAutoLockMinutes(Number(e.target.value))} />
@@ -377,6 +401,8 @@ function FiscalForm() {
             transactionPrefix,
             receiptPaperSize,
             receiptFooterNote,
+            receiptReviewQr,
+            googleReviewUrl: googleReviewUrl.trim(),
             autoLockMinutes,
             blindClose,
             cashVarianceTolerance,

@@ -82,3 +82,33 @@ describe('MockPrinterDriver', () => {
     expect(driver.printedReceipts[1].orderNumber).toBe('TRX-00002')
   })
 })
+
+describe('QR ulasan di struk', () => {
+  const url = 'https://pos.kikost.com/ulasan/3f2b8c1e-9a4d-4e2f-8b1a-0c9d8e7f6a5b'
+
+  it('ESC/POS: judul + perintah QR berisi URL; tanpa reviewUrl tak ada QR', () => {
+    const bytes = buildEscPosReceipt({ ...sample, reviewUrl: url })
+    expect(decode(bytes)).toContain('Beri ulasan untuk kami')
+    expect(decode(bytes)).toContain(url)
+    const hasQr = (b: Uint8Array) => b.some((v, i) => v === 0x1d && b[i + 1] === 0x28 && b[i + 2] === 0x6b && b[i + 5] === 0x31 && b[i + 6] === 0x50)
+    expect(hasQr(bytes)).toBe(true)
+    expect(hasQr(buildEscPosReceipt(sample))).toBe(false)
+  })
+
+  it('HTML pratinjau memuat QR SVG; teks WhatsApp memuat tautan', async () => {
+    const { renderReceiptBodyHtml } = await import('./renderReceiptHtml')
+    const { receiptToText } = await import('@/lib/receiptText')
+    expect(renderReceiptBodyHtml({ ...sample, reviewUrl: url })).toMatch(/<svg class="qr"[^>]*>.*<path d="M/)
+    expect(receiptToText({ ...sample, reviewUrl: url })).toContain(`Beri ulasan untuk kami: ${url}`)
+  })
+
+  it('reviewUrlFor: pakai alamat server sinkronisasi; tanpa alamat publik → null', async () => {
+    const { reviewUrlFor } = await import('./receiptData')
+    localStorage.setItem('kione.sync.apiBaseUrl', 'https://pos.kikost.com/')
+    expect(reviewUrlFor('abc', { qrOrderBaseUrl: '' })).toBe('https://pos.kikost.com/ulasan/abc')
+    localStorage.removeItem('kione.sync.apiBaseUrl')
+    expect(reviewUrlFor('abc', { qrOrderBaseUrl: 'https://pesan.kinara.id' })).toBe('https://pesan.kinara.id/ulasan/abc')
+    // jsdom: origin http://localhost → bukan alamat publik
+    expect(reviewUrlFor('abc', { qrOrderBaseUrl: '' })).toBeNull()
+  })
+})
