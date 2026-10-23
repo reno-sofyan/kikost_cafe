@@ -7,7 +7,7 @@ import { featuresForBusinessType } from '@/lib/businessType'
 import { onlineChannelLabel } from '@/lib/onlineOrders'
 import { qrOrderBaseUrlIsUsable } from '@/lib/qrOrderUrl'
 import { getApiBaseUrl } from '@/sync/deviceConfig'
-import type { AppSettings, Order, OrderItem, Payment } from '@/types/domain'
+import type { AppSettings, KitchenTicketPayload, Order, OrderItem, Payment } from '@/types/domain'
 
 export interface ReceiptLine {
   name: string
@@ -112,6 +112,25 @@ export function buildSampleReceiptData(settings: AppSettings): ReceiptData {
     payments: [{ methodLabel: 'Tunai', amount: 72000, receivedAmount: 75000, changeAmount: 3000 }],
     footerNote: settings.receiptFooterNote,
     isVoided: false,
+  }
+}
+
+/** Tiket dapur contoh untuk tombol "Test Dapur" — template sama dengan tiket sungguhan, tanpa harga. */
+export function buildSampleKitchenTicket(settings: AppSettings, printerName: string): KitchenTicketPayload {
+  return {
+    outletName: businessDisplayName(settings),
+    orderNumber: `${settings.transactionPrefix}-00000`,
+    tableOrQueue: 'Antrean #12',
+    customerName: 'Budi',
+    orderedAtLabel: formatDateTime(Date.now()),
+    cashierName: 'Uji Cetak',
+    source: 'Kasir',
+    ticketLabel: `TEST DAPUR — ${printerName}`,
+    paperSize: settings.receiptPaperSize,
+    lines: [
+      { qty: 2, name: 'Kopi Susu Gula Aren', modifiers: ['Ukuran: Regular', 'Gula: Sedikit'], note: '' },
+      { qty: 1, name: 'Nasi Goreng Spesial', modifiers: [], note: 'Tidak pedas' },
+    ],
   }
 }
 

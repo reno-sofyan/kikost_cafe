@@ -112,3 +112,16 @@ describe('QR ulasan di struk', () => {
     expect(reviewUrlFor('abc', { qrOrderBaseUrl: '' })).toBeNull()
   })
 })
+
+describe('Test Dapur (tiket contoh)', () => {
+  it('template tiket dapur: judul TEST DAPUR, item & catatan, tanpa harga', async () => {
+    const { buildSampleKitchenTicket } = await import('./receiptData')
+    const { buildEscPosKitchenTicket } = await import('./escpos')
+    const text = decode(buildEscPosKitchenTicket(buildSampleKitchenTicket({ ...DEFAULT_SETTINGS, businessName: 'Kopi Senja' }, 'Printer Bar')))
+    expect(text).toContain('TEST DAPUR')
+    expect(text).toContain('Printer Bar')
+    expect(text).toContain('2x Kopi Susu Gula Aren')
+    expect(text).toContain('Tidak pedas')
+    expect(text).not.toMatch(/Rp|TOTAL|Tunai/)
+  })
+})

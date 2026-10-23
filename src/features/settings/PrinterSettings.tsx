@@ -12,7 +12,7 @@ import {
   stationForCategory,
 } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
-import { buildSampleReceiptData } from '@/features/printing/receiptData'
+import { buildSampleKitchenTicket, buildSampleReceiptData } from '@/features/printing/receiptData'
 import { openCashDrawer } from '@/features/printing/cashDrawer'
 import { getSettings, updateSettings } from '@/db/repositories/settings'
 import { Modal } from '@/components/ui/Modal'
@@ -41,20 +41,27 @@ export function PrinterSettings() {
 
   const actor = { userId: currentUser.id, userName: currentUser.name }
 
-  async function handleTest(printer: Printer) {
+  const hasKitchen = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).kitchen, []) ?? false
+
+  /** `receipt` = struk pelanggan, `kitchen_ticket` = tiket dapur (tanpa harga). */
+  async function handleTest(printer: Printer, kind: 'receipt' | 'kitchen_ticket') {
     setMsg(null)
-    const data = buildSampleReceiptData((await db.settings.get('singleton'))!)
+    const settings = (await db.settings.get('singleton'))!
+    const label = kind === 'receipt' ? 'Test struk' : 'Test dapur'
     await enqueuePrintJob({
-      kind: 'receipt',
+      kind,
       station: printer.station,
-      payload: { ...data, businessName: `TEST — ${printer.name}` },
-      title: `Test print — ${printer.name}`,
-      idempotencyKey: `test_${printer.id}_${Date.now()}`,
+      payload:
+        kind === 'receipt'
+          ? { ...buildSampleReceiptData(settings), businessName: `TEST — ${printer.name}` }
+          : buildSampleKitchenTicket(settings, printer.name),
+      title: `${label} — ${printer.name}`,
+      idempotencyKey: `test_${kind}_${printer.id}_${Date.now()}`,
       requestedBy: currentUser.id,
       requestedByName: currentUser.name,
     })
     await processPrintQueue()
-    setMsg(`Test print dikirim ke "${printer.name}". Cek Antrean Cetak bila tak keluar.`)
+    setMsg(`${label} dikirim ke "${printer.name}". Cek Antrean Cetak bila tak keluar.`)
   }
 
   if (!canManage) {
@@ -103,9 +110,14 @@ export function PrinterSettings() {
                     </p>
                   </div>
                   <div className="flex flex-none gap-2">
-                    <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void handleTest(p)}>
-                      Test
+                    <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void handleTest(p, 'receipt')}>
+                      Test Struk
                     </button>
+                    {hasKitchen && (
+                      <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => void handleTest(p, 'kitchen_ticket')}>
+                        Test Dapur
+                      </button>
+                    )}
                     <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => setEditing(p)}>
                       Edit
                     </button>
@@ -177,7 +189,7 @@ function ReceiptLogoCard() {
           <p className="font-semibold text-ink-50">Logo di Struk</p>
           <p className="text-xs text-ink-500">
             {settings.logoDataUrl
-              ? 'Logo dicetak hitam-putih di atas nama usaha. Logo berlatar putih dengan garis tegas paling jelas di kertas thermal. Tekan "Test" pada printer untuk mencoba.'
+              ? 'Logo dicetak hitam-putih di atas nama usaha. Logo berlatar putih dengan garis tegas paling jelas di kertas thermal. Tekan "Test Struk" pada printer untuk mencoba.'
               : 'Belum ada logo — unggah di Pengaturan → Profil Usaha.'}
           </p>
         </div>
