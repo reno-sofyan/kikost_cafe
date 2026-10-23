@@ -240,3 +240,32 @@ describe('cetak 2 struk saat lunas (kitchenCopyOnPayment)', () => {
     ])
   })
 })
+
+describe('cetak struk ke dapur/bar dari layar sukses bayar', () => {
+  const printer = (name: string, station: 'cashier' | 'kitchen') => ({
+    name, station, connectionType: 'network' as const, bluetoothAddress: null, bluetoothName: null,
+    networkHost: '10.0.0.3', networkPort: 9100, paperSize: '58mm' as const, active: true, fallbackPrinterId: null,
+  })
+
+  it('satu printer kasir saja → tiket dapur dicetak di printer kasir', async () => {
+    const { savePrinter } = await import('./printers')
+    const { manualKitchenTicketStation, sendOrderToKitchen } = await import('./kitchenDispatch')
+    await savePrinter(printer('Kasir', 'cashier'), { userId: 'u1', userName: 'Kasir' })
+    await seedProduct({ id: 'p-one', stockQty: 10, price: 20000 })
+    const { order } = await buildOpenOrder('p-one', 1)
+
+    const station = await manualKitchenTicketStation()
+    expect(station).toBe('cashier')
+    await sendOrderToKitchen(order.id, { userId: 'u1', userName: 'Kasir' }, { station })
+    const jobs = await db.printJobs.where('orderId').equals(order.id).toArray()
+    expect(jobs.map((j) => [j.kind, j.station])).toEqual([['kitchen_ticket', 'cashier']])
+  })
+
+  it('ada printer dapur → ikuti rute kategori', async () => {
+    const { savePrinter } = await import('./printers')
+    const { manualKitchenTicketStation } = await import('./kitchenDispatch')
+    await savePrinter(printer('Kasir', 'cashier'), { userId: 'u1', userName: 'Kasir' })
+    await savePrinter(printer('Dapur', 'kitchen'), { userId: 'u1', userName: 'Kasir' })
+    expect(await manualKitchenTicketStation()).toBeUndefined()
+  })
+})

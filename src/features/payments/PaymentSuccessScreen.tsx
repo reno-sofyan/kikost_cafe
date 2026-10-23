@@ -5,7 +5,7 @@ import { db } from '@/db/schema'
 import { retryPrintJob } from '@/db/repositories/printQueue'
 import { useSessionStore } from '@/state/sessionStore'
 import { getOrder } from '@/db/repositories/orders'
-import { reprintKitchenTicket, sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
+import { manualKitchenTicketStation, reprintKitchenTicket, sendOrderToKitchen } from '@/db/repositories/kitchenDispatch'
 import { toast } from '@/state/toastStore'
 import { prepareReceiptData } from '@/features/printing/printReceipt'
 import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
@@ -73,15 +73,19 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
     navigate('/kasir')
   }
 
-  /** Kirim item yang belum ke dapur/bar; bila semua sudah terkirim, cetak ulang tiketnya. */
+  /**
+   * Kirim item yang belum ke dapur/bar; bila semua sudah terkirim, cetak ulang tiketnya.
+   * Template tiket dapur (tanpa harga). Usaha satu printer mencetaknya di printer kasir.
+   */
   async function handlePrintKitchen() {
     if (!order || !currentUser) return
     const actor = { userId: currentUser.id, userName: currentUser.name }
     setKitchenBusy(true)
     try {
-      const res = await sendOrderToKitchen(order.id, actor)
+      const station = await manualKitchenTicketStation()
+      const res = await sendOrderToKitchen(order.id, actor, { station })
       if (res.itemCount > 0) {
-        toast.success(`${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}.`)
+        toast.success(`${res.itemCount} item dikirim ke ${station === 'cashier' ? 'printer kasir' : res.stations.join(', ') || 'dapur'}.`)
         return
       }
       const tickets = await db.kitchenTickets.where('orderId').equals(order.id).toArray()
@@ -89,7 +93,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         toast.error('Tidak ada item untuk dapur/bar pada pesanan ini.')
         return
       }
-      for (const t of tickets) await reprintKitchenTicket(t.id, actor)
+      for (const t of tickets) await reprintKitchenTicket(t.id, actor, { station })
       toast.success(`Tiket dapur/bar dicetak ulang (${tickets.length}).`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal mencetak ke dapur/bar')
@@ -146,7 +150,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
               </button>
             )}
             <button className={bigBtn} disabled={receiptBusy} onClick={() => setShowPreview(true)}>
-              {receiptJob ? 'Cetak Ulang Struk Pelanggan' : 'Cetak Struk Pelanggan'}
+              Cetak Ulang Struk Pelanggan
             </button>
           </div>
           {proTools && currentUser && (

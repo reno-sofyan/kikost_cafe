@@ -5,7 +5,7 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import { formatTime } from '@/lib/datetime'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
-import { stationForCategory } from '@/db/repositories/printers'
+import { activePrinterForStation, stationForCategory } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
 import type { KitchenTicket, KitchenTicketLine, KitchenTicketPayload, OrderItem, PrinterStation } from '@/types/domain'
 
@@ -125,10 +125,24 @@ export async function sendOrderToKitchen(
   return { stations: [...byStation.keys()], itemCount: [...byStation.values()].reduce((n, list) => n + list.length, 0), course: plan.course, heldCount: plan.held.length }
 }
 
+/**
+ * Station pengganti untuk tiket dapur yang dicetak manual dari layar sukses bayar:
+ * printer kasir bila `kitchenCopyOnPayment` aktif, atau bila tak ada printer dapur
+ * maupun bar (usaha satu printer). `undefined` = ikuti rute kategori.
+ */
+export async function manualKitchenTicketStation(): Promise<PrinterStation | undefined> {
+  if (!(await activePrinterForStation('cashier'))) return undefined
+  if ((await getSettings()).printerConfig.kitchenCopyOnPayment) return 'cashier'
+  const [kitchen, bar] = await Promise.all([activePrinterForStation('kitchen'), activePrinterForStation('bar')])
+  return kitchen || bar ? undefined : 'cashier'
+}
+
 /** Cetak ulang satu kitchen ticket (hanya item tiket itu) — ber-audit + label. */
 export async function reprintKitchenTicket(
   ticketId: string,
   actor: { userId: string; userName: string },
+  /** `station`: cetak di station ini alih-alih station asal tiket. */
+  opts: { station?: PrinterStation } = {},
 ): Promise<void> {
   const ticket = await db.kitchenTickets.get(ticketId)
   if (!ticket) return
@@ -145,7 +159,7 @@ export async function reprintKitchenTicket(
   await db.transaction('rw', [db.printJobs, db.printers, db.syncQueue, db.auditLogs], async () => {
     await enqueuePrintJob({
       kind: 'kitchen_ticket',
-      station: ticket.station as PrinterStation,
+      station: opts.station ?? (ticket.station as PrinterStation),
       payload: {
         outletName: businessDisplayName(settings),
         orderNumber: order.orderNumber,
