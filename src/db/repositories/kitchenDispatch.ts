@@ -9,6 +9,9 @@ import { activePrinterForStation, stationForCategory } from '@/db/repositories/p
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
 import type { KitchenTicket, KitchenTicketLine, KitchenTicketPayload, OrderItem, PrinterStation } from '@/types/domain'
 
+/** Judul tiket per station; printer kasir (usaha satu printer) cukup "PESANAN". */
+const STATION_TITLES: Record<PrinterStation, string> = { kitchen: 'DAPUR', bar: 'BAR', cashier: '' }
+
 const SOURCE_LABELS: Record<string, string> = {
   cashier: 'Kasir',
   qr_table: 'QR Meja',
@@ -102,7 +105,7 @@ export async function sendOrderToKitchen(
           orderedAtLabel: formatTime(order.createdAt),
           cashierName: order.cashierName,
           source: onlineChannelLabel(order) || (SOURCE_LABELS[order.source] ?? order.source),
-          ticketLabel: (seq > 1 ? `ORDER — TAMBAHAN #${seq}` : `ORDER ${station.toUpperCase()}`) + courseLabel,
+          ticketLabel: (seq > 1 ? `PESANAN TAMBAHAN #${seq}` : `PESANAN ${STATION_TITLES[station]}`.trim()) + courseLabel,
           paperSize: settings.receiptPaperSize,
           lines: stationItems.map(toLine),
         }
@@ -168,7 +171,7 @@ export async function reprintKitchenTicket(
         orderedAtLabel: formatTime(order.createdAt),
         cashierName: order.cashierName,
         source: onlineChannelLabel(order) || (SOURCE_LABELS[order.source] ?? order.source),
-        ticketLabel: `*** CETAK ULANG *** TIKET #${ticket.sequenceNo}`,
+        ticketLabel: `CETAK ULANG #${ticket.sequenceNo}`,
         paperSize: settings.receiptPaperSize,
         lines: items.filter((i) => !i.voided).map(toLine),
       } satisfies KitchenTicketPayload,

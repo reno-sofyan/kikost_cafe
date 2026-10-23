@@ -179,8 +179,9 @@ export async function registerOwnerRoutes(app: FastifyInstance, opts: { area: Ow
   app.get('/api/owner-code', async (request) => getOwnerCodeStatus(getPool(), request.ownerTenantId))
 
   app.post('/api/owner-code', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const result = await generateOwnerCode(getPool(), request.ownerTenantId)
-    request.log.info({ tenantId: request.ownerTenantId }, 'owner: kode pembatalan pemilik dibuat')
+    const permanent = (request.body as { permanent?: unknown } | null)?.permanent === true
+    const result = await generateOwnerCode(getPool(), request.ownerTenantId, { permanent })
+    request.log.info({ tenantId: request.ownerTenantId, permanent }, 'owner: kode pembatalan pemilik dibuat')
     reply.header('cache-control', 'no-store')
     return result
   })

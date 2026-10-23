@@ -211,7 +211,7 @@ export function cancelMidtransCharge(chargeId: string): Promise<MidtransChargeSt
 // ---- Kode pembatalan Pemilik dari konsol /ops (lihat backend/src/routes/ownerCode.ts) ----
 
 export type ServerOwnerCodeResult =
-  | { ok: true; createdAt: number }
+  | { ok: true; createdAt: number; permanent?: boolean }
   | { ok: false; reason: 'no_code' | 'invalid' }
   | { ok: false; reason: 'locked'; retryInMs: number }
 

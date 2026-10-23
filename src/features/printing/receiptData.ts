@@ -125,7 +125,7 @@ export function buildSampleKitchenTicket(settings: AppSettings, printerName: str
     orderedAtLabel: formatDateTime(Date.now()),
     cashierName: 'Uji Cetak',
     source: 'Kasir',
-    ticketLabel: `TEST DAPUR — ${printerName}`,
+    ticketLabel: `TEST ${printerName}`,
     paperSize: settings.receiptPaperSize,
     lines: [
       { qty: 2, name: 'Kopi Susu Gula Aren', modifiers: ['Ukuran: Regular', 'Gula: Sedikit'], note: '' },

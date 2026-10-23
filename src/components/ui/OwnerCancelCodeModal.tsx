@@ -72,7 +72,7 @@ export function OwnerCancelCodeModal({ title, description, onCancel, onApproved 
       ) : (
         <>
           <p className="mb-3 text-xs text-ink-500">
-            Masukkan kode pembatalan {CANCEL_CODE_LENGTH} digit dari Pemilik (sekali pakai){onlineOnly ? ' — dibuat di Konsol Pemilik online' : ''}
+            Masukkan kode pembatalan {CANCEL_CODE_LENGTH} digit dari Pemilik{onlineOnly ? ' — dibuat di Konsol Pemilik online' : ''}
           </p>
           <div className="mb-3 flex justify-center gap-2" aria-label={`${code.length} dari ${CANCEL_CODE_LENGTH} digit`}>
             {Array.from({ length: CANCEL_CODE_LENGTH }, (_, i) => (

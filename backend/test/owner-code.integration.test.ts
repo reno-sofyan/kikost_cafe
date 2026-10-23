@@ -64,9 +64,19 @@ suite('kode pembatalan Pemilik dari /ops (integrasi)', () => {
     expect(await status()).toMatchObject({ active: { createdAt }, lastUsed: null })
 
     const ok = await consume(code)
-    expect(ok.json()).toEqual({ ok: true, createdAt })
+    expect(ok.json()).toEqual({ ok: true, createdAt, permanent: false })
     expect((await consume(code)).json()).toEqual({ ok: false, reason: 'no_code' })
     expect(await status()).toMatchObject({ active: null, lastUsed: { createdAt } })
+  })
+
+  it('kode SELAMANYA bisa dipakai berulang, pemakaian dihitung, hapus membuatnya tak berlaku', async () => {
+    const r = await app.inject({ method: 'POST', url: '/ops/api/tenant/kantin/owner-code', headers: ops, payload: { permanent: true } })
+    const { code, createdAt, permanent } = r.json()
+    expect(permanent).toBe(true)
+    for (let i = 0; i < 3; i++) expect((await consume(code)).json()).toEqual({ ok: true, createdAt, permanent: true })
+    expect(await status()).toMatchObject({ active: { createdAt, permanent: true, useCount: 3 }, lastUsed: null })
+    await app.inject({ method: 'DELETE', url: '/ops/api/tenant/kantin/owner-code', headers: ops })
+    expect((await consume(code)).json()).toEqual({ ok: false, reason: 'no_code' })
   })
 
   it('kode hanya berlaku untuk tenant-nya', async () => {

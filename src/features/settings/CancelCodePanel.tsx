@@ -15,7 +15,8 @@ import { toast } from '@/state/toastStore'
 
 /**
  * Pengaturan → Kode Pembatalan (kantin, khusus Pemilik). Pemilik membuat kode
- * sekali pakai lalu menyebutkannya ke kasir untuk SATU pembatalan. Membuat kode
+ * sekali pakai (untuk SATU pembatalan) atau selamanya (berlaku sampai dihapus/
+ * diganti), lalu menyebutkannya ke kasir. Membuat kode
  * meminta PIN Pemilik lagi, supaya tablet yang ditinggal dalam keadaan login
  * tak bisa dipakai kasir untuk membuat kode sendiri.
  */
@@ -26,7 +27,8 @@ export function CancelCodePanel() {
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [shownCode, setShownCode] = useState<string | null>(null)
+  const [shownCode, setShownCode] = useState<{ code: string; permanent: boolean } | null>(null)
+  const [permanent, setPermanent] = useState(false)
   const savedMax = useLiveQuery(async () => (await getSettings()).cashierDiscountMaxPercent ?? DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT, [])
   const [maxDraft, setMaxDraft] = useState<string | null>(null)
   // Kantin: kode hanya dibuat di Konsol Pemilik online — tablet tak menyediakan tombolnya.
@@ -58,10 +60,10 @@ export function CancelCodePanel() {
         setPin('')
         return
       }
-      const code = await generateCancelCode(me)
+      const code = await generateCancelCode(me, { permanent })
       setAskPin(false)
       setPin('')
-      setShownCode(code)
+      setShownCode({ code, permanent })
     } catch (e) {
       setPinError(e instanceof Error ? e.message : 'Gagal membuat kode')
     } finally {
@@ -74,9 +76,9 @@ export function CancelCodePanel() {
       <div className="card p-5">
         <h2 className="mb-1 text-lg font-bold text-ink-50">Kode Pembatalan</h2>
         <p className="mb-4 text-sm text-ink-400">
-          Setiap pembatalan pesanan butuh kode dari Pemilik. Kode hanya tampil sekali saat dibuat dan langsung hangus setelah dipakai
-          untuk satu pembatalan — kasir yang pernah melihatnya tak bisa memakainya lagi.
-          {!onlineOnly && ' Membuat kode baru membatalkan kode lama yang belum terpakai.'}
+          Setiap pembatalan pesanan butuh kode dari Pemilik. Kode hanya tampil sekali saat dibuat. Kode <b>sekali pakai</b> hangus
+          setelah satu pembatalan; kode <b>selamanya</b> berlaku untuk setiap pembatalan sampai dihapus atau diganti.
+          {!onlineOnly && ' Membuat kode baru membatalkan kode lama.'}
         </p>
 
         {onlineOnly === undefined ? null : onlineOnly ? (
@@ -109,13 +111,28 @@ export function CancelCodePanel() {
                 <span className="text-ink-400">Memuat…</span>
               ) : active ? (
                 <span className="text-ink-200">
-                  Ada 1 kode aktif, dibuat {formatDateTime(active.createdAt)} oleh {active.createdByName}. Belum terpakai.
+                  {active.permanent
+                    ? `Kode selamanya aktif sejak ${formatDateTime(active.createdAt)} (dibuat ${active.createdByName}) — berlaku sampai dihapus atau diganti.`
+                    : `Ada 1 kode sekali pakai aktif, dibuat ${formatDateTime(active.createdAt)} oleh ${active.createdByName}. Belum terpakai.`}
                 </span>
               ) : (
                 <span className="text-ink-400">Tidak ada kode aktif — kasir belum bisa membatalkan pesanan.</span>
               )}
             </div>
 
+            <div className="mb-3 flex gap-2" role="radiogroup" aria-label="Jenis kode">
+              {([false, true] as const).map((p) => (
+                <button
+                  key={String(p)}
+                  role="radio"
+                  aria-checked={permanent === p}
+                  className={`btn flex-1 !min-h-[2.75rem] text-sm ${permanent === p ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setPermanent(p)}
+                >
+                  {p ? 'Selamanya' : 'Sekali pakai'}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-2">
               <button className="btn-primary" onClick={() => setAskPin(true)}>
                 {active ? 'Buat Kode Baru' : 'Buat Kode'}
@@ -180,9 +197,11 @@ export function CancelCodePanel() {
       {shownCode && (
         <Modal onClose={() => setShownCode(null)} className="w-full max-w-sm rounded-2xl bg-ink-900 p-6 text-center">
           <h2 className="mb-2 text-lg font-bold text-ink-50">Kode Pembatalan</h2>
-          <p className="mb-4 font-mono text-5xl font-bold tracking-[0.3em] text-brand-400">{shownCode}</p>
+          <p className="mb-4 font-mono text-5xl font-bold tracking-[0.3em] text-brand-400">{shownCode.code}</p>
           <p className="mb-4 text-sm text-ink-400">
-            Sebutkan kode ini ke kasir untuk satu pembatalan. Kode tidak akan ditampilkan lagi setelah jendela ini ditutup.
+            {shownCode.permanent
+              ? 'Kode SELAMANYA: berlaku untuk setiap pembatalan sampai dihapus atau diganti. Simpan baik-baik — kode tidak akan ditampilkan lagi.'
+              : 'Sebutkan kode ini ke kasir untuk satu pembatalan. Kode tidak akan ditampilkan lagi setelah jendela ini ditutup.'}
           </p>
           <button className="btn-primary w-full" onClick={() => setShownCode(null)}>
             Tutup & Sembunyikan

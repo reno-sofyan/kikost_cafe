@@ -21,6 +21,7 @@ import {
   setOrderWaiter,
   discountRequirements,
   DEFAULT_CASHIER_DISCOUNT_MAX_PERCENT,
+  updateOrderItemNotes,
   updateOrderItemQty,
   startOrder,
   voidOrderItem,
@@ -48,6 +49,7 @@ import { NewOrderModal } from '@/features/pos/NewOrderModal'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { PayLaterModal } from '@/features/pos/PayLaterModal'
+import { ItemNoteModal } from '@/features/pos/ItemNoteModal'
 import { useEmptyOrderCancel } from '@/features/pos/useEmptyOrderCancel'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
@@ -91,6 +93,7 @@ export function CashierScreen() {
   /** Produk yang ditap saat belum ada pesanan — dimasukkan begitu pesanan baru dibuat. */
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null)
   const [editingItem, setEditingItem] = useState<OrderItem | null>(null)
+  const [noteItem, setNoteItem] = useState<OrderItem | null>(null)
   const [removeReasonFor, setRemoveReasonFor] = useState<OrderItem | null>(null)
   const [voidItemApproval, setVoidItemApproval] = useState<{ item: OrderItem; reason: string } | null>(null)
   const [cancelOrderFlow, setCancelOrderFlow] = useState<
@@ -661,6 +664,16 @@ export function CashierScreen() {
                           </p>
                         ))}
                         {item.notes && <p className="text-[0.8rem] italic text-ink-300">"{item.notes}"</p>}
+                        {(item.skipKitchen || (item.kitchenStatus === 'new' && item.kitchenPrintedAt == null)) && (
+                          <button
+                            className="flex items-center gap-1 pt-0.5 text-[0.8rem] font-medium text-brand-500 hover:text-brand-600"
+                            aria-label={`${item.notes ? 'Ubah' : 'Tambah'} catatan ${item.productName}`}
+                            onClick={() => setNoteItem(item)}
+                          >
+                            <Icon name="edit" size={12} />
+                            {item.notes ? 'Ubah catatan' : 'Tambah catatan'}
+                          </button>
+                        )}
                         {item.kitchenStatus !== 'new' && (
                           <span className="inline-block rounded bg-success-600/20 px-2 py-0.5 text-[10px] text-success-500">Dapur: {item.kitchenStatus}</span>
                         )}
@@ -817,6 +830,19 @@ export function CashierScreen() {
           }}
         />
       )}
+      {noteItem && (
+        <ItemNoteModal
+          productName={noteItem.productName}
+          initialNote={noteItem.notes}
+          onCancel={() => setNoteItem(null)}
+          onSave={(note) => {
+            const item = noteItem
+            setNoteItem(null)
+            void updateOrderItemNotes(item.id, note).catch((e) => toast.error(e instanceof Error ? e.message : 'Gagal menyimpan catatan'))
+          }}
+        />
+      )}
+
       {pickerProduct && (
         <ModifierPickerModal
           product={pickerProduct}

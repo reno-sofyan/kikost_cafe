@@ -176,30 +176,64 @@ export function buildEscPosDrawerKick(): Uint8Array {
   return new EscPosBuilder().raw(ESC, 0x70, 0x00, 25, 250).raw(ESC, 0x70, 0x01, 25, 250).toBytes()
 }
 
-/** Tiket dapur/bar ESC/POS — hanya item pada tiket ini (tak mencetak ulang pesanan lama). */
+/** Bungkus teks per kata agar muat `cols` kolom (kata kepanjangan dipotong paksa). */
+function wrapWords(text: string, cols: number): string[] {
+  const out: string[] = []
+  let line = ''
+  for (let word of text.split(/\s+/).filter(Boolean)) {
+    while (word.length > cols) {
+      if (line) out.push(line)
+      line = ''
+      out.push(word.slice(0, cols))
+      word = word.slice(cols)
+    }
+    if (!line) line = word
+    else if (line.length + 1 + word.length <= cols) line += ` ${word}`
+    else {
+      out.push(line)
+      line = word
+    }
+  }
+  if (line || out.length === 0) out.push(line)
+  return out
+}
+
+/**
+ * Tiket dapur/bar ESC/POS — hanya isi pesanan untuk tiket ini: judul, lalu tiap
+ * item dengan qty besar, varian/modifier, dan catatan tebal. Tanpa nomor
+ * pesanan, antrean, pelanggan, waktu, kasir, maupun harga.
+ */
 export function buildEscPosKitchenTicket(p: KitchenTicketPayload): Uint8Array {
   const width = CHARS_PER_LINE[p.paperSize]
   const b = new EscPosBuilder().init()
 
   b.align('center')
-  b.doubleHeight(true).bold(true).line(p.ticketLabel || 'ORDER DAPUR').bold(false).doubleHeight(false)
-  if (p.outletName) b.line(p.outletName)
-  b.line(divider(width))
-
+  b.line('='.repeat(width))
+  const title = p.ticketLabel || 'PESANAN'
+  // Judul 2× lebar & tinggi bila muat satu baris; kalau tidak, 2× tinggi saja.
+  b.bold(true).raw(GS, 0x21, title.length * 2 <= width ? 0x11 : 0x01).line(title).raw(GS, 0x21, 0x00).bold(false)
+  b.line('='.repeat(width))
   b.align('left')
-  b.bold(true).line(`No: ${p.orderNumber}`).bold(false)
-  if (p.tableOrQueue) b.line(p.tableOrQueue)
-  if (p.customerName) b.line(`Pelanggan: ${p.customerName}`)
-  b.line(`Waktu: ${p.orderedAtLabel}`)
-  b.line(`Oleh: ${p.cashierName}${p.source ? ` (${p.source})` : ''}`)
-  b.line(divider(width))
 
-  for (const line of p.lines) {
-    b.bold(true).doubleHeight(true).line(`${line.qty}x ${line.name}`).doubleHeight(false).bold(false)
-    for (const m of line.modifiers) b.line(`  - ${m}`)
-    if (line.note) b.line(`  * ${line.note}`)
-  }
-  b.line(divider(width))
+  p.lines.forEach((line, i) => {
+    if (i > 0) b.line()
+    // Qty 2× lebar & tinggi (paling menonjol), nama 2× tinggi saja supaya tetap muat satu baris.
+    const qty = `${line.qty}x `
+    const indent = qty.length * 2
+    wrapWords(line.name, width - indent).forEach((part, j) => {
+      if (j === 0) b.bold(true).raw(GS, 0x21, 0x11).text(qty).raw(GS, 0x21, 0x01).line(part).raw(GS, 0x21, 0x00).bold(false)
+      else b.bold(true).raw(GS, 0x21, 0x01).line(' '.repeat(indent) + part).raw(GS, 0x21, 0x00).bold(false)
+    })
+    for (const m of line.modifiers) {
+      for (const [j, part] of wrapWords(m, width - indent - 2).entries()) b.line(`${' '.repeat(indent)}${j === 0 ? '- ' : '  '}${part}`)
+    }
+    if (line.note) {
+      b.bold(true)
+      for (const [j, part] of wrapWords(line.note, width - indent - 2).entries()) b.line(`${' '.repeat(indent)}${j === 0 ? '! ' : '  '}${part}`)
+      b.bold(false)
+    }
+  })
+  b.line('='.repeat(width))
   b.feed(3).cut()
   return b.toBytes()
 }

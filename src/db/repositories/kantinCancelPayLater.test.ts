@@ -102,6 +102,29 @@ describe('kode pembatalan sekali pakai (kantin)', () => {
     expect((await db.orders.get(second.id))?.status).toBe('open')
   })
 
+  it('kode SELAMANYA tetap berlaku untuk pembatalan berikutnya sampai dihapus', async () => {
+    const owner = await createUser({ name: 'Bu Sari', role: 'pemilik', pin: '9999' })
+    const code = await generateCancelCode(owner, { permanent: true })
+    expect(await getActiveCancelCode()).toMatchObject({ permanent: true })
+
+    const first = await orderWithItem()
+    const a1 = await verifyCancelCode(code)
+    if (!a1.ok) throw new Error(a1.reason)
+    await cancelUnsentOrder(first.id, 'Pembeli tidak jadi', actor, a1.approval)
+    expect(await getActiveCancelCode()).toMatchObject({ permanent: true })
+
+    const second = await orderWithItem((await db.shifts.toArray())[0])
+    const a2 = await verifyCancelCode(code)
+    if (!a2.ok) throw new Error(a2.reason)
+    await cancelUnsentOrder(second.id, 'Salah input', actor, a2.approval)
+    expect((await db.orders.get(second.id))?.status).toBe('void')
+    expect((await db.auditLogs.toArray()).some((l) => l.action === 'cancel_code.generate' && l.details.includes('selamanya'))).toBe(true)
+
+    const { revokeCancelCode } = await import('./cancelCodes')
+    await revokeCancelCode(owner)
+    expect(await verifyCancelCode(code)).toMatchObject({ ok: false, reason: 'no_code' })
+  })
+
   it('kode salah ditolak; membuat kode baru menghanguskan kode lama', async () => {
     const owner = await createUser({ name: 'Bu Sari', role: 'pemilik', pin: '9999' })
     const oldCode = await generateCancelCode(owner)

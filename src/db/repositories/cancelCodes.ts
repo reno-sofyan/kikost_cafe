@@ -9,7 +9,8 @@ import { consumeServerOwnerCode, isBackendConfigured } from '@/sync/client'
 import type { CancelCode, User } from '@/types/domain'
 
 /**
- * Kode pembatalan sekali pakai (kantin, flag `ownerPinCancel`).
+ * Kode pembatalan Pemilik (kantin, flag `ownerPinCancel`): sekali pakai, atau
+ * "selamanya" (`permanent`) — tetap berlaku setelah dipakai sampai dihapus/diganti.
  *
  * Pemilik membuat kode 6 digit acak di Pengaturan → Kode Pembatalan; kode hanya
  * tampil SEKALI saat dibuat dan hangus begitu dipakai untuk satu pembatalan,
@@ -59,26 +60,30 @@ export async function hasActiveOwner(): Promise<boolean> {
   return (await db.users.filter((u) => u.active && u.role === 'pemilik').count()) > 0
 }
 
-export async function getActiveCancelCode(): Promise<Pick<CancelCode, 'createdAt' | 'createdByName'> | null> {
+export async function getActiveCancelCode(): Promise<Pick<CancelCode, 'createdAt' | 'createdByName' | 'permanent'> | null> {
   const row = await db.cancelCodes.get('active')
-  return row ? { createdAt: row.createdAt, createdByName: row.createdByName } : null
+  return row ? { createdAt: row.createdAt, createdByName: row.createdByName, permanent: row.permanent ?? false } : null
 }
 
-/** Membuat kode baru (menggantikan yang lama). Mengembalikan kode polos — tampilkan sekali saja. */
-export async function generateCancelCode(owner: User): Promise<string> {
+/**
+ * Membuat kode baru (menggantikan yang lama). Mengembalikan kode polos — tampilkan sekali saja.
+ * `permanent` = berlaku selamanya (dipakai berulang) sampai dihapus atau diganti.
+ */
+export async function generateCancelCode(owner: User, opts: { permanent?: boolean } = {}): Promise<string> {
+  const permanent = opts.permanent === true
   if (owner.role !== 'pemilik' || !owner.active) throw new Error('Hanya akun Pemilik yang dapat membuat kode pembatalan.')
   const code = randomCode()
   const { hash, salt } = await hashPin(code)
   const now = getTrustedNow()
   await db.transaction('rw', db.cancelCodes, db.auditLogs, db.syncQueue, async () => {
-    await db.cancelCodes.put({ id: 'active', hash, salt, createdAt: now, createdByUserId: owner.id, createdByName: owner.name })
+    await db.cancelCodes.put({ id: 'active', hash, salt, createdAt: now, createdByUserId: owner.id, createdByName: owner.name, permanent })
     await recordAuditLog({
       userId: owner.id,
       userName: owner.name,
       action: 'cancel_code.generate',
       entityType: 'cancel_code',
       entityId: 'active',
-      details: 'Kode pembatalan baru dibuat (kode lama yang belum terpakai hangus).',
+      details: `Kode pembatalan baru dibuat (${permanent ? 'selamanya' : 'sekali pakai'}; kode lama yang belum terpakai hangus).`,
     })
   })
   return code
@@ -167,5 +172,6 @@ export async function consumeCancelCodeInTx(approval: OwnerApproval): Promise<vo
   if (!row || row.createdAt !== approval.codeCreatedAt || row.createdByUserId !== approval.approverUserId) {
     throw new OwnerApprovalRequiredError('Kode pembatalan sudah terpakai atau diganti. Minta kode baru ke Pemilik.')
   }
-  await db.cancelCodes.delete('active')
+  // Kode selamanya tetap berlaku untuk pembatalan berikutnya.
+  if (!row.permanent) await db.cancelCodes.delete('active')
 }

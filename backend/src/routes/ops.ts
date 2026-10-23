@@ -251,8 +251,9 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
         reply.code(400)
         return { error: 'tenantId tidak valid' }
       }
-      const result = await generateOwnerCode(getPool(), tenantId)
-      request.log.info({ tenantId }, 'ops: kode pembatalan pemilik dibuat')
+      const permanent = (request.body as { permanent?: unknown } | null)?.permanent === true
+      const result = await generateOwnerCode(getPool(), tenantId, { permanent })
+      request.log.info({ tenantId, permanent }, 'ops: kode pembatalan pemilik dibuat')
       reply.header('cache-control', 'no-store')
       return result
     },

@@ -86,6 +86,7 @@
   .chart .v { font-size: .66rem; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   /* Kode pembatalan */
+  .ocode select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
   .ocode .st { font-size: .82rem; color: var(--ink-3); margin: 6px 0 12px; line-height: 1.4; }
   .ocode .btns { display: flex; gap: 8px; }
   .ocode .btns button { flex: 1; }
@@ -227,10 +228,11 @@
         <h3>Kode Pembatalan</h3>
         <div class="st" id="ocStatus">Memuat…</div>
         <div class="btns">
+          <select id="ocMode" aria-label="Jenis kode"><option value="once">Sekali pakai</option><option value="forever">Selamanya</option></select>
           <button class="primary" id="ocGen" onclick="genOwnerCode()">Buat Kode</button>
           <button id="ocDel" class="hide" onclick="delOwnerCode()">Hapus</button>
         </div>
-        <div class="big hide" id="ocShow"><b id="ocCode"></b><span>Sebutkan ke kasir. Berlaku untuk satu pembatalan/retur, tampil sekali, tablet perlu internet.</span></div>
+        <div class="big hide" id="ocShow"><b id="ocCode"></b><span id="ocHint"></span></div>
         <div class="err" id="ocErr"></div>
       </div>
     </div>
@@ -343,10 +345,12 @@
     err.appendChild(a);
     return true;
   }
-  async function apiRes(path, method) {
+  async function apiRes(path, method, body) {
     let res;
+    const headers = { Authorization: 'Bearer ' + token() };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
     try {
-      res = await fetch(BASE + '/api' + path, { method: method || 'GET', headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+      res = await fetch(BASE + '/api' + path, { method: method || 'GET', headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
     } catch {
       throw new Error('Tidak bisa menghubungi server. Periksa koneksi internet.');
     }
@@ -354,8 +358,8 @@
     if (res.status === 403 && await wrongArea(res)) throw new Error('401');
     return res;
   }
-  async function api(path, method) {
-    const res = await apiRes(path, method);
+  async function api(path, method, body) {
+    const res = await apiRes(path, method, body);
     if (res.status === 429) throw new Error('Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.');
     if (!res.ok) throw new Error('Server bermasalah (HTTP ' + res.status + '). Coba lagi nanti.');
     return res.json();
@@ -514,7 +518,11 @@
     document.getElementById('ocDel').classList.toggle('hide', !st.active);
     document.getElementById('ocGen').textContent = st.active ? 'Buat Kode Baru' : 'Buat Kode';
     let text;
-    if (st.active) text = 'Ada 1 kode aktif sejak ' + fmtTime(st.active.createdAt) + ', belum terpakai. Membuat kode baru menggantikannya.';
+    if (st.active && st.active.permanent) {
+      text = 'Kode SELAMANYA aktif sejak ' + fmtTime(st.active.createdAt) + ' — berlaku untuk setiap pembatalan sampai dihapus atau diganti. ' +
+        (st.active.useCount ? 'Sudah dipakai ' + st.active.useCount + '×, terakhir ' + fmtTime(st.active.lastUsedAt) + (st.active.deviceLabel ? ' di ' + st.active.deviceLabel : '') + '.' : 'Belum pernah dipakai.');
+    }
+    else if (st.active) text = 'Ada 1 kode sekali pakai aktif sejak ' + fmtTime(st.active.createdAt) + ', belum terpakai. Membuat kode baru menggantikannya.';
     else if (st.lastUsed) text = 'Tidak ada kode aktif. Terakhir dipakai ' + fmtTime(st.lastUsed.usedAt) + (st.lastUsed.deviceLabel ? ' di ' + st.lastUsed.deviceLabel : '') + '.';
     else text = 'Buat kode 6 digit saat kasir perlu membatalkan pesanan atau retur dan Anda tidak di tempat.';
     document.getElementById('ocStatus').textContent = text;
@@ -528,10 +536,13 @@
     document.getElementById('ocErr').textContent = '';
     btn.disabled = true;
     try {
-      const r = await api('/owner-code', 'POST');
+      const r = await api('/owner-code', 'POST', { permanent: document.getElementById('ocMode').value === 'forever' });
       document.getElementById('ocCode').textContent = r.code;
+      document.getElementById('ocHint').textContent = r.permanent
+        ? 'Kode SELAMANYA: berlaku untuk setiap pembatalan sampai Anda menghapus atau menggantinya. Tampil sekali — simpan baik-baik; tablet perlu internet.'
+        : 'Kode SEKALI PAKAI: berlaku untuk satu pembatalan/retur lalu hangus. Tampil sekali; tablet perlu internet.';
       document.getElementById('ocShow').classList.remove('hide');
-      renderOwnerCode({ active: { createdAt: r.createdAt }, lastUsed: null });
+      renderOwnerCode({ active: { createdAt: r.createdAt, permanent: r.permanent, useCount: 0 }, lastUsed: null });
     } catch (e) {
       if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
     } finally { btn.disabled = false; }

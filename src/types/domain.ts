@@ -1020,6 +1020,8 @@ export interface CancelCode {
   createdAt: number
   createdByUserId: string
   createdByName: string
+  /** Kode "selamanya": tetap berlaku setelah dipakai sampai dihapus/diganti. Kosong = sekali pakai. */
+  permanent?: boolean
 }
 
 export type BillPaymentStatus =

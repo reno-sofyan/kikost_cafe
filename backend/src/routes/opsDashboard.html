@@ -130,6 +130,7 @@
   .ocode { margin: 0 0 14px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
   .ocode .row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .ocode .t { font-size: .85rem; font-weight: 600; margin-right: auto; }
+  .ocode select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: inherit; font: inherit; }
   .ocode .st { font-size: .78rem; color: var(--ink-400); margin-top: 6px; }
   .ocode .big { margin-top: 10px; padding: 12px; text-align: center; border-radius: 10px; background: var(--surface-2);
     border: 1px dashed var(--brand); }
@@ -232,11 +233,12 @@
       <div class="ocode" id="ocode">
         <div class="row1">
           <span class="t">Kode Pembatalan Pemilik</span>
+          <select id="ocMode" aria-label="Jenis kode"><option value="once">Sekali pakai</option><option value="forever">Selamanya</option></select>
           <button class="primary" id="ocGen" onclick="genOwnerCode()">Buat Kode</button>
           <button id="ocDel" class="hide" onclick="delOwnerCode()">Hapus</button>
         </div>
         <div class="st" id="ocStatus">Memuat…</div>
-        <div class="big hide" id="ocShow"><b id="ocCode"></b><span>Sebutkan ke kasir. Kode tampil sekali, berlaku untuk satu pembatalan, butuh internet di tablet.</span></div>
+        <div class="big hide" id="ocShow"><b id="ocCode"></b><span id="ocHint"></span></div>
         <div class="err" id="ocErr"></div>
       </div>
       <div class="ocode oacc" id="oacc">
@@ -472,7 +474,7 @@
         document.getElementById('paneActivity').innerHTML = '<div class="empty">Gagal memuat detail.</div>';
     }
   }
-  // ---- Kode pembatalan Pemilik (dicocokkan tablet ke server, sekali pakai) ----
+  // ---- Kode pembatalan Pemilik (dicocokkan tablet ke server; sekali pakai atau selamanya) ----
   function resetOwnerCode() {
     document.getElementById('ocShow').classList.add('hide');
     document.getElementById('ocCode').textContent = '';
@@ -485,7 +487,11 @@
     del.classList.toggle('hide', !st.active);
     document.getElementById('ocGen').textContent = st.active ? 'Buat Kode Baru' : 'Buat Kode';
     let text;
-    if (st.active) text = 'Ada 1 kode aktif, dibuat ' + fmtTime(st.active.createdAt) + '. Belum terpakai.';
+    if (st.active && st.active.permanent) {
+      text = 'Kode SELAMANYA aktif sejak ' + fmtTime(st.active.createdAt) + ' — berlaku untuk setiap pembatalan sampai dihapus atau diganti. ' +
+        (st.active.useCount ? 'Sudah dipakai ' + st.active.useCount + '×, terakhir ' + fmtTime(st.active.lastUsedAt) + (st.active.deviceLabel ? ' di ' + st.active.deviceLabel : '') + '.' : 'Belum pernah dipakai.');
+    }
+    else if (st.active) text = 'Ada 1 kode sekali pakai aktif sejak ' + fmtTime(st.active.createdAt) + ', belum terpakai. Membuat kode baru menggantikannya.';
     else if (st.lastUsed) text = 'Tidak ada kode aktif. Terakhir dipakai ' + fmtTime(st.lastUsed.usedAt) + (st.lastUsed.deviceLabel ? ' di ' + st.lastUsed.deviceLabel : '') + '.';
     else text = 'Belum ada kode dari konsol ini.';
     document.getElementById('ocStatus').textContent = text;
@@ -505,11 +511,14 @@
     document.getElementById('ocErr').textContent = '';
     btn.disabled = true;
     try {
-      const r = await api('/tenant/' + encodeURIComponent(id) + '/owner-code', 'POST');
+      const r = await api('/tenant/' + encodeURIComponent(id) + '/owner-code', 'POST', { permanent: document.getElementById('ocMode').value === 'forever' });
       if (id !== currentTenantId) return;
       document.getElementById('ocCode').textContent = r.code;
+      document.getElementById('ocHint').textContent = r.permanent
+        ? 'Kode SELAMANYA: berlaku untuk setiap pembatalan sampai Anda menghapus atau menggantinya. Tampil sekali — simpan baik-baik; tablet perlu internet.'
+        : 'Kode SEKALI PAKAI: berlaku untuk satu pembatalan/retur lalu hangus. Tampil sekali; tablet perlu internet.';
       document.getElementById('ocShow').classList.remove('hide');
-      renderOwnerCode({ active: { createdAt: r.createdAt }, lastUsed: null });
+      renderOwnerCode({ active: { createdAt: r.createdAt, permanent: r.permanent, useCount: 0 }, lastUsed: null });
     } catch (e) {
       if (String(e.message) !== '401') document.getElementById('ocErr').textContent = e.message;
     } finally {

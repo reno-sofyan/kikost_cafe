@@ -564,6 +564,24 @@ async function assertCorrectionReason(correction: ItemCorrection | undefined): P
   if (await isOwnerCancelRequired()) throw new ItemCorrectionReasonRequiredError()
 }
 
+/**
+ * Mengubah catatan satu item (mis. "tidak pakai saos"). Hanya untuk item yang
+ * belum dikirim ke dapur — catatan baru tak akan sampai ke tiket yang sudah tercetak.
+ */
+export async function updateOrderItemNotes(itemId: string, notes: string): Promise<void> {
+  const item = await db.orderItems.get(itemId)
+  if (!item) return
+  if (!item.skipKitchen && (item.kitchenPrintedAt != null || item.kitchenStatus !== 'new')) {
+    throw new Error('Item sudah dikirim ke dapur — catatan tidak bisa diubah lagi.')
+  }
+  const clean = notes.trim().replace(/\s+/g, ' ').slice(0, 200)
+  await db.transaction('rw', [db.orderItems, db.syncQueue], async () => {
+    await db.orderItems.update(itemId, { notes: clean, updatedAt: getTrustedNow() })
+    const updated = await db.orderItems.get(itemId)
+    if (updated) await enqueueSync('orderItems', itemId, updated)
+  })
+}
+
 export async function updateOrderItemQty(itemId: string, qty: number, correction?: ItemCorrection): Promise<void> {
   const item = await db.orderItems.get(itemId)
   if (!item) return
