@@ -197,3 +197,54 @@ export async function reprintKitchenTicket(
   })
   void processPrintQueue() // tak ditunggu — kasir tak tertahan printer lambat
 }
+
+/**
+ * Salinan internal kafe dari Riwayat: format tiket dapur (tanpa harga) berisi
+ * SEMUA item aktif pesanan, dicetak di printer kasir — ber-audit sebagai cetak ulang.
+ */
+export async function printInternalOrderCopy(orderId: string, actor: { userId: string; userName: string }): Promise<void> {
+  const order = await db.orders.get(orderId)
+  if (!order) throw new Error('Pesanan tidak ditemukan')
+  if (!(await activePrinterForStation('cashier'))) throw new Error('Printer kasir belum diatur')
+  const items = await db.orderItems
+    .where('orderId')
+    .equals(orderId)
+    .filter((i) => !i.voided && !i.removed)
+    .toArray()
+  if (items.length === 0) throw new Error('Tidak ada item pada pesanan ini')
+  const settings = await getSettings()
+  const copyCount = await db.printJobs
+    .where('orderId')
+    .equals(orderId)
+    .filter((j) => j.id.startsWith(`internal_${orderId}_`))
+    .count()
+
+  const where = await tableOrQueueOf(order)
+  await db.transaction('rw', [db.printJobs, db.printers, db.syncQueue, db.auditLogs], async () => {
+    await enqueuePrintJob({
+      kind: 'kitchen_ticket',
+      station: 'cashier',
+      payload: {
+        outletName: businessDisplayName(settings),
+        orderNumber: order.orderNumber,
+        tableOrQueue: where,
+        customerName: order.notes || '',
+        orderedAtLabel: formatTime(order.createdAt),
+        cashierName: order.cashierName,
+        source: onlineChannelLabel(order) || (SOURCE_LABELS[order.source] ?? order.source),
+        ticketLabel: 'SALINAN INTERNAL',
+        paperSize: settings.receiptPaperSize,
+        lines: items.map(toLine),
+        // Selalu cetak nomor pesanan & meja/antrean di salinan internal.
+        isAddition: true,
+      } satisfies KitchenTicketPayload,
+      title: `Salinan internal — ${order.orderNumber}`,
+      orderId: order.id,
+      isReprint: true,
+      idempotencyKey: `internal_${order.id}_${copyCount + 1}`,
+      requestedBy: actor.userId,
+      requestedByName: actor.userName,
+    })
+  })
+  void processPrintQueue() // tak ditunggu — kasir tak tertahan printer lambat
+}

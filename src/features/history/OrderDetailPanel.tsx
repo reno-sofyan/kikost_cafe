@@ -9,6 +9,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah } from '@/lib/currency'
 import { prepareReceiptData } from '@/features/printing/printReceipt'
+import { printInternalOrderCopy } from '@/db/repositories/kitchenDispatch'
 import { PrintPreviewModal } from '@/features/printing/PrintPreviewModal'
 import { SendReceiptModal } from '@/features/payments/SendReceiptModal'
 import { ReasonPromptModal } from '@/components/ui/ReasonPromptModal'
@@ -49,6 +50,8 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [restock, setRestock] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [internalMsg, setInternalMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [internalBusy, setInternalBusy] = useState(false)
 
   const canVoid = roleHasPermission(currentUser.role, 'order.void')
   const canReturn = roleHasPermission(currentUser.role, 'order.return')
@@ -63,6 +66,19 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
     const data = await prepareReceiptData(order, { isReprint: true })
     setReceipt(data)
     setShowPrint(true)
+  }
+
+  async function handlePrintInternal() {
+    setInternalBusy(true)
+    setInternalMsg(null)
+    try {
+      await printInternalOrderCopy(order.id, { userId: currentUser.id, userName: currentUser.name })
+      setInternalMsg({ ok: true, text: 'Salinan internal dikirim ke printer kasir.' })
+    } catch (e) {
+      setInternalMsg({ ok: false, text: e instanceof Error ? e.message : 'Gagal mencetak salinan internal' })
+    } finally {
+      setInternalBusy(false)
+    }
   }
 
   async function handleFreeCancel(r: string) {
@@ -289,9 +305,15 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
         </div>
 
         <div className="flex flex-none flex-col gap-2 border-t border-ink-800 p-4">
-          <button className="btn-primary" onClick={() => void openPrintPreview()}>
-            Reprint Struk
-          </button>
+          {internalMsg && <p className={`text-sm ${internalMsg.ok ? 'text-success-500' : 'text-red-400'}`}>{internalMsg.text}</p>}
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1" onClick={() => void openPrintPreview()}>
+              Struk Pelanggan
+            </button>
+            <button className="btn-secondary flex-1" disabled={internalBusy} onClick={() => void handlePrintInternal()}>
+              {internalBusy ? 'Mencetak...' : 'Salinan Internal'}
+            </button>
+          </div>
           {proTools && (order.status === 'paid' || order.status === 'completed') && (
             <button className="btn-secondary" onClick={() => setSendingReceipt(true)}>
               Kirim Struk via WhatsApp

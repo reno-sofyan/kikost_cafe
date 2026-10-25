@@ -1,7 +1,7 @@
 {
   "name": "kione-pos",
   "private": true,
-  "version": "1.0.43",
+  "version": "1.0.45",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -29,7 +29,7 @@
     "@capacitor/share": "^7.0.4",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
-    "jspdf": "^2.5.2",
+    "jspdf": "^4.2.1",
     "papaparse": "^5.4.1",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",

@@ -53,7 +53,7 @@ layar transaksi berhasil muncul — langsung bisa mulai transaksi berikutnya.
 
 ## Struk
 
-- **Cetak ulang**: Riwayat → pilih transaksi → Cetak Ulang.
+- **Cetak ulang**: Riwayat → pilih transaksi → **Struk Pelanggan** (struk lengkap dengan harga) atau **Salinan Internal** (format tiket dapur tanpa harga, untuk arsip kafe; dicetak di printer kasir).
 - **Simpan PDF**: dari pratinjau struk.
 - **Tes cetak**: minta admin (menu Pengaturan → Printer).
 

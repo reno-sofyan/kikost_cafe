@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Builder ----
-FROM node:20-bookworm-slim AS builder
+FROM node:24.22.1-bookworm-slim AS builder
 WORKDIR /app
 ENV NODE_ENV=development
 COPY package.json package-lock.json* ./
@@ -14,11 +14,12 @@ RUN npm run build
 RUN npm ci --omit=dev
 
 # ---- Runtime ----
-FROM node:20-bookworm-slim AS runtime
+FROM node:24.22.1-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# tini untuk reaping sinyal yang benar.
-RUN apt-get update && apt-get install -y --no-install-recommends tini \
+# tini untuk reaping sinyal yang benar; upgrade menarik patch keamanan Debian
+# (mis. openssl, libbrotli) yang terbit setelah image dasar dibuat.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends tini \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/node_modules ./node_modules

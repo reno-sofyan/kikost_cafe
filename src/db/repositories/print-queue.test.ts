@@ -6,7 +6,7 @@ import { savePrinter, setPrintRoute } from './printers'
 import { enqueuePrintJob, listPrintJobs, printQueueIdle, processPrintQueue, retryPrintJob } from './printQueue'
 import { buildSampleReceiptData } from '@/features/printing/receiptData'
 import { DEFAULT_SETTINGS } from './settings'
-import { sendOrderToKitchen } from './kitchenDispatch'
+import { printInternalOrderCopy, sendOrderToKitchen } from './kitchenDispatch'
 import { finalizePayment } from './checkout'
 import { addOrderItem, startOrder } from './orders'
 import { openShift } from './shifts'
@@ -273,5 +273,27 @@ describe('Antrean per printer', () => {
     await processPrintQueue()
     await printQueueIdle()
     expect(order).toEqual(['baru', 'lama'])
+  })
+
+  it('salinan internal: format tiket dapur berisi semua item, ke printer kasir, ber-audit', async () => {
+    await seedPrinters()
+    await seedProduct('nasi', 'cat-food')
+    await seedProduct('kopi', 'cat-drink')
+    const order = await newOrder()
+    await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'Nasi', unitPrice: 20000, qty: 1, modifiers: [], notes: '' })
+    await addOrderItem({ orderId: order.id, productId: 'kopi', productName: 'Kopi', unitPrice: 20000, qty: 2, modifiers: [], notes: '' })
+
+    await printInternalOrderCopy(order.id, actor)
+    await printInternalOrderCopy(order.id, actor)
+    await printQueueIdle()
+
+    const jobs = (await listPrintJobs()).filter((j) => j.title.startsWith('Salinan internal'))
+    expect(jobs).toHaveLength(2)
+    expect(jobs.every((j) => j.kind === 'kitchen_ticket' && j.station === 'cashier' && j.isReprint && j.status === 'PRINTED')).toBe(true)
+    const payload = jobs[0].payload as { ticketLabel: string; lines: { name: string }[] }
+    expect(payload.ticketLabel).toBe('SALINAN INTERNAL')
+    expect(payload.lines.map((l) => l.name).sort()).toEqual(['Kopi', 'Nasi'])
+    expect(sent.every((s) => s.host === '10.0.0.3')).toBe(true)
+    expect(await db.auditLogs.where('action').equals('kitchen.ticket.reprint').count()).toBe(2)
   })
 })

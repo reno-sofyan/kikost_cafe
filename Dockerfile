@@ -2,7 +2,7 @@
 # Image web PWA Kione POS (build statis dilayani oleh nginx).
 
 # ---- Builder ----
-FROM node:20-bookworm-slim AS builder
+FROM node:24.22.1-bookworm-slim AS builder
 WORKDIR /app
 ENV NODE_ENV=development
 
@@ -20,7 +20,7 @@ ENV VITE_BUILD_LABEL=$VITE_BUILD_LABEL
 RUN npm run build
 
 # ---- Runtime ----
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 RUN apk add --no-cache curl
 COPY deploy/nginx/web.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
