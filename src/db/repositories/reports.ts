@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { listLowStockIngredients, listLowStockProducts } from '@/db/repositories/stock'
 import { jakartaDateKey } from '@/lib/datetime'
 import { isOnlineOrder, onlineCommissionOf, onlinePlatformOf } from '@/lib/onlineOrders'
-import type { OnlinePlatform, OrderType, PaymentMethod } from '@/types/domain'
+import type { OnlinePlatform, Order, OrderType, PaymentMethod } from '@/types/domain'
 
 export interface DateRange {
   from: number
@@ -39,6 +39,16 @@ export interface SalesReport {
   taxTotal: number
   serviceChargeTotal: number
   returnTotal: number
+  /** Bagian omzet periode ini yang belum dibayar (piutang tagihan tertunda). */
+  receivableTotal: number
+  receivableCount: number
+  /**
+   * Pelunasan piutang: uang yang diterima dalam rentang ini untuk pesanan yang
+   * dibayar di HARI LAIN dari tanggal pesanannya (mis. dibuka tgl 29, lunas tgl 30).
+   * Uang masuk, bukan omzet periode pelunasan — omzetnya sudah di tanggal pesanan.
+   */
+  settlements: { orderId: string; orderNumber: string; orderedAt: number; paidAt: number; method: PaymentMethod; amount: number }[]
+  settlementTotal: number
   voidCount: number
   expenseTotal: number
   grossProfit: number
@@ -108,12 +118,41 @@ export interface SalesReport {
 export const UNASSIGNED_WAITER = 'Tanpa pelayan'
 const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000
 
+const inRange = (at: number, range: DateRange) => at >= range.from && at <= range.to
+
+/**
+ * Pengakuan penjualan (akrual): dicatat pada TANGGAL PESANAN, bukan saat dilunasi.
+ * Yang diakui: pesanan lunas, plus Tagihan Tertunda yang belum dibayar (barang sudah
+ * diserahkan — sisanya piutang). Pesanan terbuka biasa (meja masih berjalan) belum
+ * diakui. Uang masuk per shift tetap mengikuti waktu bayar (lihat `payBill`).
+ */
+export const isRecognizedSale = (o: Pick<Order, 'status' | 'payLater'>): boolean =>
+  o.status === 'paid' || o.status === 'completed' || (o.status === 'open' && !!o.payLater)
+
+/** Pembayaran dalam rentang untuk penjualan yang tanggal pesanannya berbeda hari (lihat `settlements`). */
+async function buildSettlements(range: DateRange, inScope: (o: { type: OrderType }) => boolean): Promise<SalesReport['settlements']> {
+  const payments = (await db.payments.where('createdAt').between(range.from, range.to, true, true).toArray()).filter(
+    (p) => p.amount > 0 && !p.reversalOfPaymentId,
+  )
+  if (!payments.length) return []
+  const orders = new Map(
+    (await db.orders.where('id').anyOf([...new Set(payments.map((p) => p.orderId))]).toArray()).map((o) => [o.id, o]),
+  )
+  return payments
+    .flatMap((p) => {
+      const o = orders.get(p.orderId)
+      if (!o || !isRecognizedSale(o) || !inScope(o) || jakartaDateKey(p.createdAt) === jakartaDateKey(o.createdAt)) return []
+      return [{ orderId: o.id, orderNumber: o.orderNumber, orderedAt: o.createdAt, paidAt: p.createdAt, method: p.method, amount: p.amount }]
+    })
+    .sort((a, b) => a.paidAt - b.paidAt)
+}
+
 export async function buildSalesReport(range: DateRange, scope: ReportScope = 'all'): Promise<SalesReport> {
   const inScope = (o: { type: OrderType }) => scope === 'all' || (scope === 'online') === isOnlineOrder(o)
   const orders = await db.orders
     .where('createdAt')
     .between(range.from, range.to, true, true)
-    .filter((o) => (o.status === 'paid' || o.status === 'completed') && inScope(o))
+    .filter((o) => isRecognizedSale(o) && inScope(o))
     .toArray()
 
   const orderIds = orders.map((o) => o.id)
@@ -121,11 +160,13 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
   const activeItems = items.filter((i) => !i.voided && !i.removed)
   const payments = orderIds.length ? await db.payments.where('orderId').anyOf(orderIds).toArray() : []
   const returns = orderIds.length ? await db.returns.where('orderId').anyOf(orderIds).toArray() : []
+  // Pembatalan dihitung pada waktu batal (sama dengan konsol Pemilik).
   const voidOrdersInRange = await db.orders
-    .where('createdAt')
-    .between(range.from, range.to, true, true)
-    .filter((o) => o.status === 'void' && inScope(o))
+    .where('status')
+    .equals('void')
+    .filter((o) => inRange(o.voidedAt ?? o.createdAt, range) && inScope(o))
     .count()
+  const settlements = await buildSettlements(range, inScope)
   // Pengeluaran operasional tak bisa dibagi per kanal — hanya masuk laporan gabungan.
   const expenses = scope === 'all' ? await db.expenses.where('createdAt').between(range.from, range.to, true, true).toArray() : []
 
@@ -191,7 +232,9 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
   const methodTotals = new Map<PaymentMethod, { amount: number; count: number }>()
   const tipByMethod = new Map<PaymentMethod, number>()
   const tipByOrder = new Map<string, number>()
+  const paidByOrder = new Map<string, number>()
   for (const payment of payments) {
+    paidByOrder.set(payment.orderId, (paidByOrder.get(payment.orderId) ?? 0) + payment.amount)
     const m = methodTotals.get(payment.method) ?? { amount: 0, count: 0 }
     m.amount += payment.amount
     if (payment.amount > 0) m.count += 1
@@ -206,6 +249,11 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
     .sort((a, b) => b.amount - a.amount)
   const tipsByMethod = Array.from(tipByMethod.entries()).map(([method, amount]) => ({ method, amount }))
   const tipTotal = tipsByMethod.reduce((s, t) => s + t.amount, 0)
+  // Piutang: sisa tagihan tertunda yang belum lunas (pembayaran sebagian dikurangkan).
+  const receivables = orders
+    .filter((o) => o.status === 'open')
+    .map((o) => Math.max(0, o.grandTotal - (paidByOrder.get(o.id) ?? 0)))
+    .filter((v) => v > 0)
 
   const grossSales = orders.reduce((s, o) => s + o.subtotal, 0)
   const netSales = grossSales - discountTotal - returnTotal
@@ -325,6 +373,10 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
     serviceChargeTotal,
     returnTotal,
     voidCount: voidOrdersInRange,
+    receivableTotal: receivables.reduce((s, v) => s + v, 0),
+    receivableCount: receivables.length,
+    settlements,
+    settlementTotal: settlements.reduce((s, x) => s + x.amount, 0),
     expenseTotal,
     grossProfit,
     byCategory,

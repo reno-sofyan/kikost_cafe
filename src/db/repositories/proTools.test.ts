@@ -199,7 +199,7 @@ describe('Struk & ringkasan via WhatsApp', () => {
     ])
     const message = await buildDailySummaryMessage(shiftId)
     expect(message).toContain('Kafe Uji')
-    expect(message).toMatch(/Omzet: \*Rp\s?90\.000\* \(2 transaksi\)/)
+    expect(message).toMatch(/Penerimaan shift: \*Rp\s?90\.000\* \(2 transaksi\)/)
     expect(message).toMatch(/Selisih kas: \*-Rp\s?5\.000\* \(kurang\)/)
     expect(message).toContain('1. Kopi — 3×')
     expect(message).toContain('(90%)')

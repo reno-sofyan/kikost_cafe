@@ -5,9 +5,10 @@ import { buildSalesReport, salesProfileFor } from '../src/lib/salesReport.js'
 const NOON = Date.UTC(2026, 9, 17, 5, 30)
 
 const orders = [
-  { id: 'o1', type: 'dine_in', grandTotal: 50000, discountAmount: 5000, guestCount: 2, waiterName: 'Rani', paidAt: NOON },
-  { id: 'o2', type: 'takeaway', grandTotal: 20000, paidAt: NOON + 3_600_000 },
-  { id: 'o3', type: 'delivery', onlinePlatform: 'gofood', grandTotal: 30000, waiterName: null, paidAt: NOON },
+  // paidAt sengaja beda jam: laporan memakai tanggal pesanan (akrual), bukan waktu lunas.
+  { id: 'o1', status: 'paid', type: 'dine_in', grandTotal: 50000, discountAmount: 5000, guestCount: 2, waiterName: 'Rani', createdAt: NOON, paidAt: NOON + 7_200_000 },
+  { id: 'o2', status: 'completed', type: 'takeaway', grandTotal: 20000, createdAt: NOON + 3_600_000, paidAt: NOON + 7_200_000 },
+  { id: 'o3', status: 'paid', type: 'delivery', onlinePlatform: 'gofood', grandTotal: 30000, waiterName: null, createdAt: NOON, paidAt: NOON },
 ]
 const items = [
   { orderId: 'o1', productName: 'Kopi Susu', qty: 2, lineTotal: 36000 },
@@ -33,7 +34,7 @@ describe('rekap penjualan konsol Pemilik', () => {
 
   it('kafe: jenis pesanan + platform, pelayan & tip, tamu, produk, jam ramai', () => {
     const r = buildSalesReport({ businessType: 'cafe_resto', orders, items, payments, openPayLater: [{ id: 'p', payLater: { name: 'X' } }] })
-    expect(r.totals).toEqual({ count: 3, revenue: 100000, avgTicket: 33333, discount: 5000, tips: 5000, guests: 2 })
+    expect(r.totals).toEqual({ count: 3, revenue: 100000, receivable: 0, avgTicket: 33333, discount: 5000, tips: 5000, guests: 2 })
     expect(r.byType.map((t) => t.label)).toEqual(['Dine-in', 'Online • GoFood', 'Takeaway'])
     expect(r.byWaiter).toEqual([{ name: 'Rani', count: 1, revenue: 50000, tips: 5000 }])
     expect(r.byMethod.find((m) => m.method === 'qris')).toMatchObject({ count: 1, amount: 20000 })
@@ -63,5 +64,37 @@ describe('rekap penjualan konsol Pemilik', () => {
     expect(r.payLater.count).toBe(2)
     expect(r.payLater.value).toBe(20000)
     expect(r.payLater.rows[0]!.name).toBe('Pak Budi')
+  })
+
+  it('akrual: tagihan tertunda periode ini masuk omzet, sisanya jadi piutang', () => {
+    const payLater = { id: 'pl', status: 'open', type: 'dine_in', grandTotal: 15000, createdAt: NOON, payLater: { name: 'Pak Budi', markedAt: NOON } }
+    const r = buildSalesReport({
+      businessType: 'kantin',
+      orders: [...orders, payLater],
+      items: [...items, { orderId: 'pl', productName: 'Nasi Rames', qty: 1, lineTotal: 15000 }],
+      payments: [...payments, { orderId: 'pl', method: 'cash', amount: 5000 }],
+      openPayLater: [payLater],
+    })
+    expect(r.totals.count).toBe(4)
+    expect(r.totals.revenue).toBe(115000)
+    // Dibayar sebagian Rp5.000 → piutang Rp10.000.
+    expect(r.totals.receivable).toBe(10000)
+    expect(r.payLater.value).toBe(10000)
+    expect(r.byHour[12]).toEqual({ hour: 12, count: 3, revenue: 95000 })
+    expect(r.topProducts.map((p) => p.name)).toContain('Nasi Rames')
+    expect(r.settlements).toEqual({ count: 0, value: 0, rows: [] })
+  })
+
+  it('pelunasan piutang ditampilkan terpisah dengan label metode', () => {
+    const r = buildSalesReport({
+      businessType: 'kantin', orders: [], items: [], payments: [], openPayLater: [],
+      settlements: [{ orderNumber: 'TRX-12', orderedAt: NOON - 86_400_000, paidAt: NOON, method: 'cash', amount: 40000 }],
+    })
+    expect(r.totals.revenue).toBe(0)
+    expect(r.settlements).toEqual({
+      count: 1,
+      value: 40000,
+      rows: [{ orderNumber: 'TRX-12', orderedAt: NOON - 86_400_000, paidAt: NOON, method: 'cash', amount: 40000, label: 'Tunai' }],
+    })
   })
 })

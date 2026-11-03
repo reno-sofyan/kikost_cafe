@@ -69,6 +69,21 @@ Filter tanggal (harian/mingguan/bulanan, zona **Asia/Jakarta**). Isi:
 - **Laba kotor** berdasarkan HPP
 - Laporan shift & laporan stok
 - **Ekspor CSV / PDF**
+- **Belum dibayar (piutang)** dan **Pelunasan piutang** (uang masuk untuk pesanan dari tanggal lain)
+
+Semua jenis usaha memakai **dasar akrual**: omzet dicatat pada tanggal pesanan, bukan saat
+dilunasi; shift mencatat **penerimaan** menurut waktu bayar. Rincian aturannya:
+[STANDAR-PENCATATAN.md](STANDAR-PENCATATAN.md).
+
+## Absensi (Absensi — Kafe & Resto)
+
+- Karyawan absen dari **HP sendiri**: ketuk **QR Absensi** di tablet, karyawan memindainya
+  dengan kamera HP terdaftar, lalu selfie.
+- Daftarkan HP tiap karyawan di bagian **Absen lewat HP** (satu HP per karyawan). Di bagian
+  yang sama, atur selfie **Wajib/Opsional**.
+- **Absen Manual** hanya untuk HP mati/tanpa internet: wajib alasan + PIN Admin/Pemilik, dan
+  ditandai “Manual” di rekap.
+- Rincian & cara kerja: [ABSENSI-HP.md](ABSENSI-HP.md).
 
 ## Pelanggan (Pelanggan)
 

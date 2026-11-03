@@ -1,6 +1,7 @@
 import { formatRupiah } from '@/lib/currency'
 import { formatDateTime } from '@/lib/datetime'
 import type { ShiftSummary } from '@/db/repositories/shifts'
+import { PAYMENT_METHOD_LABELS } from '@/features/reports/paymentMethods'
 
 export function printShiftReport(summary: ShiftSummary): void {
   const { shift } = summary
@@ -15,6 +16,7 @@ export function printShiftReport(summary: ShiftSummary): void {
   .bold { font-weight: 700; }
   .row { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; }
   hr { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+  .note { font-size: 9px; }
 </style></head>
 <body>
   <div class="center bold">LAPORAN TUTUP SHIFT</div>
@@ -24,11 +26,26 @@ export function printShiftReport(summary: ShiftSummary): void {
   ${row('Ditutup', shift.closedAt ? formatDateTime(shift.closedAt) : '-')}
   <hr />
   ${row('Modal Awal', formatRupiah(shift.openingCash))}
-  ${row('Penjualan Tunai', formatRupiah(summary.cashSales))}
-  ${row('Penjualan Non-Tunai', formatRupiah(summary.nonCashSales))}
-${summary.platformSales > 0 ? `  ${row('  via Aplikasi Online', formatRupiah(summary.platformSales))}\n` : ''}  ${row('Total Penjualan', formatRupiah(summary.totalSales))}
+  ${row('Penerimaan Tunai', formatRupiah(summary.cashSales))}
+  ${row('Penerimaan Non-Tunai', formatRupiah(summary.nonCashSales))}
+${summary.platformSales > 0 ? `  ${row('  via Aplikasi Online', formatRupiah(summary.platformSales))}\n` : ''}  ${row('Total Penerimaan', formatRupiah(summary.totalSales))}
   ${row('Jumlah Transaksi', String(summary.transactionCount))}
-  <hr />
+  <hr />${
+    summary.settlements.length > 0
+      ? `
+  <div class="bold">PELUNASAN PIUTANG</div>
+  <div class="note">Pesanan dari sebelum shift ini, dilunasi di shift ini (sudah termasuk Total Penerimaan; omzetnya di tanggal pesanan).</div>
+${summary.settlements
+  .map(
+    (x) =>
+      `  ${row(x.orderNumber, formatRupiah(x.amount))}
+  <div class="note">  pesanan ${formatDateTime(x.orderedAt)}${x.payLaterName ? ` • ${x.payLaterName}` : ''} • ${x.methods.map((m) => PAYMENT_METHOD_LABELS[m] ?? m).join(', ')}</div>`,
+  )
+  .join('\n')}
+  ${row('Total Pelunasan', formatRupiah(summary.settlementTotal))}
+  <hr />`
+      : ''
+  }
   ${row('Kas Masuk', formatRupiah(summary.cashIn))}
   ${row('Kas Keluar', formatRupiah(summary.cashOut))}
   ${row('Pengeluaran', formatRupiah(summary.totalExpenses))}

@@ -172,6 +172,9 @@
   .tbl .ord { font-size: .78rem; margin-top: 6px; font-variant-numeric: tabular-nums; }
   /* Bukti bayar (kantin) */
   .proof img { display: block; max-width: 100%; max-height: 420px; margin: 8px 0 4px; border-radius: 10px; border: 1px solid var(--border); }
+  /* Absensi (kafe) */
+  .selfie img { display: block; width: 180px; max-width: 100%; margin: 8px 0 4px; border-radius: 10px; border: 1px solid var(--border); }
+  .tag.manual { background: var(--warn-soft); color: var(--warn); }
   .linkbtn { border: 0; background: none; padding: 0; color: var(--brand); font-weight: 600; font-size: .78rem; cursor: pointer; }
   .sect { margin: 18px 0 8px; font-size: .78rem; font-weight: 600; color: var(--ink-3); }
 
@@ -257,6 +260,7 @@
     <div id="paneOrders"></div>
     <div id="paneSales" class="hide"></div>
     <div id="paneTables" class="hide"></div>
+    <div id="paneAttendance" class="hide"></div>
     <div id="panePayLater" class="hide"></div>
     <div id="paneProofs" class="hide"></div>
     <div id="paneCancels" class="hide"></div>
@@ -273,14 +277,15 @@
   let cancelDays = 30;
   let salesPreset = 'today';
   let proofPreset = 'today';
+  let attPreset = 'today';
   let currentTab = 'orders';
   const loaded = {};
 
   const TABS = [['orders', 'Transaksi', 'paneOrders'], ['sales', 'Penjualan', 'paneSales']]
-    .concat(AREA === 'kafe' ? [['tables', 'Meja', 'paneTables']] : [])
+    .concat(AREA === 'kafe' ? [['tables', 'Meja', 'paneTables'], ['attendance', 'Absensi', 'paneAttendance']] : [])
     .concat(AREA === 'kantin' ? [['payLater', 'Tagihan Tertunda', 'panePayLater'], ['proofs', 'Bukti Bayar', 'paneProofs']] : [])
     .concat([['cancels', 'Pembatalan', 'paneCancels'], ['activity', 'Aktivitas', 'paneActivity']]);
-  const LOADERS = { cancels: () => loadCancels(), sales: () => loadSales(), tables: () => loadTables(), payLater: () => loadPayLater(), proofs: () => loadProofs() };
+  const LOADERS = { cancels: () => loadCancels(), sales: () => loadSales(), tables: () => loadTables(), attendance: () => loadAttendance(), payLater: () => loadPayLater(), proofs: () => loadProofs() };
   document.getElementById('tabs').innerHTML = TABS.map(([key, label]) =>
     '<button data-tab="' + key + '" onclick="showTab(\'' + key + '\')">' + label + '</button>').join('');
 
@@ -721,10 +726,11 @@
     const cafe = d.profile === 'cafe', kantin = d.profile === 'kantin';
     const seg = '<div class="seg">' + SALES_PRESETS.map(([k, label]) =>
       '<button class="' + (k === salesPreset ? 'active' : '') + '" onclick="loadSales(\'' + k + '\')">' + label + '</button>').join('') + '</div>';
-    const head = '<div class="toolbar"><span class="muted">Penjualan lunas · ' + esc(d.label) + '</span>' + seg + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Penjualan menurut tanggal pesanan · ' + esc(d.label) + '</span>' + seg + '</div>';
     const t = d.totals;
     const k = [
       kpi('Omzet', compact(t.revenue), rupiah(t.revenue)),
+      kpi('Belum dibayar', compact(t.receivable), t.receivable ? 'piutang dari omzet periode ini' : 'semua lunas', t.receivable > 0),
       kpi('Transaksi', t.count.toLocaleString('id-ID'), t.count ? 'rata-rata ' + compact(t.avgTicket) : ''),
       kpi('Diskon', compact(t.discount), ''),
     ];
@@ -740,6 +746,14 @@
       '</div>';
 
     let extra = '';
+    if (d.settlements.count) {
+      extra += '<div class="sect">Pelunasan piutang · ' + d.settlements.count + '× · ' + rupiah(d.settlements.value) +
+        ' — uang masuk untuk pesanan dari tanggal lain, bukan omzet periode ini</div>' +
+        '<div class="card list">' + d.settlements.rows.map((x) =>
+          '<div class="item"><div class="main"><div class="t1">' + esc(x.orderNumber || '—') + ' <span class="tag paid">Lunas</span></div>' +
+          '<div class="t2">pesanan ' + esc(fmtTime(x.orderedAt)) + ' · dilunasi ' + esc(fmtTime(x.paidAt)) + ' · ' + esc(x.label) + '</div></div>' +
+          '<div class="amt">' + rupiah(x.amount) + '</div></div>').join('') + '</div>';
+    }
     if (cafe) {
       extra += '<div class="sect">Per pelayan</div>' + (d.byWaiter.length
         ? '<div class="card list"><table class="sales-tbl"><thead><tr><th>Pelayan</th><th>Pesanan</th><th>Omzet</th><th>Tip</th></tr></thead><tbody>' +
@@ -749,8 +763,11 @@
     }
 
     const pane = document.getElementById('paneSales');
-    if (!t.count) { pane.innerHTML = head + kp + '<div class="card empty">Belum ada penjualan lunas pada periode ini.</div>' + extra; return; }
-    pane.innerHTML = head + kp + groups + hoursChart(d.byHour) + extra;
+    const basisNote = '<p class="muted" style="font-size:.76rem;margin:14px 2px 0">Dasar pencatatan akrual: omzet dicatat pada tanggal pesanan. ' +
+      'Tagihan tertunda yang belum dibayar ikut omzet dan tampil sebagai &ldquo;Belum dibayar&rdquo;. Pesanan terbuka biasa (meja masih berjalan) belum dihitung. ' +
+      'Uang yang dibayar di hari lain tampil di &ldquo;Pelunasan piutang&rdquo; pada periode pembayarannya.</p>';
+    if (!t.count) { pane.innerHTML = head + kp + '<div class="card empty">Belum ada penjualan pada periode ini.</div>' + extra + basisNote; return; }
+    pane.innerHTML = head + kp + groups + hoursChart(d.byHour) + extra + basisNote;
   }
 
   // ---- Meja (kafe) ----
@@ -789,6 +806,71 @@
           (t.guestCount ? t.guestCount + '/' : '') + (t.capacity || '–') + ' kursi</small></div>' +
           '<div class="st">' + esc(st[0] + since) + '</div>' + o + '</div>';
       }).join('') + '</div>').join('');
+  }
+
+  // ---- Absensi karyawan (kafe) ----
+  const ATT_PRESETS = [['today', 'Hari ini'], ['yesterday', 'Kemarin'], ['7d', '7 hari']];
+  const ATT_SOURCE = { phone: ['HP', ''], manual: ['Manual', 'manual'], pin: ['PIN', ''] };
+  async function loadAttendance(preset) {
+    if (preset) attPreset = preset;
+    const pane = document.getElementById('paneAttendance');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    const [from, to] = presetRange(attPreset);
+    try { renderAttendance(await api('/attendance?from=' + from + '&to=' + to)); loaded.attendance = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat absensi.</div>'; }
+  }
+  function renderAttendance(d) {
+    const seg = '<div class="seg">' + ATT_PRESETS.map(([k, label]) =>
+      '<button class="' + (k === attPreset ? 'active' : '') + '" onclick="loadAttendance(\'' + k + '\')">' + label + '</button>').join('') + '</div>';
+    const manual = d.rows.filter((r) => r.source === 'manual').length;
+    const noSelfie = d.rows.filter((r) => r.source === 'phone' && !r.hasSelfie).length;
+    const kp = '<div class="ckpis">' +
+      kpi('Absen tercatat', d.rows.length, d.label) +
+      kpi('Absen manual', manual, manual ? 'disetujui Admin/Pemilik — periksa alasannya' : 'semua lewat HP', manual > 0) +
+      kpi('HP terdaftar', d.phones.length, noSelfie ? noSelfie + ' absen tanpa selfie' : 'satu HP per karyawan', noSelfie > 0) + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Absen masuk & pulang · terbaru di atas</span>' + seg + '</div>';
+    const rows = d.rows.length ? '<div class="card list">' + d.rows.map((r) => {
+      const src = ATT_SOURCE[r.source] || ATT_SOURCE.pin;
+      const loc = r.location
+        ? ' · <a href="https://www.google.com/maps?q=' + r.location.latitude + ',' + r.location.longitude + '" target="_blank" rel="noopener noreferrer">lokasi (±' + Math.round(r.location.accuracy) + ' m)</a>'
+        : (r.source === 'phone' ? ' · tanpa lokasi' : '');
+      return '<div class="item selfie"><div class="main"><div class="t1">' + esc(r.userName) +
+        ' <span class="tag ' + (r.type === 'in' ? 'paid' : '') + '">' + (r.type === 'in' ? 'Masuk' : 'Pulang') + '</span>' +
+        ' <span class="tag ' + src[1] + '">' + src[0] + '</span>' +
+        (r.source === 'phone' && !r.hasSelfie ? ' <span class="tag void">Tanpa selfie</span>' : '') + '</div>' +
+        '<div class="t2">' + esc(fmtTime(r.createdAt)) + (r.phoneLabel ? ' · ' + esc(r.phoneLabel) : '') + loc +
+        (r.source === 'manual' ? '<br>' + esc(r.details) : '') + '</div>' +
+        (r.hasSelfie ? '<div id="sf-' + esc(r.id) + '"><button class="linkbtn" onclick="showSelfie(\'' + esc(r.id) + '\')">Lihat selfie</button></div>' : '') +
+        '</div></div>';
+    }).join('') + '</div>' : '<div class="card empty">Belum ada absen pada periode ini.</div>';
+    const phones = '<div class="sect">HP terdaftar (' + d.phones.length + ')</div>' + (d.phones.length
+      ? '<div class="card list">' + d.phones.map((p) =>
+          '<div class="item"><div class="main"><div class="t1">' + esc(p.userName) + '</div>' +
+          '<div class="t2">' + esc(p.label) + ' · didaftarkan ' + esc(fmtTime(p.createdAt)) + ' oleh ' + esc(p.createdBy) +
+          ' · dipakai ' + esc(ago(p.lastUsedAt)) + '</div></div>' +
+          '<button class="linkbtn" onclick="revokePhone(\'' + esc(p.id) + '\', \'' + esc(p.userName).replace(/'/g, '') + '\')">Cabut</button></div>').join('') + '</div>'
+      : '<div class="card empty">Belum ada HP terdaftar. Daftarkan dari tablet kasir: menu Absensi → Absen lewat HP.</div>');
+    document.getElementById('paneAttendance').innerHTML = kp + head + rows + phones;
+  }
+  async function showSelfie(id) {
+    const box = document.getElementById('sf-' + id);
+    if (!box) return;
+    box.innerHTML = '<span class="muted">Memuat selfie…</span>';
+    try {
+      const res = await apiRes('/attendance/' + encodeURIComponent(id) + '/selfie');
+      if (!res.ok) throw new Error('Selfie tidak bisa dimuat (HTTP ' + res.status + ').');
+      box.innerHTML = '<img alt="Selfie absen" src="' + URL.createObjectURL(await res.blob()) + '" />';
+    } catch (e) {
+      if (String(e.message) !== '401') box.innerHTML = '<span class="err">' + esc(e.message) + '</span>';
+    }
+  }
+  async function revokePhone(id, name) {
+    if (!confirm('Cabut HP absensi ' + name + '? HP itu tidak bisa dipakai absen lagi sampai didaftarkan ulang.')) return;
+    try {
+      const res = await apiRes('/attendance/phones/' + encodeURIComponent(id) + '/revoke', 'POST', {});
+      if (!res.ok) throw new Error('Gagal mencabut (HTTP ' + res.status + ').');
+      loadAttendance();
+    } catch (e) { if (String(e.message) !== '401') alert(e.message); }
   }
 
   // ---- Tagihan Tertunda (kantin) ----

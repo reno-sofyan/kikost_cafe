@@ -46,7 +46,7 @@ export default defineConfig({
         // Halaman pesan-mandiri pelanggan (/order/*), ulasan tamu (/ulasan/*), API, konsol operator (/ops)
         // & konsol Pemilik (/owner) — keduanya disajikan backend — selalu lewat
         // jaringan; jangan disajikan dari index.html yang ter-cache.
-        navigateFallbackDenylist: [/^\/order\//, /^\/ulasan\//, /^\/api\//, /^\/ops(\/|$)/, /^\/owner(\/|$)/],
+        navigateFallbackDenylist: [/^\/order\//, /^\/ulasan\//, /^\/absen(\/|$)/, /^\/api\//, /^\/ops(\/|$)/, /^\/owner(\/|$)/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),

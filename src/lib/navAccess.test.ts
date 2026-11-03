@@ -19,6 +19,19 @@ describe('navAccess', () => {
     expect(canOpenPath(items, 'pemilik', '/pelanggan')).toBe(false)
   })
 
+  it('KOL & Member menu sendiri; ikut aturan Promo lama sampai diatur sendiri', () => {
+    const plain = resolveNavItems({}, cafe)
+    expect(keys(visibleNavItems(plain, 'administrator'))).toEqual(expect.arrayContaining(['promo', 'kol', 'member']))
+    expect(canOpenPath(plain, 'administrator', '/kol')).toBe(true)
+
+    const promoOff = resolveNavItems({ navAccess: { promo: { enabled: false } } }, cafe)
+    expect(keys(visibleNavItems(promoOff, 'pemilik'))).not.toEqual(expect.arrayContaining(['kol']))
+    expect(keys(visibleNavItems(promoOff, 'pemilik'))).not.toContain('member')
+
+    const own = resolveNavItems({ navAccess: { promo: { enabled: false }, member: { enabled: true } } }, cafe)
+    expect(keys(visibleNavItems(own, 'pemilik'))).toContain('member')
+  })
+
   it('peran bisa diberi dan dicabut akses', () => {
     const items = resolveNavItems({ navAccess: { laporan: { roles: ['kasir'] }, riwayat: { roles: ['pemilik'] } } }, cafe)
     expect(canOpenPath(items, 'kasir', '/laporan/shift')).toBe(true)

@@ -18,6 +18,9 @@ export interface DailySummaryInput {
   actualCash: number | null
   variance: number | null
   topProducts: { name: string; qty: number }[]
+  /** Pesanan dari sebelum shift ini yang dilunasi di shift ini (sudah termasuk `totalSales`). */
+  settlements?: { orderNumber: string; orderedLabel: string; payLaterName: string | null; amount: number }[]
+  settlementTotal?: number
   /** Omzet seluruh shift hari ini & target harian (0/undefined = tanpa target). */
   todaySales?: number
   dailyTarget?: number
@@ -30,13 +33,21 @@ export function dailySummaryMessage(d: DailySummaryInput): string {
   out.push(`*Ringkasan Shift — ${d.businessName}*`)
   out.push(`${d.dateLabel} • ${d.openedLabel}–${d.closedLabel} • Kasir ${d.cashierName}`)
   out.push('')
-  out.push(`Omzet: *${formatRupiah(d.totalSales)}* (${d.transactionCount} transaksi)`)
+  out.push(`Penerimaan shift: *${formatRupiah(d.totalSales)}* (${d.transactionCount} transaksi)`)
   if (d.transactionCount > 0) out.push(`Rata-rata per transaksi: ${formatRupiah(Math.round(d.totalSales / d.transactionCount))}`)
   out.push(`Tunai: ${formatRupiah(d.cashSales)} • Non-tunai: ${formatRupiah(d.nonCashSales)}`)
   if (d.discountTotal > 0) out.push(`Diskon & promo: ${formatRupiah(d.discountTotal)}`)
   if (d.returnTotal > 0) out.push(`Retur: ${formatRupiah(d.returnTotal)}`)
   if (d.totalExpenses > 0) out.push(`Pengeluaran dari laci: ${formatRupiah(d.totalExpenses)}`)
   if (d.voidCount > 0) out.push(`Pesanan dibatalkan: ${d.voidCount}`)
+  if (d.settlements?.length) {
+    out.push('')
+    out.push(`Pelunasan piutang: *${formatRupiah(d.settlementTotal ?? 0)}* (${d.settlements.length} pesanan dari sebelum shift ini)`)
+    d.settlements.forEach((x) =>
+      out.push(`• ${x.orderNumber} — pesanan ${x.orderedLabel}${x.payLaterName ? `, ${x.payLaterName}` : ''} — ${formatRupiah(x.amount)}`),
+    )
+    out.push('_Sudah termasuk penerimaan di atas; omzetnya tercatat di tanggal pesanan._')
+  }
   out.push('')
   out.push(`Kas seharusnya: ${formatRupiah(d.expectedCash)}`)
   if (d.actualCash != null) out.push(`Kas dihitung: ${formatRupiah(d.actualCash)}`)

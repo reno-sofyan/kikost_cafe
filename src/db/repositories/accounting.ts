@@ -1,16 +1,21 @@
 import { db } from '@/db/schema'
-import type { DateRange } from '@/db/repositories/reports'
-import type { PaymentMethod } from '@/types/domain'
+import { isRecognizedSale, type DateRange } from '@/db/repositories/reports'
+import type { Order, Payment, PaymentMethod } from '@/types/domain'
 
 /**
  * Ekspor jurnal akuntansi sederhana (partai berpasangan) untuk satu rentang
  * tanggal, siap diimpor ke pembukuan (Accurate, Excel, dsb). Semua nilai rupiah
  * bulat. Akun memakai bagan sederhana kafe.
+ *
+ * Basis akrual: penjualan dibukukan pada TANGGAL PESANAN. Bagian yang dibayar di
+ * hari yang sama langsung ke kas/bank (penjualan tunai); sisanya ke Piutang Usaha,
+ * lalu dilunasi pada tanggal pembayaran (Kas/Bank pada Piutang Usaha).
  */
 
 export const ACCOUNTS = {
   CASH: '1-10001 Kas',
   BANK: '1-10002 Bank / QRIS / Kartu',
+  TRADE_RECEIVABLE: '1-10101 Piutang Usaha',
   PLATFORM_RECEIVABLE: '1-10201 Piutang Platform Online',
   INVENTORY: '1-10301 Persediaan Bahan',
   TAX_PAYABLE: '2-20001 Utang Pajak (PB1/PPN)',
@@ -64,35 +69,35 @@ export async function buildAccountingExport(range: DateRange): Promise<Accountin
     lines.push({ ...l, debit, credit })
   }
 
-  // ---- Penjualan ----
+  // ---- Penjualan (tanggal pesanan) ----
   // Termasuk order yang kemudian di-void TAPI sempat dibayar: penjualannya tetap
   // dibukukan supaya refund (di bawah) punya lawan; net-nya nol bila void di
   // periode yang sama.
-  const allInRange = await db.orders.where('createdAt').between(range.from, range.to, true, true).toArray()
   const allPayments = await db.payments.toArray()
   const paidOrderIds = new Set(allPayments.filter((p) => p.amount > 0).map((p) => p.orderId))
-  const orders = allInRange.filter(
-    (o) => o.status === 'paid' || o.status === 'completed' || (o.status === 'void' && paidOrderIds.has(o.id)),
-  )
+  const isBookedSale = (o: Order) => isRecognizedSale(o) || (o.status === 'void' && paidOrderIds.has(o.id))
+  const orders = (await db.orders.where('createdAt').between(range.from, range.to, true, true).toArray()).filter(isBookedSale)
   const orderIds = new Set(orders.map((o) => o.id))
   const items = orderIds.size ? await db.orderItems.where('orderId').anyOf([...orderIds]).toArray() : []
-  const payments = allPayments.filter((p) => orderIds.has(p.orderId))
   const products = new Map((await db.products.toArray()).map((p) => [p.id, p]))
 
-  const paymentsByOrder = new Map<string, typeof payments>()
-  for (const p of payments) {
+  const paymentsByOrder = new Map<string, Payment[]>()
+  for (const p of allPayments.filter((x) => x.amount > 0)) {
     const list = paymentsByOrder.get(p.orderId) ?? []
     list.push(p)
     paymentsByOrder.set(p.orderId, list)
   }
 
   for (const o of orders) {
-    const date = ymd(o.paidAt ?? o.createdAt)
+    const date = ymd(o.createdAt)
     const ref = o.orderNumber
-    // Kas / bank masuk per metode (hanya pembayaran positif).
-    for (const p of (paymentsByOrder.get(o.id) ?? []).filter((x) => x.amount > 0)) {
+    // Dibayar di hari yang sama → langsung kas/bank per metode; sisanya piutang usaha.
+    const sameDay = (paymentsByOrder.get(o.id) ?? []).filter((p) => ymd(p.createdAt) === date)
+    for (const p of sameDay) {
       add({ date, ref, account: accountForMethod(p.method), description: `Terima pembayaran (${p.method})`, debit: p.amount })
     }
+    const unpaid = o.grandTotal - sameDay.reduce((s, p) => s + p.amount, 0)
+    if (unpaid > 0) add({ date, ref, account: ACCOUNTS.TRADE_RECEIVABLE, description: 'Penjualan belum dibayar', debit: unpaid })
     if (o.discountAmount > 0) add({ date, ref, account: ACCOUNTS.DISCOUNT, description: 'Potongan penjualan', debit: o.discountAmount })
     if (o.roundingAdjustment < 0) add({ date, ref, account: ACCOUNTS.ROUNDING, description: 'Pembulatan', debit: -o.roundingAdjustment })
 
@@ -109,6 +114,24 @@ export async function buildAccountingExport(range: DateRange): Promise<Accountin
       add({ date, ref, account: ACCOUNTS.COGS, description: 'HPP penjualan', debit: cogs })
       add({ date, ref, account: ACCOUNTS.INVENTORY, description: 'Pengeluaran persediaan', credit: cogs })
     }
+  }
+
+  // ---- Pelunasan piutang usaha (tanggal bayar) ----
+  // Pembayaran di hari lain dari tanggal pesanan — termasuk pesanan dari periode
+  // sebelumnya yang dilunasi dalam rentang ini.
+  const laterPayments = (await db.payments.where('createdAt').between(range.from, range.to, true, true).toArray()).filter(
+    (p) => p.amount > 0,
+  )
+  const orderOf = new Map(
+    (await db.orders.where('id').anyOf([...new Set(laterPayments.map((p) => p.orderId))]).toArray()).map((o) => [o.id, o]),
+  )
+  for (const p of laterPayments) {
+    const o = orderOf.get(p.orderId)
+    if (!o || !isBookedSale(o)) continue
+    const date = ymd(p.createdAt)
+    if (date === ymd(o.createdAt)) continue
+    add({ date, ref: o.orderNumber, account: accountForMethod(p.method), description: `Pelunasan piutang (${p.method})`, debit: p.amount })
+    add({ date, ref: o.orderNumber, account: ACCOUNTS.TRADE_RECEIVABLE, description: 'Pelunasan piutang usaha', credit: p.amount })
   }
 
   // ---- Refund (void / retur) ----

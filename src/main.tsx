@@ -74,6 +74,19 @@ if (window.location.pathname.startsWith('/order/')) {
       </React.StrictMode>,
     )
   })
+} else if (window.location.pathname === '/absen' || window.location.pathname.startsWith('/absen/')) {
+  // Absensi karyawan di HP sendiri: publik, tanpa login/Dexie/sync — sama seperti /order/.
+  document.body.classList.add('customer-view')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff')
+  void import('@/features/absen/AbsenApp').then(({ AbsenApp }) => {
+    ReactDOM.createRoot(rootEl).render(
+      <React.StrictMode>
+        <ErrorBoundary scope="halaman absensi">
+          <AbsenApp />
+        </ErrorBoundary>
+      </React.StrictMode>,
+    )
+  })
 } else if (window.location.pathname.startsWith('/layar-pelanggan')) {
   // Layar pelanggan: jendela kedua di perangkat kasir. Hanya MEMBACA database lokal —
   // tanpa login, sinkronisasi, atau mesin cetak (semua itu tetap milik jendela kasir).

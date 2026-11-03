@@ -15,6 +15,7 @@ import { registerPaymentWebhook } from './routes/paymentWebhook.js'
 import { registerMidtransRoutes } from './routes/midtransPay.js'
 import { registerMidtransCashierRoutes } from './routes/midtransCashier.js'
 import { registerOwnerCodeRoutes } from './routes/ownerCode.js'
+import { registerStaffAttendanceRoutes } from './routes/staffAttendance.js'
 import { registerOpsRoutes } from './routes/ops.js'
 import { registerOwnerRoutes } from './routes/owner.js'
 
@@ -193,6 +194,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerMidtransCashierRoutes(app)
   // ---- Kode pembatalan Pemilik dari /ops (di bawah /api/sync → butuh kunci perangkat) ----
   await registerOwnerCodeRoutes(app)
+  // ---- Absensi karyawan lewat HP: rute tablet di /api/sync, rute HP di /api/absen (publik) ----
+  await registerStaffAttendanceRoutes(app)
 
   // ---- Sync push ----
   app.post('/api/sync/push', async (request, reply) => {

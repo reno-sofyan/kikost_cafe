@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf'
 import { formatRupiah } from '@/lib/currency'
-import { formatDate } from '@/lib/datetime'
+import { formatDate, formatDateTime } from '@/lib/datetime'
 import { saveFile, saveTextFile } from '@/lib/saveFile'
 import { REPORT_SCOPE_LABELS, type SalesReport, type DateRange } from '@/db/repositories/reports'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
@@ -69,7 +69,9 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   lines.push(csvRow(reportTitle(report), `${formatDate(report.range.from)} - ${formatDate(report.range.to)}`))
   lines.push('')
   lines.push('Ringkasan')
-  lines.push(csvRow('Omzet (total diterima)', report.revenue))
+  lines.push(csvRow('Dasar Pencatatan', 'Akrual - omzet menurut tanggal pesanan; tagihan belum dibayar = piutang'))
+  lines.push(csvRow('Omzet (menurut tanggal pesanan)', report.revenue))
+  lines.push(csvRow('Belum Dibayar (Piutang)', report.receivableTotal))
   lines.push(csvRow('Jumlah Transaksi', report.transactionCount))
   lines.push(csvRow('Rata-rata Transaksi', Math.round(report.averageTransaction)))
   lines.push(csvRow('Item Terjual', report.itemsSold))
@@ -96,6 +98,15 @@ export async function exportSalesReportCsv(report: SalesReport): Promise<void> {
   lines.push(csvRow('Service Charge', report.serviceChargeTotal))
   lines.push(csvRow('Pembulatan', report.roundingTotal))
   lines.push(csvRow('Tip (bukan omzet)', report.tipTotal))
+  if (report.settlements.length > 0) {
+    lines.push('')
+    lines.push('Pelunasan Piutang (uang masuk; omzetnya di tanggal pesanan)')
+    lines.push(csvRow('No. Pesanan', 'Tanggal Pesanan', 'Dilunasi', 'Metode', 'Nilai'))
+    for (const x of report.settlements) {
+      lines.push(csvRow(x.orderNumber, formatDate(x.orderedAt), formatDateTime(x.paidAt), PAYMENT_METHOD_LABELS[x.method] ?? x.method, x.amount))
+    }
+    lines.push(csvRow('Total Pelunasan', '', '', '', report.settlementTotal))
+  }
   if (report.scope === 'all' && report.channelSplit.online.transactionCount > 0) {
     lines.push('')
     lines.push(csvRow('Kanal', 'Omzet', 'Jumlah Transaksi'))
@@ -318,11 +329,12 @@ export async function exportSalesReportPdf(
 
   y = sectionTitle(doc, y, 'Ringkasan')
   const summaryPairs: [string, string][] = [
-    ['Omzet', formatRupiah(report.revenue)],
+    ['Omzet (tanggal pesanan)', formatRupiah(report.revenue)],
     ['Jumlah Transaksi', String(report.transactionCount)],
     ['Rata-rata Transaksi', formatRupiah(report.averageTransaction)],
     ['Item Terjual', String(report.itemsSold)],
     ['Pembatalan', String(report.voidCount)],
+    ...(report.receivableTotal > 0 ? ([['Belum dibayar (piutang)', formatRupiah(report.receivableTotal)]] as [string, string][]) : []),
     ...(report.guestCount > 0
       ? ([
           ['Tamu Dine-in', String(report.guestCount)],
@@ -381,6 +393,28 @@ export async function exportSalesReportPdf(
       ...(report.tipTotal > 0 ? [['Tip diterima (bukan omzet)', formatRupiah(report.tipTotal)]] : []),
     ],
   )
+
+  if (report.settlements.length > 0) {
+    y = sectionTitle(doc, y, `Pelunasan Piutang (${formatRupiah(report.settlementTotal)}) - omzetnya di tanggal pesanan`)
+    y = drawTable(
+      doc,
+      y,
+      [
+        { header: 'No. Pesanan', width: 35 },
+        { header: 'Tgl Pesanan', width: 30 },
+        { header: 'Dilunasi', width: 45 },
+        { header: 'Metode', width: 30 },
+        { header: 'Nilai', width: 40, align: 'right' },
+      ],
+      report.settlements.map((x) => [
+        x.orderNumber,
+        formatDate(x.orderedAt),
+        formatDateTime(x.paidAt),
+        PAYMENT_METHOD_LABELS[x.method] ?? x.method,
+        formatRupiah(x.amount),
+      ]),
+    )
+  }
 
   if (report.scope === 'all' && report.channelSplit.online.transactionCount > 0) {
     y = sectionTitle(doc, y, 'Kanal Penjualan')

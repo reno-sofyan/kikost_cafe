@@ -1,3 +1,4 @@
+import type { SettlementRow } from './salesReport.js'
 import { jsPDF } from 'jspdf'
 import type { CancellationReport, CancellationRow } from './opsCancellations.js'
 
@@ -201,38 +202,84 @@ export interface TransactionRow {
   methods: string[]
   status: 'paid' | 'void' | 'open'
   payLater: boolean
+  /** Penjualan yang diakui pada periode laporan (bukan sekadar saldo tagihan lama). */
+  inPeriod: boolean
   grandTotal: number
+  /** Sisa yang belum dibayar (tagihan tertunda); 0 untuk yang lunas/batal. */
+  outstanding: number
   discountAmount: number
   discountReason: string | null
   discountByName: string | null
   discountApproval: 'self' | 'owner_code' | null
+  /** Waktu pesanan (penjualan/tagihan) atau waktu batal. */
   at: number | null
+  /** Waktu lunas; null bila belum lunas/batal. */
+  paidAt: number | null
 }
 
 export interface TransactionReport {
   rows: TransactionRow[]
   byMethod: { method: string; amount: number; count: number }[]
+  /** Penjualan periode ini menurut tanggal pesanan (akrual) — omzet. */
+  salesCount: number
+  salesValue: number
+  /** Bagian penjualan periode ini yang sudah lunas. */
   paidCount: number
   paidValue: number
+  /** Bagian penjualan periode ini yang belum dibayar (piutang). */
+  receivableValue: number
   voidCount: number
+  /** Saldo SEMUA tagihan tertunda yang belum lunas, dari periode mana pun. */
   openPayLaterCount: number
   openPayLaterValue: number
   discountCount: number
   discountValue: number
+  /**
+   * Pelunasan piutang: pembayaran dalam periode untuk pesanan yang tanggal
+   * pesanannya berbeda hari (mis. dibuka tgl 29, lunas tgl 30). Uang masuk,
+   * bukan omzet periode ini.
+   */
+  settlements: SettlementRow[]
+  settlementValue: number
 }
+
+export type { SettlementRow as TransactionSettlement } from './salesReport.js'
 
 const METHOD_LABEL: Record<string, string> = { cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer', card: 'Kartu', platform: 'Aplikasi Online', deposit: 'Saldo Member', giftcard: 'Voucher Hadiah' }
 const STATUS_LABEL: Record<TransactionRow['status'], string> = { paid: 'Lunas', void: 'Batal', open: 'Belum bayar' }
 
+export const wibDay = (ms: number): string => new Date(ms + 7 * 3_600_000).toISOString().slice(0, 10)
+
+/** Waktu lunas bila berbeda hari dari tanggal pesanan (dilunasi belakangan); selain itu '-'. */
+export function settledLaterLabel(t: Pick<TransactionRow, 'at' | 'paidAt'>): string {
+  return t.paidAt && t.at && wibDay(t.paidAt) !== wibDay(t.at) ? fmtWib(t.paidAt) : '-'
+}
+
 export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Buffer {
   const doc = new ReportDoc(`Laporan Transaksi - ${meta.businessName}`, `Periode ${meta.periodLabel} (WIB)`)
   doc.stats([
-    ['Transaksi lunas', String(r.paidCount)],
-    ['Omzet', rupiah(r.paidValue)],
+    ['Transaksi', String(r.salesCount)],
+    ['Omzet', rupiah(r.salesValue)],
+    ['Sudah lunas', `${r.paidCount} - ${rupiah(r.paidValue)}`],
+    ['Belum dibayar (piutang periode ini)', rupiah(r.receivableValue)],
     ['Dibatalkan', String(r.voidCount)],
-    ['Tagihan tertunda belum lunas', `${r.openPayLaterCount} - ${rupiah(r.openPayLaterValue)}`],
+    ['Pelunasan piutang diterima', `${r.settlements.length} - ${rupiah(r.settlementValue)}`],
+    ['Saldo tagihan tertunda belum lunas', `${r.openPayLaterCount} - ${rupiah(r.openPayLaterValue)}`],
     ['Diskon diberikan', `${r.discountCount} - ${rupiah(r.discountValue)}`],
   ])
+  if (r.settlements.length) {
+    doc.heading(`Pelunasan piutang (${r.settlements.length}) - ${rupiah(r.settlementValue)}`)
+    doc.table(
+      [
+        { title: 'Dilunasi', width: 34 },
+        { title: 'No.', width: 34 },
+        { title: 'Tanggal pesanan', width: 40 },
+        { title: 'Metode', width: 40 },
+        { title: 'Nilai', width: 38, align: 'right' },
+      ],
+      r.settlements.map((x) => [fmtWib(x.paidAt), x.orderNumber ?? '-', fmtWib(x.orderedAt), METHOD_LABEL[x.method] ?? x.method, rupiah(x.amount)]),
+    )
+  }
   if (r.byMethod.length) {
     doc.heading('Per metode pembayaran')
     doc.table(
@@ -244,7 +291,7 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
       r.byMethod.map((m) => [METHOD_LABEL[m.method] ?? m.method, String(m.count), rupiah(m.amount)]),
     )
   }
-  const discounted = r.rows.filter((t) => t.status === 'paid' && t.discountAmount > 0)
+  const discounted = r.rows.filter((t) => t.inPeriod && t.discountAmount > 0)
   if (discounted.length) {
     doc.heading(`Diskon diberikan (${discounted.length})`)
     doc.table(
@@ -269,13 +316,14 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
   doc.heading(`Daftar transaksi (${r.rows.length})`)
   doc.table(
     [
-      { title: 'Waktu', width: 27 },
-      { title: 'No.', width: 25 },
-      { title: 'Antrean / Pembeli', width: 40 },
-      { title: 'Kasir', width: 24 },
-      { title: 'Metode', width: 22 },
+      { title: 'Waktu', width: 26 },
+      { title: 'No.', width: 23 },
+      { title: 'Antrean / Pembeli', width: 30 },
+      { title: 'Kasir', width: 19 },
+      { title: 'Metode', width: 20 },
       { title: 'Status', width: 21 },
-      { title: 'Total', width: 27, align: 'right' },
+      { title: 'Dilunasi', width: 22 },
+      { title: 'Total', width: 25, align: 'right' },
     ],
     r.rows.map((t) => [
       fmtWib(t.at),
@@ -283,11 +331,17 @@ export function buildTransactionsPdf(meta: ReportMeta, r: TransactionReport): Bu
       [t.queueNumber ? `#${t.queueNumber}` : '', t.buyer ?? ''].filter(Boolean).join(' ') || '-',
       t.cashierName ?? '-',
       t.methods.map((m) => METHOD_LABEL[m] ?? m).join(', ') || '-',
-      STATUS_LABEL[t.status] + (t.payLater ? ' (tagihan tertunda)' : ''),
+      STATUS_LABEL[t.status] + (t.payLater ? ' (tagihan tertunda)' : '') + (t.status === 'open' && !t.inPeriod ? ' - periode lalu' : ''),
+      settledLaterLabel(t),
       rupiah(t.grandTotal),
     ]),
   )
-  doc.note('Omzet = total transaksi berstatus lunas pada periode ini, berdasarkan waktu pembayaran.')
+  doc.note(
+    'Omzet = penjualan pada periode ini menurut tanggal pesanan (akrual), termasuk tagihan tertunda yang belum dibayar (piutang). ' +
+      'Uang yang diterima per shift tetap dicatat pada waktu pembayaran. ' +
+      'Kolom Dilunasi terisi bila pesanan dibayar di hari lain dari tanggal pesanannya. ' +
+      'Pelunasan piutang = uang yang diterima pada periode ini untuk pesanan dari tanggal lain; omzetnya tercatat di tanggal pesanan.',
+  )
   return doc.finish(footerOf(meta))
 }
 

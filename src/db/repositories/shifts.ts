@@ -4,7 +4,7 @@ import { newId } from '@/lib/id'
 import { getDeviceId } from '@/sync/device'
 import { getSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
-import type { CashMovement, CashMovementType, Order, Shift } from '@/types/domain'
+import type { CashMovement, CashMovementType, Order, PaymentMethod, Shift } from '@/types/domain'
 import { getTrustedNow } from '@/lib/clockGuard'
 
 /**
@@ -225,6 +225,24 @@ export interface ShiftSummary {
   tipsNonCash: number
   /** Bagian dari `nonCashSales` yang dibayar via aplikasi pesanan online (belum cair ke rekening). */
   platformSales: number
+  /**
+   * Pelunasan piutang: pesanan yang dibuat SEBELUM shift ini dibuka (pesanan terbuka
+   * terbawa / tagihan tertunda) dan dilunasi di shift ini. Sudah termasuk penerimaan
+   * shift di atas; omzetnya tercatat di tanggal pesanan (Laporan Penjualan).
+   */
+  settlements: ShiftSettlement[]
+  settlementTotal: number
+}
+
+export interface ShiftSettlement {
+  orderId: string
+  orderNumber: string
+  orderedAt: number
+  paidAt: number
+  methods: PaymentMethod[]
+  amount: number
+  /** Atas nama siapa, bila tagihan tertunda. */
+  payLaterName: string | null
 }
 
 export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> {
@@ -254,6 +272,25 @@ export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> 
     : []
   const returnTotal = returns.reduce((s, r) => s + r.refundAmount, 0)
 
+  const settlements: ShiftSettlement[] = paidOrders
+    .filter((o) => o.createdAt < shift.openedAt)
+    .flatMap((o) => {
+      const received = payments.filter((p) => p.orderId === o.id && p.amount > 0 && !p.reversalOfPaymentId && p.createdAt >= shift.openedAt)
+      if (!received.length) return []
+      return [
+        {
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          orderedAt: o.createdAt,
+          paidAt: Math.max(...received.map((p) => p.createdAt)),
+          methods: [...new Set(received.map((p) => p.method))],
+          amount: received.reduce((s, p) => s + p.amount, 0),
+          payLaterName: o.payLater?.name ?? null,
+        },
+      ]
+    })
+    .sort((a, b) => a.paidAt - b.paidAt)
+
   return {
     shift,
     cashSales,
@@ -271,5 +308,7 @@ export async function buildShiftSummary(shiftId: string): Promise<ShiftSummary> 
     tipsCash,
     tipsNonCash,
     platformSales: payments.filter((p) => p.method === 'platform').reduce((s, p) => s + p.amount, 0),
+    settlements,
+    settlementTotal: settlements.reduce((s, x) => s + x.amount, 0),
   }
 }

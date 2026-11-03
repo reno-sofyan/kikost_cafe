@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { completeOnboarding, idbAll, openShift } from './helpers'
+import { addUser, completeOnboarding, idbAll, manualAttendance, openShift } from './helpers'
 
 const SHOTS = process.env.E2E_SHOTS
 const shot = async (page: Page, name: string, fullPage = false) => {
@@ -67,9 +67,9 @@ test('operasional, label menu, jadwal & gaji, pesanan terjadwal, layar pelanggan
   await expect(page.getByText(/Jadwal & tarif Admin E2E disimpan/)).toBeVisible()
   await expect(page.getByRole('cell', { name: /Rp\s?20\.000 \/ jam/ })).toBeVisible()
   await expect(page.getByText(/Jadwal hari ini|Hari ini libur/)).toBeVisible()
-  await page.getByRole('button', { name: 'Absen Admin E2E' }).click()
-  await page.getByLabel('PIN absensi').fill('246810')
-  await page.getByRole('button', { name: 'Absen Masuk' }).last().click()
+  await addUser(page, 'Barista E2E', 'Kasir', '135790')
+  await page.getByRole('link', { name: 'Absensi' }).click()
+  await manualAttendance(page, 'Barista E2E', '246810')
   await expect(page.getByRole('heading', { name: /Rekap Gaji/ })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Terlambat' })).toBeVisible()
   await shot(page, '42-absensi-gaji-jadwal', true)

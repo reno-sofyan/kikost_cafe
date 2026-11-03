@@ -107,3 +107,25 @@ export async function waitForNoPending(page: Page): Promise<void> {
   await expect(page.getByText('Menunggu sinkronisasi: 0')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText('Gagal sinkronisasi: 0')).toBeVisible()
 }
+
+/** Tambah pengguna lewat Pengaturan → Pengguna. */
+export async function addUser(page: Page, name: string, role: string, pin: string): Promise<void> {
+  await page.getByRole('link', { name: 'Pengaturan' }).click()
+  await page.getByRole('button', { name: 'Pengguna', exact: true }).click()
+  await page.getByRole('button', { name: '+ Pengguna Baru' }).click()
+  await page.getByLabel('Nama', { exact: true }).fill(name)
+  await page.getByRole('combobox', { name: 'Role' }).selectOption({ label: role })
+  await page.getByLabel('PIN (4-8 digit)').fill(pin)
+  await page.getByRole('button', { name: 'Simpan', exact: true }).click()
+  await expect(page.getByText(name).first()).toBeVisible()
+}
+
+/** Absen manual di menu Absensi (pengecualian, disetujui Admin/Pemilik). Halaman Absensi harus sudah terbuka. */
+export async function manualAttendance(page: Page, staffName: string, approverPin: string, reason = 'HP mati baterai'): Promise<void> {
+  await page.getByRole('button', { name: 'Absen Manual' }).click()
+  const staff = page.getByLabel('Karyawan')
+  await staff.selectOption((await staff.locator('option', { hasText: `${staffName} — ` }).getAttribute('value'))!)
+  await page.getByLabel('Alasan absen manual').fill(reason)
+  await page.getByLabel('PIN penyetuju').fill(approverPin)
+  await page.getByRole('button', { name: /^Catat Absen (Masuk|Pulang)$/ }).click()
+}

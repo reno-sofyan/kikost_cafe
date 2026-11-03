@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { buildSalesReport } from '@/db/repositories/reports'
 import { businessDisplayName, getSettings } from '@/db/repositories/settings'
 import { buildShiftSummary } from '@/db/repositories/shifts'
-import { formatDate, formatTime, startOfJakartaDay } from '@/lib/datetime'
+import { formatDate, formatDateTime, formatTime, startOfJakartaDay } from '@/lib/datetime'
 import { dailySummaryMessage, type DailySummaryInput } from '@/lib/dailySummary'
 import type { Shift } from '@/types/domain'
 
@@ -48,6 +48,13 @@ export async function buildDailySummaryInput(shiftId: string): Promise<DailySumm
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 5),
+    settlements: summary.settlements.map((x) => ({
+      orderNumber: x.orderNumber,
+      orderedLabel: formatDateTime(x.orderedAt),
+      payLaterName: x.payLaterName,
+      amount: x.amount,
+    })),
+    settlementTotal: summary.settlementTotal,
     todaySales,
     dailyTarget,
     notes: shift.notes,

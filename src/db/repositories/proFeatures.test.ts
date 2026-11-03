@@ -10,7 +10,7 @@ import { getCustomerLoyalty } from './loyalty'
 import { bulkSetOnlinePrices } from './products'
 import { sendOrderToKitchen } from './kitchenDispatch'
 import { addToWaitlist, listReservations, seatReservation } from './reservations'
-import { buildAttendanceReport, clockAttendance, listClockedIn, MAX_SESSION_MS, pairAttendance, WrongPinError } from './attendance'
+import { buildAttendanceReport, clockAttendanceManual, listClockedIn, MAX_SESSION_MS, pairAttendance, PHONE_CHAIN_DEVICE_ID, WrongPinError } from './attendance'
 import { buildFeedbackReport, getOrderFeedback, recordOrderFeedback } from './feedback'
 import { buildDepositReport, findGiftCard, listGiftCards, sellGiftCard } from './deposits'
 import { buildAccountingExport, ACCOUNTS } from './accounting'
@@ -212,19 +212,40 @@ describe('Absensi karyawan', () => {
     expect(pairAttendance([ev('d', 'in', t0)], t0 + MAX_SESSION_MS + 1)[0].missingOut).toBe(true)
   })
 
-  it('absen dengan PIN sendiri: masuk lalu pulang, PIN salah ditolak, tercatat di log', async () => {
-    const user = await createUser({ name: 'Dewi', role: 'kasir', pin: '246810' })
-    await expect(clockAttendance(user.id, '000000')).rejects.toThrow(WrongPinError)
+  it('mengenali sumber absen: HP (server), manual, dan PIN lama', () => {
+    const t0 = 1_700_000_000_000
+    const [s] = pairAttendance(
+      [
+        { entityId: 'a', userName: 'A', action: 'attendance.in', createdAt: t0, deviceId: PHONE_CHAIN_DEVICE_ID },
+        { entityId: 'a', userName: 'A', action: 'attendance.manual_out', createdAt: t0 + HOUR, deviceId: 'tablet-1' },
+      ],
+      t0 + 2 * HOUR,
+    )
+    expect(s).toMatchObject({ inSource: 'phone', outSource: 'manual', minutes: 60 })
+    expect(pairAttendance([ev('b', 'in', t0)], t0)[0].inSource).toBe('pin')
+  })
+
+  it('absen manual: wajib PIN Admin/Pemilik + alasan, tak boleh menyetujui diri sendiri, ditandai di rekap', async () => {
+    const dewi = await createUser({ name: 'Dewi', role: 'kasir', pin: '246810' })
+    const admin = await createUser({ name: 'Rina', role: 'administrator', pin: '135790' })
+    const staff = { id: dewi.id, name: dewi.name }
+
+    await expect(clockAttendanceManual({ staff, approverId: admin.id, approverPin: '135790', reason: 'HP' })).rejects.toThrow(/alasan/)
+    await expect(clockAttendanceManual({ staff, approverId: admin.id, approverPin: '000000', reason: 'HP mati baterai' })).rejects.toThrow(WrongPinError)
+    // Kasir tak bisa menyetujui, termasuk untuk dirinya sendiri dengan PIN-nya sendiri.
+    await expect(clockAttendanceManual({ staff, approverId: dewi.id, approverPin: '246810', reason: 'HP mati baterai' })).rejects.toThrow(/Admin atau Pemilik/)
+    await expect(clockAttendanceManual({ staff: { id: admin.id, name: admin.name }, approverId: admin.id, approverPin: '135790', reason: 'HP mati baterai' })).rejects.toThrow(/Admin\/Pemilik lain/)
     expect((await listClockedIn()).size).toBe(0)
 
-    expect(await clockAttendance(user.id, '246810')).toMatchObject({ type: 'in', userName: 'Dewi' })
-    expect((await listClockedIn()).has(user.id)).toBe(true)
-    expect(await clockAttendance(user.id, '246810')).toMatchObject({ type: 'out' })
-    expect((await listClockedIn()).size).toBe(0)
+    expect(await clockAttendanceManual({ staff, approverId: admin.id, approverPin: '135790', reason: 'HP mati baterai' })).toMatchObject({ type: 'in', userName: 'Dewi' })
+    expect((await listClockedIn()).has(dewi.id)).toBe(true)
+    expect(await clockAttendanceManual({ staff, approverId: admin.id, approverPin: '135790', reason: 'HP masih mati' })).toMatchObject({ type: 'out' })
 
     const report = await buildAttendanceReport(ALL_TIME())
-    expect(report.summary).toEqual([expect.objectContaining({ userName: 'Dewi', daysPresent: 1, sessionCount: 1, missingOutCount: 0 })])
-    expect((await db.auditLogs.where('entityType').equals('attendance').toArray()).map((l) => l.action)).toEqual(expect.arrayContaining(['attendance.in', 'attendance.out']))
+    expect(report.summary).toEqual([expect.objectContaining({ userName: 'Dewi', daysPresent: 1, sessionCount: 1, manualCount: 1 })])
+    const logs = await db.auditLogs.where('entityType').equals('attendance').toArray()
+    expect(logs.map((l) => l.action).sort()).toEqual(['attendance.manual_in', 'attendance.manual_out'])
+    expect(logs[0].details).toMatch(/disetujui Rina .*Alasan: HP/)
   })
 })
 

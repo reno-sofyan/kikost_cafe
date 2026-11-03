@@ -29,6 +29,8 @@ const CustomersScreen = lazy(() => import('@/features/customers/CustomersScreen'
 const ExpensesScreen = lazy(() => import('@/features/expenses/ExpensesScreen').then((m) => ({ default: m.ExpensesScreen })))
 const AttendanceScreen = lazy(() => import('@/features/attendance/AttendanceScreen').then((m) => ({ default: m.AttendanceScreen })))
 const PromoScreen = lazy(() => import('@/features/promos/PromoScreen').then((m) => ({ default: m.PromoScreen })))
+const KolScreen = lazy(() => import('@/features/promos/KolScreen').then((m) => ({ default: m.KolScreen })))
+const MemberScreen = lazy(() => import('@/features/promos/MemberScreen').then((m) => ({ default: m.MemberScreen })))
 const ReportsScreen = lazy(() => import('@/features/reports/ReportsScreen').then((m) => ({ default: m.ReportsScreen })))
 const ProductsScreen = lazy(() => import('@/features/products/ProductsScreen').then((m) => ({ default: m.ProductsScreen })))
 const InventoryScreen = lazy(() => import('@/features/inventory/InventoryScreen').then((m) => ({ default: m.InventoryScreen })))
@@ -138,6 +140,8 @@ export default function App() {
               <Route path="/laporan" element={<ReportsScreen />} />
               <Route path="/laporan/:scope" element={<ReportsScreen />} />
               <Route path="/promo" element={<PromoScreen />} />
+              <Route path="/kol" element={<KolScreen />} />
+              <Route path="/member" element={<MemberScreen />} />
               <Route path="/absensi" element={<AttendanceScreen />} />
               <Route path="/produk" element={<ProductsScreen />} />
               <Route path="/stok" element={<InventoryScreen />} />

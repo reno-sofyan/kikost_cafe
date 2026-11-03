@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { completeOnboarding, idbAll, openShift } from './helpers'
+import { addUser, completeOnboarding, idbAll, manualAttendance, openShift } from './helpers'
 
 const SHOTS = process.env.E2E_SHOTS
 const shot = async (page: Page, name: string, fullPage = false) => {
@@ -28,15 +28,15 @@ test('target omzet, harga online massal, absensi, voucher hadiah, daftar tunggu,
   const products = await idbAll<{ price: number; onlinePrice: number | null }>(page, 'products')
   expect(products.every((p) => (p.onlinePrice ?? 0) >= p.price * 1.2)).toBe(true)
 
-  // --- Absensi dengan PIN sendiri.
+  // --- Absensi: absen manual (pengecualian) wajib PIN Admin/Pemilik + alasan.
+  await addUser(page, 'Barista E2E', 'Kasir', '135790')
   await page.getByRole('link', { name: 'Absensi' }).click()
-  await page.getByRole('button', { name: 'Absen Admin E2E' }).click()
-  await page.getByLabel('PIN absensi').fill('000000')
-  await page.getByRole('button', { name: 'Absen Masuk' }).last().click()
+  await manualAttendance(page, 'Barista E2E', '000000')
   await expect(page.getByText('PIN salah.')).toBeVisible()
-  await page.getByLabel('PIN absensi').fill('246810')
-  await page.getByRole('button', { name: 'Absen Masuk' }).last().click()
+  await page.getByLabel('PIN penyetuju').fill('246810')
+  await page.getByRole('button', { name: 'Catat Absen Masuk' }).click()
   await expect(page.getByText(/Bekerja sejak/)).toBeVisible()
+  await expect(page.getByText('1× manual')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Rekap Kehadiran' })).toBeVisible()
   await shot(page, '30-absensi')
 

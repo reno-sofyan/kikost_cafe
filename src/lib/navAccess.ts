@@ -19,6 +19,8 @@ export type NavKey =
   | 'pengeluaran'
   | 'laporan'
   | 'promo'
+  | 'kol'
+  | 'member'
   | 'produk'
   | 'stok'
   | 'shift'
@@ -37,6 +39,8 @@ export interface NavItemDef {
   feature?: keyof BusinessFeatures
   /** Menu wajib — tak bisa dimatikan (mis. Pengaturan, supaya tak ada yang terkunci di luar). */
   required?: boolean
+  /** Menu hasil pecahan menu lain: selama belum diatur sendiri, ikut aturan aktif/peran menu asalnya. */
+  inheritsFrom?: NavKey
 }
 
 const rolesWith = (permission: Permission) => ALL_ROLES.filter((r) => roleHasPermission(r, permission))
@@ -52,7 +56,9 @@ export const NAV_ITEM_DEFS: NavItemDef[] = [
   { key: 'pelanggan', to: '/pelanggan', label: 'Pelanggan', icon: 'user', description: 'Data pelanggan & member.', defaultRoles: FRONT_ROLES },
   { key: 'pengeluaran', to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', description: 'Mencatat uang keluar dari kas.', defaultRoles: FRONT_ROLES },
   { key: 'laporan', to: '/laporan', label: 'Laporan', icon: 'chart', description: 'Laporan penjualan, shift & keuangan.', defaultRoles: rolesWith('reports.view') },
-  { key: 'promo', to: '/promo', label: 'Promo', icon: 'star', description: 'Promo otomatis, voucher & KOL.', defaultRoles: rolesWith('settings.manage'), feature: 'promos' },
+  { key: 'promo', to: '/promo', label: 'Promo', icon: 'star', description: 'Promo otomatis, voucher & voucher hadiah.', defaultRoles: rolesWith('settings.manage'), feature: 'promos' },
+  { key: 'kol', to: '/kol', label: 'KOL', icon: 'megaphone', description: 'KOL/influencer: kode voucher, kinerja & komisi.', defaultRoles: rolesWith('settings.manage'), feature: 'promos', inheritsFrom: 'promo' },
+  { key: 'member', to: '/member', label: 'Member', icon: 'award', description: 'Program member: poin & pengaturan member.', defaultRoles: rolesWith('settings.manage'), feature: 'loyalty', inheritsFrom: 'promo' },
   { key: 'produk', to: '/produk', label: 'Produk', icon: 'coffee', description: 'Produk, kategori, modifier & paket.', defaultRoles: rolesWith('settings.manage') },
   { key: 'stok', to: '/stok', label: 'Stok', icon: 'box', description: 'Stok, bahan baku & produksi.', defaultRoles: rolesWith('stock.adjust') },
   { key: 'shift', to: '/shift', label: 'Shift', icon: 'cashDrawer', description: 'Buka & tutup shift, hitung kas.', defaultRoles: SHIFT_ROLES },
@@ -89,7 +95,7 @@ export function resolveNavItems(
 ): ResolvedNavItem[] {
   const config = settings?.navAccess ?? {}
   return NAV_ITEM_DEFS.map((def) => {
-    const rule = config[def.key] ?? {}
+    const rule = config[def.key] ?? (def.inheritsFrom ? config[def.inheritsFrom] : undefined) ?? {}
     const defaultEnabled = def.feature ? !!features[def.feature] : true
     const enabled = def.required ? true : (rule.enabled ?? defaultEnabled)
     const locked = lockedRolesFor(def)

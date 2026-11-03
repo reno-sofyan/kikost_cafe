@@ -23,7 +23,7 @@ test('beli X gratis Y, saldo member, promo ulang tahun, dan pembayaran komisi KO
   await expect(page.getByText('Beli 2 gratis 1', { exact: true })).toBeVisible()
 
   // --- KOL + voucher Rp2.000.
-  await page.getByRole('button', { name: 'KOL / Influencer' }).click()
+  await page.getByRole('link', { name: 'KOL', exact: true }).click()
   await page.getByRole('button', { name: '+ KOL Baru' }).click()
   await page.getByLabel('Nama KOL').fill('Dina Kuliner')
   await page.getByLabel('Komisi (%)').fill('10')
@@ -37,7 +37,7 @@ test('beli X gratis Y, saldo member, promo ulang tahun, dan pembayaran komisi KO
   await expect(page.getByText('DINA2K')).toBeVisible()
 
   // --- Program member + saldo + masa berlaku poin.
-  await page.getByRole('button', { name: 'Member & Poin' }).click()
+  await page.getByRole('link', { name: 'Member', exact: true }).click()
   await page.getByLabel('Program member aktif').check()
   await page.getByLabel('Saldo member aktif').check()
   await page.getByLabel('Masa berlaku poin').fill('12')
@@ -97,7 +97,7 @@ test('beli X gratis Y, saldo member, promo ulang tahun, dan pembayaran komisi KO
 
   // --- Komisi KOL 10% × 28.000 = 2.800 → dicatat lunas.
   await page.getByRole('link', { name: 'Promo', exact: true }).click()
-  await page.getByRole('button', { name: 'KOL / Influencer' }).click()
+  await page.getByRole('link', { name: 'KOL', exact: true }).click()
   await page.getByRole('button', { name: 'Bayar Komisi' }).click()
   await expect(page.getByLabel('Nominal dibayar')).toHaveValue('Rp2.800')
   await shot(page, '25-bayar-komisi-kol')

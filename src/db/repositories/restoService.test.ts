@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db/schema'
 import { resetLocalDb } from '@/test/db'
-import { addOrderItem, markBillPrinted, setOrderWaiter, startOrder } from './orders'
+import { addOrderItem, markBillPrinted, markOrderPayLater, setOrderWaiter, startOrder } from './orders'
 import { buildShiftSummary, openShift } from './shifts'
 import { finalizePayment, voidOrder } from './checkout'
 import { createTable } from './tables'
@@ -187,6 +187,74 @@ describe('Laporan penjualan — rincian laba-rugi', () => {
     expect(report.byDay).toEqual([{ dateKey: jakartaDateKey(order.createdAt), revenue: 60000, transactionCount: 1 }])
     expect(report.byOrderType).toEqual([{ type: 'dine_in', revenue: 60000, transactionCount: 1 }])
     expect(report.byPaymentMethod).toEqual([{ method: 'qris', amount: 60000, count: 1 }])
+  })
+})
+
+describe('Laporan penjualan — akrual (tanggal pesanan)', () => {
+  const DAY = 24 * HOUR
+  const day1 = jakartaDateTimeToEpoch('2026-10-29', '21:00')
+  const day2 = jakartaDateTimeToEpoch('2026-10-30', '09:00')
+  const rangeOf = (at: number) => {
+    const from = jakartaDateTimeToEpoch(jakartaDateKey(at), '00:00')
+    return { from, to: from + DAY - 1 }
+  }
+
+  it('pesanan dibuka hari ini & dilunasi esok hari tetap tercatat di tanggal pesanan', async () => {
+    const { order } = await openOrder()
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: order.grandTotal }], confirmedByUserId: 'u1' })
+    await db.orders.update(order.id, { createdAt: day1, paidAt: day2 })
+    await db.payments.where('orderId').equals(order.id).modify({ createdAt: day2 })
+
+    const opened = await buildSalesReport(rangeOf(day1))
+    expect(opened.revenue).toBe(40000)
+    expect(opened.receivableTotal).toBe(0)
+    expect(opened.byDay).toEqual([{ dateKey: '2026-10-29', revenue: 40000, transactionCount: 1 }])
+    expect(opened.byHour[21]).toEqual({ hour: 21, revenue: 40000, transactionCount: 1 })
+    expect(opened.settlements).toEqual([])
+
+    // Tanggal 30: bukan omzet, tapi tampil sebagai pelunasan piutang lengkap dengan tanggal pesanannya.
+    const settled = await buildSalesReport(rangeOf(day2))
+    expect(settled.revenue).toBe(0)
+    expect(settled.settlements).toEqual([
+      { orderId: order.id, orderNumber: order.orderNumber, orderedAt: day1, paidAt: day2, method: 'cash', amount: 40000 },
+    ])
+    expect(settled.settlementTotal).toBe(40000)
+  })
+
+  it('dibayar di hari yang sama tidak masuk pelunasan piutang', async () => {
+    const { order } = await openOrder()
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'qris', amount: order.grandTotal }], confirmedByUserId: 'u1' })
+    const r = await buildSalesReport({ from: 0, to: Date.now() + HOUR })
+    expect(r.revenue).toBe(40000)
+    expect(r.settlements).toEqual([])
+  })
+
+  it('tagihan tertunda yang belum dibayar diakui sebagai omzet & piutang', async () => {
+    const { order, shiftId } = await openOrder()
+    await markOrderPayLater(order.id, { name: 'Pak Budi', note: '', shiftId }, ACTOR)
+    await db.orders.update(order.id, { createdAt: day1 })
+
+    const r = await buildSalesReport(rangeOf(day1))
+    expect(r.revenue).toBe(40000)
+    expect(r.transactionCount).toBe(1)
+    expect(r.receivableTotal).toBe(40000)
+    expect(r.receivableCount).toBe(1)
+    expect(r.byPaymentMethod).toEqual([])
+    expect(r.itemsSold).toBe(2)
+  })
+
+  it('pesanan terbuka biasa (meja masih berjalan) belum diakui', async () => {
+    await openOrder()
+    const r = await buildSalesReport({ from: 0, to: Date.now() + HOUR })
+    expect(r.revenue).toBe(0)
+    expect(r.transactionCount).toBe(0)
+  })
+
+  it('pembatalan dihitung pada waktu batal', async () => {
+    const { order } = await openOrder()
+    await db.orders.update(order.id, { status: 'void', createdAt: day1, voidedAt: day2 })
+    expect((await buildSalesReport(rangeOf(day1))).voidCount).toBe(0)
+    expect((await buildSalesReport(rangeOf(day2))).voidCount).toBe(1)
   })
 })
 

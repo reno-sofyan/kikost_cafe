@@ -13,7 +13,8 @@ import {
   loadCancellationReport,
   loadTenantDetail,
   num,
-  PAID_OR_CREATED_MS,
+  RECOGNIZED_SALE_SQL,
+  SALE_AT_MS,
   tsOf,
   VOIDED_AT_SQL,
 } from '../lib/tenantReports.js'
@@ -101,21 +102,21 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
                 count(*)                                            AS txns
            FROM sync_entity_state
           WHERE entity = 'orders' AND deleted = FALSE
-            AND payload->>'status' IN ('paid', 'completed')
-            AND (${tsOf(PAID_OR_CREATED_MS)}
+            AND ${RECOGNIZED_SALE_SQL}
+            AND (${tsOf(SALE_AT_MS)}
                    AT TIME ZONE 'Asia/Jakarta')::date
                 = (now() AT TIME ZONE 'Asia/Jakarta')::date
           GROUP BY tenant_id`,
       ),
       pool.query<{ tenant_id: string; d: string; revenue: string }>(
         `SELECT tenant_id,
-                (${tsOf(PAID_OR_CREATED_MS)}
+                (${tsOf(SALE_AT_MS)}
                    AT TIME ZONE 'Asia/Jakarta')::date::text AS d,
                 sum(${GRAND_TOTAL}) AS revenue
            FROM sync_entity_state
           WHERE entity = 'orders' AND deleted = FALSE
-            AND payload->>'status' IN ('paid', 'completed')
-            AND ${tsOf(PAID_OR_CREATED_MS)}
+            AND ${RECOGNIZED_SALE_SQL}
+            AND ${tsOf(SALE_AT_MS)}
                 > now() - interval '8 days'
           GROUP BY tenant_id, d`,
       ),

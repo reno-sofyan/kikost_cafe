@@ -1,29 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { attendanceReportToCsv, buildAttendanceReport, clockAttendance, formatWorkMinutes, listClockedIn } from '@/db/repositories/attendance'
+import { ATTENDANCE_SOURCE_LABELS, attendanceReportToCsv, buildAttendanceReport, formatWorkMinutes, isManualSession, listClockedIn, type AttendanceSession } from '@/db/repositories/attendance'
 import { listActiveUsers } from '@/db/repositories/users'
 import { getSettings } from '@/db/repositories/settings'
 import { PayrollSection, StaffSetupSection } from '@/features/attendance/StaffPayrollPanel'
+import { AttendanceQrModal, ManualAttendanceModal, PhoneAttendanceSettings } from '@/features/attendance/PhoneAttendance'
 import { buildRosterCompliance, lateMinutesFor, rosterFor, shiftOn } from '@/lib/roster'
 import { durationSince, formatDateTime, formatTime, jakartaDateKey, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { formatNumber } from '@/lib/currency'
 import { ROLE_LABELS, roleHasPermission } from '@/lib/permissions'
 import { saveTextFile } from '@/lib/saveFile'
-import { Modal } from '@/components/ui/Modal'
 import { useSessionStore } from '@/state/sessionStore'
-import { toast } from '@/state/toastStore'
 import type { User } from '@/types/domain'
 
 type Period = 'today' | 'week' | 'month' | 'lastMonth'
 const NO_USERS: User[] = []
 const PERIOD_LABELS: Record<Period, string> = { today: 'Hari Ini', week: '7 Hari', month: 'Bulan Ini', lastMonth: 'Bulan Lalu' }
 
-/** Absensi: karyawan absen masuk/pulang dengan PIN-nya sendiri; pengelola melihat rekap jam kerja. */
+/**
+ * Absensi. Jalur utama: karyawan absen dari HP terdaftar dengan memindai QR Absensi di
+ * tablet ini + selfie (lihat PhoneAttendance.tsx). Absen manual hanya pengecualian,
+ * disetujui Admin/Pemilik. Pengelola melihat rekap jam kerja & gaji.
+ */
 export function AttendanceScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
   const users = useLiveQuery(() => listActiveUsers(), []) ?? NO_USERS
   const clockedIn = useLiveQuery(() => listClockedIn(), [])
-  const [pinFor, setPinFor] = useState<User | null>(null)
+  const [showQr, setShowQr] = useState(false)
+  const [showManual, setShowManual] = useState(false)
   const [period, setPeriod] = useState<Period>('today')
   const canSeeReport = roleHasPermission(currentUser.role, 'reports.view')
   const canManageStaff = roleHasPermission(currentUser.role, 'settings.manage')
@@ -58,14 +62,24 @@ export function AttendanceScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <h1 className="mb-1 text-xl font-bold text-ink-50">Absensi</h1>
-      <p className="mb-4 text-sm text-ink-300">Ketuk nama Anda lalu masukkan PIN untuk absen masuk atau pulang.</p>
+      <div className="mb-4 flex flex-wrap items-start gap-3">
+        <div className="mr-auto">
+          <h1 className="mb-1 text-xl font-bold text-ink-50">Absensi</h1>
+          <p className="text-sm text-ink-300">Absen dari HP masing-masing: ketuk “QR Absensi”, pindai dengan kamera HP terdaftar, lalu selfie.</p>
+        </div>
+        <button className="btn-secondary btn-compact !px-4 text-sm" onClick={() => setShowManual(true)}>
+          Absen Manual
+        </button>
+        <button className="btn-primary btn-compact !px-5 text-sm" onClick={() => setShowQr(true)}>
+          QR Absensi
+        </button>
+      </div>
 
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {sorted.map((u) => {
           const since = clockedIn?.get(u.id)
           return (
-            <button key={u.id} onClick={() => setPinFor(u)} className={`card p-4 text-left ${since != null ? 'ring-1 ring-success-600' : ''}`} aria-label={`Absen ${u.name}`}>
+            <div key={u.id} className={`card p-4 text-left ${since != null ? 'ring-1 ring-success-600' : ''}`}>
               <p className="truncate font-semibold text-ink-50">{u.name}</p>
               <p className="text-xs text-ink-300">{ROLE_LABELS[u.role]}</p>
               {since != null ? (
@@ -81,10 +95,7 @@ export function AttendanceScreen() {
                 const today = shiftOn(roster, dayKey)
                 return <p className="mt-1 text-xs text-ink-300">{today ? `Jadwal hari ini ${formatTime(today.start)}–${formatTime(today.end)}` : 'Hari ini libur'}</p>
               })()}
-              <span className={`mt-3 inline-block rounded-lg px-3 py-1.5 text-sm font-semibold ${since != null ? 'bg-ink-800 text-ink-100' : 'bg-brand-600 text-white'}`}>
-                {since != null ? 'Absen Pulang' : 'Absen Masuk'}
-              </span>
-            </button>
+            </div>
           )
         })}
         {sorted.length === 0 && <p className="col-span-full text-sm text-ink-500">Belum ada pengguna aktif.</p>}
@@ -129,6 +140,7 @@ export function AttendanceScreen() {
                         <td className="px-4 py-2 text-ink-50">
                           {r.userName}
                           {r.missingOutCount > 0 && <span className="ml-2 text-xs text-yellow-400">{r.missingOutCount}× tanpa absen pulang</span>}
+                          {r.manualCount > 0 && <span className="ml-2 text-xs text-yellow-400">{r.manualCount}× manual</span>}
                         </td>
                         <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(r.daysPresent)}</td>
                         <td className="px-4 py-2 text-right font-semibold tabular-nums text-ink-50">{formatWorkMinutes(r.totalMinutes)}</td>
@@ -172,7 +184,10 @@ export function AttendanceScreen() {
                   <tbody>
                     {report.sessions.map((s) => (
                       <tr key={`${s.userId}-${s.clockIn}`} className="border-t border-ink-800">
-                        <td className="px-4 py-2 text-ink-50">{s.userName}</td>
+                        <td className="px-4 py-2 text-ink-50">
+                          {s.userName}
+                          <SourceBadge session={s} />
+                        </td>
                         <td className="px-4 py-2 text-ink-200">
                           {formatDateTime(s.clockIn)}
                           {lateMinutesFor(rosterFor(rosters, s.userId, s.userName), s.clockIn) > 0 && (
@@ -192,61 +207,18 @@ export function AttendanceScreen() {
       )}
 
       {canSeeReport && canManageStaff && report && <PayrollSection report={report} settings={settings} periodKey={periodKey} periodLabel={PERIOD_LABELS[period]} actor={actor} />}
+      {canManageStaff && <PhoneAttendanceSettings users={sorted} settings={settings} actor={actor} />}
       {canManageStaff && <StaffSetupSection users={sorted} settings={settings} actor={actor} />}
 
-      {pinFor && <AttendancePinModal user={pinFor} clockingOut={clockedIn?.has(pinFor.id) ?? false} onClose={() => setPinFor(null)} />}
+      {showQr && <AttendanceQrModal settings={settings} onClose={() => setShowQr(false)} />}
+      {showManual && <ManualAttendanceModal users={sorted} clockedIn={clockedIn} onClose={() => setShowManual(false)} />}
     </div>
   )
 }
 
-function AttendancePinModal({ user, clockingOut, onClose }: { user: User; clockingOut: boolean; onClose: () => void }) {
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  async function submit() {
-    setBusy(true)
-    setError(null)
-    try {
-      const res = await clockAttendance(user.id, pin)
-      toast.success(res.type === 'in' ? `${res.userName} absen masuk pukul ${formatTime(res.at)}.` : `${res.userName} absen pulang — bekerja ${formatWorkMinutes(res.minutes)}.`)
-      onClose()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal absen.')
-      setPin('')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Modal onClose={onClose}>
-      <h2 className="mb-1 text-lg font-bold text-ink-50">
-        {clockingOut ? 'Absen Pulang' : 'Absen Masuk'} • {user.name}
-      </h2>
-      <p className="mb-3 text-sm text-ink-400">Masukkan PIN Anda sendiri.</p>
-      <input
-        type="password"
-        inputMode="numeric"
-        autoComplete="off"
-        autoFocus
-        aria-label="PIN absensi"
-        className="input-field mb-2 text-center text-2xl tracking-[0.5em]"
-        value={pin}
-        onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && pin.length >= 4) void submit()
-        }}
-      />
-      {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
-      <div className="mt-2 flex gap-3">
-        <button className="btn-ghost flex-1" onClick={onClose}>
-          Batal
-        </button>
-        <button className="btn-primary flex-[2]" disabled={busy || pin.length < 4} onClick={() => void submit()}>
-          {clockingOut ? 'Absen Pulang' : 'Absen Masuk'}
-        </button>
-      </div>
-    </Modal>
-  )
+/** Cara absen sesi ini; absen manual disorot karena butuh perhatian saat audit. */
+function SourceBadge({ session }: { session: AttendanceSession }) {
+  const sources = [session.inSource, session.outSource].filter((v, i, a): v is AttendanceSession['inSource'] => v != null && a.indexOf(v) === i)
+  const label = sources.map((src) => ATTENDANCE_SOURCE_LABELS[src]).join(' / ')
+  return <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold ${isManualSession(session) ? 'bg-yellow-900/40 text-yellow-300' : 'bg-ink-800 text-ink-300'}`}>{label}</span>
 }

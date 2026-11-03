@@ -14,7 +14,8 @@ export async function resetDatabase(): Promise<void> {
   const pool = getPool()
   await pool.query(
     `TRUNCATE sync_entity_state, sync_idempotency, sync_push_log, sync_devices,
-              public_order_idempotency, public_request_log, midtrans_charges, owner_cancel_codes, owner_access_tokens RESTART IDENTITY CASCADE`,
+              public_order_idempotency, public_request_log, midtrans_charges, owner_cancel_codes, owner_access_tokens,
+              staff_attendance_punches, staff_punch_challenges, staff_phones, staff_phone_enrollments, staff_attendance_secrets, staff_attendance_chain RESTART IDENTITY CASCADE`,
   )
   await pool.query("SELECT setval('sync_server_seq', 1, false)")
   await pool.query("SELECT setval('qr_order_seq', 1, false)")

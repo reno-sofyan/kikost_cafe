@@ -190,6 +190,9 @@ suite('konsol Pemilik /owner (integrasi)', () => {
       ['cafe', 'orderItems', 'ci1', { id: 'ci1', orderId: 'c1', productName: 'Kopi Susu', qty: 3, lineTotal: 99000 }],
       ['cafe', 'payments', 'cp1', { id: 'cp1', orderId: 'c1', method: 'qris', amount: 99000, tipAmount: 10000 }],
       ['kantin', 'orders', 'pl1', { id: 'pl1', orderNumber: 'TRX-3', status: 'open', grandTotal: 15000, createdAt: now, payLater: { name: 'Pak Budi', note: '', markedAt: now } }],
+      // Pesanan kemarin yang dilunasi hari ini: bukan omzet hari ini, tampil sebagai pelunasan piutang.
+      ['kantin', 'orders', 'old1', { id: 'old1', orderNumber: 'TRX-0', status: 'paid', grandTotal: 12000, createdAt: now - 86_400_000, paidAt: now }],
+      ['kantin', 'payments', 'op1', { id: 'op1', orderId: 'old1', method: 'cash', amount: 12000, createdAt: now }],
     ]
     for (const [tenant, entity, id, payload] of extra) {
       await getPool().query(
@@ -210,8 +213,11 @@ suite('konsol Pemilik /owner (integrasi)', () => {
 
     const k = (await app.inject({ method: 'GET', url: '/owner/kantin/api/sales', headers: bearer(kantin.token) })).json()
     expect(k.profile).toBe('kantin')
-    expect(k.totals).toMatchObject({ count: 1, revenue: 25000 })
+    // Akrual: tagihan tertunda hari ini ikut omzet, belum dibayarnya jadi piutang.
+    expect(k.totals).toMatchObject({ count: 2, revenue: 40000, receivable: 15000 })
     expect(k.payLater).toMatchObject({ count: 1, value: 15000 })
+    expect(k.settlements).toMatchObject({ count: 1, value: 12000 })
+    expect(k.settlements.rows[0]).toMatchObject({ orderNumber: 'TRX-0', label: 'Tunai' })
     expect(k.payLater.rows[0].name).toBe('Pak Budi')
     expect(JSON.stringify(k)).not.toContain('Kopi Susu')
 
@@ -266,6 +272,9 @@ suite('konsol Pemilik /owner (integrasi)', () => {
       ['cafe', 'payments', 'cp1', { id: 'cp1', orderId: 'c1', method: 'cash', amount: 99000, tipAmount: 7000 }],
       ['kantin', 'orders', 'pl1', { id: 'pl1', orderNumber: 'TRX-3', status: 'open', grandTotal: 15000, createdAt: now, payLater: { name: 'Pak Budi', note: 'Divisi gudang', markedAt: now, markedByName: 'Andi' } }],
       ['kantin', 'payments', 'kp1', { id: 'kp1', orderId: 'o1', method: 'qris', amount: 25000 }],
+      // Dibayar sebagian → sisa piutang Rp10.000; pembalikan tak mengurangi sisa.
+      ['kantin', 'payments', 'kp2', { id: 'kp2', orderId: 'pl1', method: 'cash', amount: 5000 }],
+      ['kantin', 'payments', 'kp3', { id: 'kp3', orderId: 'pl1', method: 'cash', amount: -5000, reversalOfPaymentId: 'zz' }],
       ['kantin', 'paymentProofs', 'pr1', { id: 'pr1', orderId: 'o1', billId: 'b1', photoDataUrl: photo, takenByName: 'Andi', createdAt: now }],
       ['kantin', 'paymentProofs', 'pr2', { id: 'pr2', orderId: 'o1', billId: 'b1', photoDataUrl: null, noPhotoReason: 'Kamera rusak', takenByName: 'Andi', createdAt: now }],
     ]
@@ -288,10 +297,10 @@ suite('konsol Pemilik /owner (integrasi)', () => {
     expect(tables[1]).toMatchObject({ name: 'Meja 2', order: null })
 
     const kov = (await get('/owner/kantin/api/overview', kantin.token)).json()
-    expect(kov.highlights).toMatchObject({ payLater: { count: 1, value: 15000 }, proofsToday: { count: 2, withoutPhoto: 1 } })
+    expect(kov.highlights).toMatchObject({ payLater: { count: 1, value: 10000 }, proofsToday: { count: 2, withoutPhoto: 1 } })
     const pl = (await get('/owner/kantin/api/pay-later', kantin.token)).json()
     expect(pl.open).toHaveLength(1)
-    expect(pl.open[0]).toMatchObject({ name: 'Pak Budi', note: 'Divisi gudang', markedByName: 'Andi', value: 15000 })
+    expect(pl.open[0]).toMatchObject({ name: 'Pak Budi', note: 'Divisi gudang', markedByName: 'Andi', value: 10000 })
 
     const proofs = (await get('/owner/kantin/api/proofs', kantin.token)).json()
     expect(proofs.proofs).toHaveLength(2)

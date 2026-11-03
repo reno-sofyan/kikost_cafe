@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { addCashMovement, closeShift, getOpenShift, listOrdersFromClosedShifts, openShift, OpenOrdersCarryOverRequiredError } from './shifts'
+import { addCashMovement, buildShiftSummary, closeShift, getOpenShift, listOrdersFromClosedShifts, openShift, OpenOrdersCarryOverRequiredError } from './shifts'
+import { buildDailySummaryMessage } from './dailySummary'
 import { cancelEmptyOrder, startOrder } from './orders'
 import { createTable } from './tables'
 import { resetLocalDb } from '@/test/db'
@@ -116,6 +117,30 @@ describe('closeShift + pesanan terbuka terbawa', () => {
     expect((await db.shifts.get(next.id))?.expectedCash).toBe(50000 + fresh.grandTotal)
     expect((await db.shifts.get(s.id))?.expectedCash).toBe(100000)
     await expect(listOrdersFromClosedShifts()).resolves.toEqual([])
+
+    // Ringkasan shift baru merinci pelunasan pesanan dari sebelum shift dibuka.
+    const orderedAt = next.openedAt - 3_600_000
+    await db.orders.update(order.id, { createdAt: orderedAt })
+    const summary = await buildShiftSummary(next.id)
+    expect(summary.totalSales).toBe(fresh.grandTotal)
+    expect(summary.settlements).toEqual([
+      expect.objectContaining({ orderId: order.id, orderNumber: fresh.orderNumber, orderedAt, methods: ['cash'], amount: fresh.grandTotal, payLaterName: null }),
+    ])
+    expect(summary.settlementTotal).toBe(fresh.grandTotal)
+    const message = await buildDailySummaryMessage(next.id)
+    expect(message).toContain('Pelunasan piutang:')
+    expect(message).toContain(fresh.orderNumber)
+  })
+
+  it('pesanan yang dibuat & dibayar di shift yang sama bukan pelunasan piutang', async () => {
+    const { s, order } = await shiftWithOpenOrder()
+    const { finalizePayment } = await import('./checkout')
+    const { db } = await import('@/db/schema')
+    const fresh = (await db.orders.get(order.id))!
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: fresh.grandTotal }], confirmedByUserId: 'u1' })
+    const summary = await buildShiftSummary(s.id)
+    expect(summary.settlements).toEqual([])
+    expect(await buildDailySummaryMessage(s.id)).not.toContain('Pelunasan piutang')
   })
 
   it('pesanan yang sudah dibayar sebagian tetap memblokir tutup shift', async () => {

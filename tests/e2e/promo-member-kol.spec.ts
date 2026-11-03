@@ -22,7 +22,7 @@ test('promo otomatis, voucher KOL, dan poin member dari pengaturan sampai lapora
   await expect(page.getByText('Sedang berlaku')).toBeVisible()
 
   // --- KOL + kode vouchernya (potongan Rp2.000).
-  await page.getByRole('button', { name: 'KOL / Influencer' }).click()
+  await page.getByRole('link', { name: 'KOL', exact: true }).click()
   await page.getByRole('button', { name: '+ KOL Baru' }).click()
   await page.getByLabel('Nama KOL').fill('Dina Kuliner')
   await page.getByLabel('Nama Akun').fill('@dinakuliner')
@@ -38,7 +38,7 @@ test('promo otomatis, voucher KOL, dan poin member dari pengaturan sampai lapora
   await shot(page, '10-kol')
 
   // --- Program member aktif (bawaan: Rp10.000 = 1 poin).
-  await page.getByRole('button', { name: 'Member & Poin' }).click()
+  await page.getByRole('link', { name: 'Member', exact: true }).click()
   await page.getByLabel('Program member aktif').check()
   await page.getByRole('button', { name: 'Simpan Pengaturan Member' }).click()
   await shot(page, '11-member-settings')

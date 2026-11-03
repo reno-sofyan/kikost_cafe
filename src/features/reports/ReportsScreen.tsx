@@ -17,7 +17,7 @@ import {
 } from '@/db/repositories/reports'
 import { getSettings } from '@/db/repositories/settings'
 import { formatRupiah, formatNumber } from '@/lib/currency'
-import { formatDate, jakartaDateKey, jakartaDateTimeToEpoch, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
+import { formatDate, formatDateTime, jakartaDateKey, jakartaDateTimeToEpoch, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { exportAccountingJournalCsv, exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
@@ -218,8 +218,12 @@ export function ReportsScreen() {
           </div>
         )}
       </div>
-      <p className="mb-5 text-sm text-ink-300">
+      <p className="text-sm text-ink-300">
         {rangeLabel} · dibandingkan dengan {comparison.label}
+      </p>
+      <p className="mb-5 mt-1 text-xs text-ink-400">
+        Dasar akrual: omzet dicatat pada tanggal pesanan. Tagihan tertunda yang belum dibayar ikut omzet sebagai piutang; pesanan terbuka biasa belum
+        dihitung. Uang dari pesanan tanggal lain tampil di &ldquo;Pelunasan Piutang&rdquo;. Kas laci tetap per shift, menurut waktu bayar.
       </p>
 
       {!report ? (
@@ -232,7 +236,7 @@ export function ReportsScreen() {
               value={formatRupiah(report.revenue)}
               current={report.revenue}
               previous={previous?.revenue}
-              hint={isOnline ? 'Total harga pesanan di aplikasi, sebelum komisi' : 'Total diterima, termasuk pajak & service charge'}
+              hint={isOnline ? 'Total harga pesanan di aplikasi, sebelum komisi' : 'Penjualan menurut tanggal pesanan, termasuk pajak & service charge'}
             />
             <KpiCard label="Transaksi" value={formatNumber(report.transactionCount)} current={report.transactionCount} previous={previous?.transactionCount} hint={`${formatNumber(report.itemsSold)} item terjual`} />
             <KpiCard label="Rata-rata per Transaksi" value={formatRupiah(Math.round(report.averageTransaction))} current={report.averageTransaction} previous={previous?.averageTransaction} />
@@ -363,13 +367,35 @@ export function ReportsScreen() {
             </div>
           )}
 
-          {(report.guestCount > 0 || report.returnTotal > 0 || report.voidCount > 0 || report.tipTotal > 0) && (
+          {(report.guestCount > 0 || report.returnTotal > 0 || report.voidCount > 0 || report.tipTotal > 0 || report.receivableTotal > 0) && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {report.guestCount > 0 && <MiniStat label="Tamu Dine-in" value={formatNumber(report.guestCount)} />}
               {report.guestCount > 0 && <MiniStat label="Rata-rata per Tamu" value={formatRupiah(Math.round(report.averagePerGuest))} />}
               {report.tipTotal > 0 && <MiniStat label="Tip Diterima" value={formatRupiah(report.tipTotal)} note="bukan omzet" />}
+              {report.receivableTotal > 0 && (
+                <MiniStat label="Belum Dibayar (Piutang)" value={formatRupiah(report.receivableTotal)} note={`${formatNumber(report.receivableCount)} tagihan tertunda • termasuk omzet`} tone="bad" />
+              )}
               {report.returnTotal > 0 && <MiniStat label="Retur" value={formatRupiah(report.returnTotal)} tone="bad" />}
               {report.voidCount > 0 && <MiniStat label="Pesanan Dibatalkan" value={formatNumber(report.voidCount)} tone="bad" />}
+            </div>
+          )}
+
+          {report.settlements.length > 0 && (
+            <div>
+              <ReportTable
+                title={`Pelunasan Piutang · ${formatRupiah(report.settlementTotal)}`}
+                headers={['No. Pesanan', 'Tanggal Pesanan', 'Dilunasi', 'Metode', 'Nilai']}
+                rows={report.settlements.map((x) => [
+                  x.orderNumber,
+                  formatDate(x.orderedAt),
+                  formatDateTime(x.paidAt),
+                  PAYMENT_METHOD_LABELS[x.method] ?? x.method,
+                  formatRupiah(x.amount),
+                ])}
+              />
+              <p className="mt-1 text-xs text-ink-400">
+                Uang yang diterima pada periode ini untuk pesanan dari tanggal lain. Bukan omzet periode ini — omzetnya tercatat di tanggal pesanan.
+              </p>
             </div>
           )}
 

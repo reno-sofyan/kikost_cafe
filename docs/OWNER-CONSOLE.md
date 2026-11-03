@@ -8,7 +8,7 @@ hanya untuk usahanya sendiri. `/ops` tetap khusus developer/operator (lihat
 
 | Jenis usaha | Alamat | Isi khusus |
 |---|---|---|
-| Kafe & Resto | `/owner/kafe` | Ringkasan meja terisi, tamu & tip hari ini; tab **Meja** (status meja + pesanan berjalan) |
+| Kafe & Resto | `/owner/kafe` | Ringkasan meja terisi, tamu & tip hari ini; tab **Meja** (status meja + pesanan berjalan) dan **Absensi** (absen HP/manual, selfie, HP terdaftar — lihat [ABSENSI-HP.md](ABSENSI-HP.md)) |
 | Kantin | `/owner/kantin` | Ringkasan Tagihan Tertunda & bukti bayar hari ini; tab **Tagihan Tertunda** dan **Bukti Bayar** (foto QRIS/transfer) |
 | Minimarket / lainnya | `/owner` | Isi umum saja |
 
@@ -26,6 +26,13 @@ Yang bisa dilakukan Pemilik dari HP:
   rincian metode bayar & jenis pesanan, produk terlaris, dan jam ramai. Isinya
   menyesuaikan jenis usaha: **Kafe** menampilkan tamu, per pelayan, tip, dan platform
   online; **Kantin** menampilkan Tagihan Tertunda yang belum dilunasi.
+- **Dasar pencatatan: akrual.** Omzet dicatat pada tanggal pesanan, bukan saat dilunasi.
+  Tagihan Tertunda yang belum dibayar ikut dalam omzet dan ditampilkan sebagai
+  "Belum dibayar" (piutang). Pesanan terbuka biasa (meja masih berjalan) belum dihitung.
+  Pesanan yang dibayar di hari lain tampil di bagian **Pelunasan piutang** pada periode
+  pembayarannya (No. pesanan, tanggal pesanan, waktu lunas, metode, nilai) — uang masuk,
+  bukan omzet periode itu. Uang masuk per shift di aplikasi kasir tetap mengikuti waktu
+  pembayaran.
 - Unduh PDF transaksi / pembatalan untuk periode mana pun (maks 92 hari).
 - **Buat kode pembatalan sendiri.** Kodenya sama dengan yang dibuat di `/ops`: satu kode
   aktif per usaha, sekali pakai, dan tablet perlu internet saat kode dipakai.
@@ -76,6 +83,9 @@ Tabel di atas berlaku di ketiga alamat (`/owner/kafe/api/...`, `/owner/kantin/ap
 | Method | Path | Isi |
 |---|---|---|
 | GET | `/owner/kafe/api/tables` | Status meja + pesanan yang sedang berjalan |
+| GET | `/owner/kafe/api/attendance?from=&to=` | Absen karyawan (HP + manual) dan HP terdaftar |
+| GET | `/owner/kafe/api/attendance/:id/selfie` | Selfie absen (JPEG) |
+| POST | `/owner/kafe/api/attendance/phones/:id/revoke` | Cabut HP absensi karyawan |
 | GET | `/owner/kantin/api/pay-later` | Tagihan Tertunda terbuka + yang dilunasi 30 hari terakhir |
 | GET | `/owner/kantin/api/proofs?from=&to=` | Daftar bukti bayar QRIS/transfer (tanpa foto) |
 | GET | `/owner/kantin/api/proofs/:id/photo` | Foto bukti bayar (JPEG/PNG) |

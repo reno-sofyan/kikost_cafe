@@ -1,5 +1,5 @@
 import type { Pool } from 'pg'
-import { GRAND_TOTAL, PAID_OR_CREATED_MS, num, numField, tsOf } from './tenantReports.js'
+import { RECOGNIZED_SALE_SQL, SALE_AT_MS, UNPAID_SQL, num, numField, tsOf } from './tenantReports.js'
 
 /**
  * Konsol Pemilik dipisah per jenis usaha: kafe di `/owner/kafe`, kantin di
@@ -31,8 +31,8 @@ export async function loadTenantBusinessType(pool: Pool, tenantId: string): Prom
   return rows[0]?.business_type ?? null
 }
 
-const PAID_TODAY_SQL = `payload->>'status' IN ('paid', 'completed')
-  AND (${tsOf(PAID_OR_CREATED_MS)} AT TIME ZONE 'Asia/Jakarta')::date = (now() AT TIME ZONE 'Asia/Jakarta')::date`
+const SALE_TODAY_SQL = `${RECOGNIZED_SALE_SQL}
+  AND (${tsOf(SALE_AT_MS)} AT TIME ZONE 'Asia/Jakarta')::date = (now() AT TIME ZONE 'Asia/Jakarta')::date`
 
 const OPEN_PAY_LATER_SQL = `entity = 'orders' AND deleted = FALSE
   AND payload->>'status' = 'open' AND jsonb_typeof(payload->'payLater') = 'object'`
@@ -51,7 +51,7 @@ export async function loadCafeHighlights(pool: Pool, tenantId: string) {
     pool.query<{ guests: string }>(
       `SELECT coalesce(sum(coalesce(${nf('guestCount')}, 0)), 0) AS guests
          FROM sync_entity_state
-        WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE AND ${PAID_TODAY_SQL}`,
+        WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE AND ${SALE_TODAY_SQL}`,
       [tenantId],
     ),
     pool.query<{ tips: string }>(
@@ -60,7 +60,7 @@ export async function loadCafeHighlights(pool: Pool, tenantId: string) {
          JOIN sync_entity_state o
            ON o.tenant_id = p.tenant_id AND o.entity = 'orders' AND o.entity_id = p.payload->>'orderId'
         WHERE p.tenant_id = $1 AND p.entity = 'payments' AND p.deleted = FALSE
-          AND o.deleted = FALSE AND ${PAID_TODAY_SQL.replace(/payload/g, 'o.payload')}`,
+          AND o.deleted = FALSE AND ${SALE_TODAY_SQL.replace(/payload/g, 'o.payload')}`,
       [tenantId],
     ),
     pool.query<{ total: string; occupied: string }>(
@@ -116,8 +116,8 @@ export async function loadCafeTables(pool: Pool, tenantId: string) {
 export async function loadKantinHighlights(pool: Pool, tenantId: string) {
   const [payLater, proofs] = await Promise.all([
     pool.query<{ count: string; value: string }>(
-      `SELECT count(*) AS count, coalesce(sum(${GRAND_TOTAL}), 0) AS value
-         FROM sync_entity_state WHERE tenant_id = $1 AND ${OPEN_PAY_LATER_SQL}`,
+      `SELECT count(*) AS count, coalesce(sum(${UNPAID_SQL}), 0) AS value
+         FROM sync_entity_state o WHERE tenant_id = $1 AND ${OPEN_PAY_LATER_SQL}`,
       [tenantId],
     ),
     pool.query<{ count: string; no_photo: string }>(
@@ -136,7 +136,8 @@ export async function loadKantinHighlights(pool: Pool, tenantId: string) {
   }
 }
 
-const payLaterRow = (o: Record<string, unknown>) => {
+/** `unpaid` = sisa belum dibayar (tagihan terbuka); tanpa itu nilainya total tagihan. */
+const payLaterRow = (o: Record<string, unknown>, unpaid?: unknown) => {
   const pl = (o.payLater ?? {}) as Record<string, unknown>
   return {
     name: str(pl.name) ?? '-',
@@ -144,16 +145,16 @@ const payLaterRow = (o: Record<string, unknown>) => {
     markedByName: str(pl.markedByName),
     markedAt: pl.markedAt == null ? null : num(pl.markedAt),
     orderNumber: str(o.orderNumber),
-    value: num(o.grandTotal),
+    value: unpaid === undefined ? num(o.grandTotal) : num(unpaid),
     paidAt: o.paidAt == null ? null : num(o.paidAt),
   }
 }
 
-/** Tagihan Tertunda: yang masih terbuka (semua) + yang dilunasi 30 hari terakhir. */
+/** Tagihan Tertunda: yang masih terbuka (semua, nilai = sisa belum dibayar) + yang dilunasi 30 hari terakhir. */
 export async function loadKantinPayLater(pool: Pool, tenantId: string) {
   const [open, settled] = await Promise.all([
-    pool.query<{ payload: Record<string, unknown> }>(
-      `SELECT payload FROM sync_entity_state WHERE tenant_id = $1 AND ${OPEN_PAY_LATER_SQL}
+    pool.query<{ payload: Record<string, unknown>; unpaid: string }>(
+      `SELECT payload, ${UNPAID_SQL} AS unpaid FROM sync_entity_state o WHERE tenant_id = $1 AND ${OPEN_PAY_LATER_SQL}
         ORDER BY ${nf('createdAt')} ASC NULLS LAST LIMIT 500`,
       [tenantId],
     ),
@@ -166,7 +167,7 @@ export async function loadKantinPayLater(pool: Pool, tenantId: string) {
       [tenantId],
     ),
   ])
-  const openRows = open.rows.map((r) => payLaterRow(r.payload))
+  const openRows = open.rows.map((r) => payLaterRow(r.payload, r.unpaid))
   return {
     open: openRows,
     openValue: openRows.reduce((s, r) => s + r.value, 0),

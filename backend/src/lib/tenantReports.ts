@@ -1,7 +1,7 @@
 import type { Pool } from 'pg'
 import { buildCancellationReport, buildReturnRows, type CancellationReport } from './opsCancellations.js'
 import { buildSalesReport, type SalesReport } from './salesReport.js'
-import { buildCancellationsPdf, buildTransactionsPdf, type TransactionReport, type TransactionRow } from './opsPdf.js'
+import { buildCancellationsPdf, buildTransactionsPdf, wibDay, type TransactionReport, type TransactionRow, type TransactionSettlement } from './opsPdf.js'
 
 /**
  * Laporan per tenant yang dipakai bersama konsol operator (/ops, lintas-tenant)
@@ -20,8 +20,28 @@ export const numField = (field: string): string =>
 /** Epoch ms → timestamptz, aman untuk nilai di luar jangkauan tanggal Postgres. */
 export const tsOf = (msSql: string): string =>
   `(CASE WHEN ${msSql} BETWEEN 0 AND 32503680000000 THEN to_timestamp(${msSql} / 1000.0) END)`
-export const PAID_OR_CREATED_MS = `coalesce(${numField('paidAt')}, ${numField('createdAt')})`
+/**
+ * Pengakuan penjualan (akrual): penjualan dicatat pada TANGGAL PESANAN, bukan saat
+ * dilunasi. Yang diakui: pesanan lunas, plus Tagihan Tertunda yang belum dibayar
+ * (makanan sudah diserahkan — sisanya piutang). Pesanan terbuka biasa (meja masih
+ * berjalan) belum diakui. Uang masuk per shift tetap mengikuti waktu bayar.
+ */
+export const SALE_AT_MS = numField('createdAt')
+export const RECOGNIZED_SALE_SQL = `(payload->>'status' IN ('paid', 'completed')
+  OR (payload->>'status' = 'open' AND jsonb_typeof(payload->'payLater') = 'object'))`
 export const GRAND_TOTAL = `coalesce(${numField('grandTotal')}, 0)`
+
+/**
+ * Sisa tagihan yang belum dibayar satu pesanan (tabel ber-alias `o`): grandTotal
+ * dikurangi pembayaran positif yang bukan pembalikan — pembayaran sebagian terhitung.
+ */
+export const UNPAID_SQL = `greatest(0, ${GRAND_TOTAL.replace(/payload/g, 'o.payload')} - (
+    SELECT coalesce(sum(CASE WHEN jsonb_typeof(p.payload->'amount') = 'number'
+                             THEN greatest((p.payload->>'amount')::numeric, 0) END), 0)
+      FROM sync_entity_state p
+     WHERE p.tenant_id = o.tenant_id AND p.entity = 'payments' AND p.deleted = FALSE
+       AND p.payload->>'orderId' = o.entity_id
+       AND coalesce(p.payload->>'reversalOfPaymentId', '') = ''))`
 
 /** Waktu batal (epoch ms) sebuah order di payload; data lama tanpa `voidedAt` → `updatedAt`. */
 export const VOIDED_AT_SQL = `coalesce(${numField('voidedAt')}, ${numField('updatedAt')})`
@@ -154,32 +174,72 @@ export async function loadCancellationReport(
 }
 
 /**
- * Transaksi satu periode: pesanan lunas (berdasarkan waktu bayar) & batal (waktu
- * batal) di periode itu, plus SEMUA tagihan tertunda yang masih belum lunas.
+ * Pelunasan piutang dalam [sinceMs, untilMs): pembayaran untuk penjualan yang diakui
+ * yang dibayar di HARI LAIN (WIB) dari tanggal pesanannya — mis. dibuka tgl 29, lunas
+ * tgl 30. Uang masuk, bukan omzet periode ini (omzetnya di tanggal pesanan).
+ */
+export async function loadSettlements(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<TransactionSettlement[]> {
+  const pAt = numField('createdAt').replace(/payload/g, 'p.payload')
+  const { rows } = await pool.query<{ p: Record<string, unknown>; o: Record<string, unknown> }>(
+    `SELECT p.payload AS p, o.payload AS o
+       FROM sync_entity_state p
+       JOIN sync_entity_state o
+         ON o.tenant_id = p.tenant_id AND o.entity = 'orders' AND o.deleted = FALSE
+        AND o.entity_id = p.payload->>'orderId'
+      WHERE p.tenant_id = $1 AND p.entity = 'payments' AND p.deleted = FALSE
+        AND ${pAt} >= $2 AND ${pAt} < $3
+        AND ${RECOGNIZED_SALE_SQL.replace(/payload/g, 'o.payload')}
+      LIMIT 5000`,
+    [tenantId, sinceMs, untilMs],
+  )
+  return rows
+    .flatMap(({ p, o }) => {
+      const amount = num(p.amount)
+      const paidAt = num(p.createdAt)
+      const orderedAt = num(o.createdAt)
+      if (amount <= 0 || p.reversalOfPaymentId || !paidAt || (orderedAt && wibDay(orderedAt) === wibDay(paidAt))) return []
+      return [{ orderNumber: typeof o.orderNumber === 'string' ? o.orderNumber : null, orderedAt: orderedAt || null, paidAt, method: String(p.method ?? 'lainnya'), amount }]
+    })
+    .sort((a, b) => a.paidAt - b.paidAt)
+}
+
+/**
+ * Transaksi satu periode (akrual): penjualan yang DIAKUI di periode itu menurut
+ * tanggal pesanan — lunas maupun tagihan tertunda yang belum dibayar — dan batal
+ * (waktu batal), plus SEMUA tagihan tertunda yang masih belum lunas (saldo piutang).
  */
 export async function loadTransactionReport(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<TransactionReport> {
   const orders = await pool.query<{ payload: Record<string, unknown> }>(
     `SELECT payload FROM sync_entity_state
       WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE AND (
-            (payload->>'status' IN ('paid', 'completed') AND ${PAID_OR_CREATED_MS} >= $2 AND ${PAID_OR_CREATED_MS} < $3)
+            (${RECOGNIZED_SALE_SQL} AND ${SALE_AT_MS} >= $2 AND ${SALE_AT_MS} < $3)
          OR (payload->>'status' = 'void' AND ${VOIDED_AT_SQL} >= $2 AND ${VOIDED_AT_SQL} < $3)
          OR (payload->>'status' = 'open' AND payload->'payLater' IS NOT NULL AND jsonb_typeof(payload->'payLater') = 'object'))
       LIMIT 5000`,
     [tenantId, sinceMs, untilMs],
   )
   const ids = orders.rows.map((r) => String(r.payload.id ?? ''))
-  const payments = ids.length
-    ? await pool.query<{ payload: Record<string, unknown> }>(
-        `SELECT payload FROM sync_entity_state
-          WHERE tenant_id = $1 AND entity = 'payments' AND deleted = FALSE
-            AND payload->>'orderId' = ANY($2::text[])`,
-        [tenantId, ids],
-      )
-    : { rows: [] }
+  const [payments, settlements] = await Promise.all([
+    ids.length
+      ? pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state
+            WHERE tenant_id = $1 AND entity = 'payments' AND deleted = FALSE
+              AND payload->>'orderId' = ANY($2::text[])`,
+          [tenantId, ids],
+        )
+      : { rows: [] as { payload: Record<string, unknown> }[] },
+    loadSettlements(pool, tenantId, sinceMs, untilMs),
+  ])
 
+  const inPeriodById = new Map(
+    orders.rows.map(({ payload: o }) => {
+      const at = num(o.createdAt)
+      return [String(o.id ?? ''), o.status !== 'void' && at >= sinceMs && at < untilMs] as const
+    }),
+  )
   const methodsByOrder = new Map<string, Set<string>>()
+  const paidByOrder = new Map<string, number>()
   const byMethod = new Map<string, { method: string; amount: number; count: number }>()
-  const statusById = new Map(orders.rows.map((r) => [String(r.payload.id ?? ''), String(r.payload.status ?? '')]))
   for (const { payload: p } of payments.rows) {
     const amount = num(p.amount)
     if (amount <= 0 || p.reversalOfPaymentId) continue
@@ -188,8 +248,8 @@ export async function loadTransactionReport(pool: Pool, tenantId: string, sinceM
     const set = methodsByOrder.get(orderId) ?? new Set<string>()
     set.add(method)
     methodsByOrder.set(orderId, set)
-    const st = statusById.get(orderId)
-    if (st === 'paid' || st === 'completed') {
+    paidByOrder.set(orderId, (paidByOrder.get(orderId) ?? 0) + amount)
+    if (inPeriodById.get(orderId)) {
       const m = byMethod.get(method) ?? { method, amount: 0, count: 0 }
       m.amount += amount
       m.count += 1
@@ -198,50 +258,56 @@ export async function loadTransactionReport(pool: Pool, tenantId: string, sinceM
   }
 
   const rows: TransactionRow[] = orders.rows.map(({ payload: o }) => {
+    const id = String(o.id ?? '')
     const st = String(o.status ?? '')
     const status: TransactionRow['status'] = st === 'paid' || st === 'completed' ? 'paid' : st === 'void' ? 'void' : 'open'
     const payLater = (o.payLater ?? null) as Record<string, unknown> | null
-    const at =
-      status === 'paid'
-        ? num(o.paidAt) || num(o.createdAt)
-        : status === 'void'
-          ? num(o.voidedAt) || num(o.updatedAt)
-          : num(payLater?.markedAt) || num(o.createdAt)
+    const grandTotal = num(o.grandTotal)
+    const at = status === 'void' ? num(o.voidedAt) || num(o.updatedAt) : num(o.createdAt)
     return {
       orderNumber: typeof o.orderNumber === 'string' ? o.orderNumber : null,
       queueNumber: o.queueNumber == null ? null : num(o.queueNumber) || null,
       buyer: typeof o.notes === 'string' && o.notes.trim() ? o.notes.trim() : typeof payLater?.name === 'string' ? payLater.name : null,
       cashierName: typeof o.cashierName === 'string' ? o.cashierName : null,
-      methods: [...(methodsByOrder.get(String(o.id ?? '')) ?? [])],
+      methods: [...(methodsByOrder.get(id) ?? [])],
       status,
       payLater: !!payLater,
-      grandTotal: num(o.grandTotal),
+      inPeriod: inPeriodById.get(id) ?? false,
+      grandTotal,
+      outstanding: status === 'open' ? Math.max(0, grandTotal - (paidByOrder.get(id) ?? 0)) : 0,
       discountAmount: num(o.discountAmount),
       discountReason: typeof o.discountReason === 'string' ? o.discountReason : null,
       discountByName: typeof o.discountByName === 'string' ? o.discountByName : null,
       discountApproval: o.discountApproval === 'owner_code' ? 'owner_code' : o.discountApproval === 'self' ? 'self' : null,
       at: at || null,
+      paidAt: status === 'paid' ? num(o.paidAt) || null : null,
     }
   })
   rows.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
-  const paid = rows.filter((r) => r.status === 'paid')
+  const sales = rows.filter((r) => r.inPeriod)
+  const paid = sales.filter((r) => r.status === 'paid')
   const openPayLater = rows.filter((r) => r.status === 'open')
   return {
     rows,
     byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount),
+    salesCount: sales.length,
+    salesValue: sales.reduce((s, r) => s + r.grandTotal, 0),
     paidCount: paid.length,
     paidValue: paid.reduce((s, r) => s + r.grandTotal, 0),
+    receivableValue: sales.reduce((s, r) => s + r.outstanding, 0),
     voidCount: rows.filter((r) => r.status === 'void').length,
     openPayLaterCount: openPayLater.length,
-    openPayLaterValue: openPayLater.reduce((s, r) => s + r.grandTotal, 0),
-    discountCount: paid.filter((r) => r.discountAmount > 0).length,
-    discountValue: paid.reduce((s, r) => s + r.discountAmount, 0),
+    openPayLaterValue: openPayLater.reduce((s, r) => s + r.outstanding, 0),
+    discountCount: sales.filter((r) => r.discountAmount > 0).length,
+    discountValue: sales.reduce((s, r) => s + r.discountAmount, 0),
+    settlements,
+    settlementValue: settlements.reduce((s, x) => s + x.amount, 0),
   }
 }
 
-/** Rekap penjualan (lunas) untuk rentang [sinceMs, untilMs) — isinya mengikuti jenis usaha tenant. */
+/** Rekap penjualan (akrual, menurut tanggal pesanan) untuk rentang [sinceMs, untilMs) — isinya mengikuti jenis usaha tenant. */
 export async function loadSalesReport(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<SalesReport> {
-  const [settings, orders, payLater] = await Promise.all([
+  const [settings, orders, payLater, settlements] = await Promise.all([
     pool.query<{ business_type: string | null }>(
       `SELECT payload->>'businessType' AS business_type FROM sync_entity_state
         WHERE tenant_id = $1 AND entity = 'settings' AND entity_id = 'singleton' AND deleted = FALSE`,
@@ -250,8 +316,8 @@ export async function loadSalesReport(pool: Pool, tenantId: string, sinceMs: num
     pool.query<{ payload: Record<string, unknown> }>(
       `SELECT payload FROM sync_entity_state
         WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
-          AND payload->>'status' IN ('paid', 'completed')
-          AND ${PAID_OR_CREATED_MS} >= $2 AND ${PAID_OR_CREATED_MS} < $3
+          AND ${RECOGNIZED_SALE_SQL}
+          AND ${SALE_AT_MS} >= $2 AND ${SALE_AT_MS} < $3
         LIMIT 5000`,
       [tenantId, sinceMs, untilMs],
     ),
@@ -262,26 +328,28 @@ export async function loadSalesReport(pool: Pool, tenantId: string, sinceMs: num
         LIMIT 500`,
       [tenantId],
     ),
+    loadSettlements(pool, tenantId, sinceMs, untilMs),
   ])
   const ids = orders.rows.map((r) => String(r.payload.id ?? ''))
-  const [items, payments] = ids.length
-    ? await Promise.all(
-        (['orderItems', 'payments'] as const).map((entity) =>
-          pool.query<{ payload: Record<string, unknown> }>(
-            `SELECT payload FROM sync_entity_state
-              WHERE tenant_id = $1 AND entity = $2 AND deleted = FALSE
-                AND payload->>'orderId' = ANY($3::text[])`,
-            [tenantId, entity, ids],
-          ),
-        ),
-      )
-    : [{ rows: [] }, { rows: [] }]
+  // Pembayaran juga untuk tagihan tertunda di luar periode — sisa tagihannya dihitung dari situ.
+  const paymentIds = [...new Set([...ids, ...payLater.rows.map((r) => String(r.payload.id ?? ''))])]
+  const byOrderIds = (entity: 'orderItems' | 'payments', orderIds: string[]) =>
+    orderIds.length
+      ? pool.query<{ payload: Record<string, unknown> }>(
+          `SELECT payload FROM sync_entity_state
+            WHERE tenant_id = $1 AND entity = $2 AND deleted = FALSE
+              AND payload->>'orderId' = ANY($3::text[])`,
+          [tenantId, entity, orderIds],
+        )
+      : Promise.resolve({ rows: [] as { payload: Record<string, unknown> }[] })
+  const [items, payments] = await Promise.all([byOrderIds('orderItems', ids), byOrderIds('payments', paymentIds)])
   return buildSalesReport({
     businessType: settings.rows[0]?.business_type ?? null,
     orders: orders.rows.map((r) => r.payload),
-    items: items!.rows.map((r) => r.payload),
-    payments: payments!.rows.map((r) => r.payload),
+    items: items.rows.map((r) => r.payload),
+    payments: payments.rows.map((r) => r.payload),
     openPayLater: payLater.rows.map((r) => r.payload),
+    settlements,
   })
 }
 
@@ -292,11 +360,11 @@ export async function loadTenantDetail(pool: Pool, tenantId: string) {
       `SELECT coalesce(sum(${GRAND_TOTAL}), 0) AS revenue,
               count(*)                                            AS txns,
               coalesce(sum(${GRAND_TOTAL}) FILTER (
-                WHERE ${tsOf(PAID_OR_CREATED_MS)}
+                WHERE ${tsOf(SALE_AT_MS)}
                       > now() - interval '30 days'), 0)          AS month_revenue
          FROM sync_entity_state
         WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
-          AND payload->>'status' IN ('paid', 'completed')`,
+          AND ${RECOGNIZED_SALE_SQL}`,
       [tenantId],
     ),
     pool.query<{ payload: Record<string, unknown> }>(
@@ -366,18 +434,18 @@ export async function loadTenantOverview(pool: Pool, tenantId: string) {
       `SELECT coalesce(sum(${GRAND_TOTAL}), 0) AS revenue, count(*) AS txns
          FROM sync_entity_state
         WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
-          AND payload->>'status' IN ('paid', 'completed')
-          AND (${tsOf(PAID_OR_CREATED_MS)} AT TIME ZONE 'Asia/Jakarta')::date
+          AND ${RECOGNIZED_SALE_SQL}
+          AND (${tsOf(SALE_AT_MS)} AT TIME ZONE 'Asia/Jakarta')::date
               = (now() AT TIME ZONE 'Asia/Jakarta')::date`,
       [tenantId],
     ),
     pool.query<{ d: string; revenue: string }>(
-      `SELECT (${tsOf(PAID_OR_CREATED_MS)} AT TIME ZONE 'Asia/Jakarta')::date::text AS d,
+      `SELECT (${tsOf(SALE_AT_MS)} AT TIME ZONE 'Asia/Jakarta')::date::text AS d,
               sum(${GRAND_TOTAL}) AS revenue
          FROM sync_entity_state
         WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
-          AND payload->>'status' IN ('paid', 'completed')
-          AND ${tsOf(PAID_OR_CREATED_MS)} > now() - interval '8 days'
+          AND ${RECOGNIZED_SALE_SQL}
+          AND ${tsOf(SALE_AT_MS)} > now() - interval '8 days'
         GROUP BY d
         ORDER BY d`,
       [tenantId],

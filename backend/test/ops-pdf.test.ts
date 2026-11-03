@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCancellationsPdf, buildTransactionsPdf, pdfText } from '../src/lib/opsPdf.js'
+import { buildCancellationsPdf, buildTransactionsPdf, fmtWib, pdfText, settledLaterLabel } from '../src/lib/opsPdf.js'
 import { buildCancellationReport } from '../src/lib/opsCancellations.js'
 import { parseWibRange } from '../src/routes/ops.js'
 
@@ -32,16 +32,24 @@ describe('PDF ops', () => {
   it('transaksi: PDF valid, multi-halaman untuk data banyak', () => {
     const rows = Array.from({ length: 120 }, (_, i) => ({
       orderNumber: `TRX-${i}`, queueNumber: i, buyer: 'Pembeli dengan nama yang cukup panjang sekali', cashierName: 'Rina',
-      methods: ['cash'], status: 'paid' as const, payLater: false, grandTotal: 10000, at: meta.generatedAt,
+      methods: ['cash'], status: 'paid' as const, payLater: false, inPeriod: true, grandTotal: 10000, outstanding: 0, at: meta.generatedAt, paidAt: i % 7 === 0 ? meta.generatedAt + 86_400_000 : meta.generatedAt,
       discountAmount: i % 10 === 0 ? 1000 : 0, discountReason: i % 10 === 0 ? 'Karyawan' : null, discountByName: 'Rina', discountApproval: (i % 10 === 0 ? 'self' : null) as 'self' | null,
     }))
     const pdf = buildTransactionsPdf(meta, {
-      rows, byMethod: [{ method: 'cash', amount: 1_200_000, count: 120 }], paidCount: 120, paidValue: 1_200_000,
-      voidCount: 0, openPayLaterCount: 0, openPayLaterValue: 0, discountCount: 12, discountValue: 12000,
+      rows, byMethod: [{ method: 'cash', amount: 1_200_000, count: 120 }], salesCount: 120, salesValue: 1_200_000,
+      paidCount: 120, paidValue: 1_200_000, receivableValue: 0, voidCount: 0,
+      settlements: [{ orderNumber: 'TRX-0', orderedAt: meta.generatedAt - 86_400_000, paidAt: meta.generatedAt, method: 'cash', amount: 40000 }], settlementValue: 40000, openPayLaterCount: 0, openPayLaterValue: 0, discountCount: 12, discountValue: 12000,
     })
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
     expect(pdf.length).toBeGreaterThan(3000)
     expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(1)
+  })
+
+  it('kolom Dilunasi hanya terisi bila lunas di hari lain dari tanggal pesanan', () => {
+    const at = Date.UTC(2026, 9, 29, 14) // 29 Okt 21.00 WIB
+    expect(settledLaterLabel({ at, paidAt: Date.UTC(2026, 9, 30, 2) })).toBe(fmtWib(Date.UTC(2026, 9, 30, 2)))
+    expect(settledLaterLabel({ at, paidAt: Date.UTC(2026, 9, 29, 16) })).toBe('-') // 23.00 WIB hari yang sama
+    expect(settledLaterLabel({ at, paidAt: null })).toBe('-')
   })
 
   it('pembatalan: PDF valid termasuk catatan item yang dihapus', () => {

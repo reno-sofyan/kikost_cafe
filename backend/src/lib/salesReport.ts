@@ -8,11 +8,21 @@
 
 type Payload = Record<string, unknown>
 
+/** Pelunasan piutang (lihat `loadSettlements`): uang masuk untuk pesanan dari tanggal lain. */
+export interface SettlementRow {
+  orderNumber: string | null
+  orderedAt: number | null
+  paidAt: number
+  method: string
+  amount: number
+}
+
 export type SalesProfile = 'cafe' | 'kantin' | 'retail'
 
 export interface SalesReport {
   profile: SalesProfile
-  totals: { count: number; revenue: number; avgTicket: number; discount: number; tips: number; guests: number }
+  /** `revenue` = penjualan diakui (akrual); `receivable` = bagiannya yang belum dibayar. */
+  totals: { count: number; revenue: number; receivable: number; avgTicket: number; discount: number; tips: number; guests: number }
   byType: { key: string; label: string; count: number; revenue: number }[]
   byMethod: { method: string; label: string; count: number; amount: number }[]
   topProducts: { name: string; qty: number; revenue: number }[]
@@ -20,6 +30,8 @@ export interface SalesReport {
   /** Kafe saja (kosong untuk jenis lain). */
   byWaiter: { name: string; count: number; revenue: number; tips: number }[]
   /** Kantin saja: tagihan tertunda yang masih terbuka (tak dibatasi periode). */
+  /** Uang masuk periode ini untuk pesanan dari tanggal lain — bukan omzet periode ini. */
+  settlements: { count: number; value: number; rows: (SettlementRow & { label: string })[] }
   payLater: { count: number; value: number; rows: { name: string; orderNumber: string | null; value: number; markedAt: number | null }[] }
 }
 
@@ -62,34 +74,49 @@ const wibHour = (ms: number): number => new Date(ms + 7 * 3_600_000).getUTCHours
 
 export function buildSalesReport(params: {
   businessType: string | null
-  /** Pesanan lunas dalam periode. */
+  /**
+   * Penjualan yang diakui dalam periode (akrual, menurut tanggal pesanan): pesanan
+   * lunas + tagihan tertunda yang belum dibayar.
+   */
   orders: Payload[]
   items: Payload[]
   payments: Payload[]
   /** Pesanan terbuka bertanda Tagihan Tertunda (kantin). */
   openPayLater: Payload[]
+  settlements?: SettlementRow[]
 }): SalesReport {
   const profile = salesProfileFor(params.businessType)
   const orderIds = new Set(params.orders.map((o) => String(o.id ?? '')))
+  const paidByOrder = new Map<string, number>()
+  for (const p of params.payments) {
+    const amount = num(p.amount)
+    if (amount <= 0 || p.reversalOfPaymentId) continue
+    const orderId = String(p.orderId ?? '')
+    paidByOrder.set(orderId, (paidByOrder.get(orderId) ?? 0) + amount)
+  }
+  /** Sisa tagihan yang belum dibayar (pembayaran sebagian sudah dikurangkan). */
+  const unpaidOf = (o: Payload): number => Math.max(0, num(o.grandTotal) - (paidByOrder.get(String(o.id ?? '')) ?? 0))
 
   const byType = new Map<string, { key: string; label: string; count: number; revenue: number }>()
   const byWaiter = new Map<string, { name: string; count: number; revenue: number; tips: number }>()
   const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0, revenue: 0 }))
   const waiterByOrder = new Map<string, string>()
   let revenue = 0
+  let receivable = 0
   let discount = 0
   let guests = 0
 
   for (const o of params.orders) {
     const total = num(o.grandTotal)
     revenue += total
+    if (String(o.status) === 'open') receivable += unpaidOf(o)
     discount += num(o.discountAmount)
     const t = typeKey(o, profile)
     const bucket = byType.get(t.key) ?? { ...t, count: 0, revenue: 0 }
     bucket.count += 1
     bucket.revenue += total
     byType.set(t.key, bucket)
-    const at = num(o.paidAt) || num(o.createdAt)
+    const at = num(o.createdAt)
     if (at > 0) {
       const h = byHour[wibHour(at)]!
       h.count += 1
@@ -142,20 +169,26 @@ export function buildSalesReport(params: {
       ? params.openPayLater
           .map((o) => {
             const pl = (o.payLater ?? {}) as Payload
-            return { name: str(pl.name) ?? '—', orderNumber: str(o.orderNumber), value: num(o.grandTotal), markedAt: num(pl.markedAt) || null }
+            return { name: str(pl.name) ?? '—', orderNumber: str(o.orderNumber), value: unpaidOf(o), markedAt: num(pl.markedAt) || null }
           })
           .sort((a, b) => (a.markedAt ?? 0) - (b.markedAt ?? 0))
       : []
 
   const count = params.orders.length
+  const settlements = params.settlements ?? []
   return {
     profile,
-    totals: { count, revenue, avgTicket: count ? Math.round(revenue / count) : 0, discount, tips, guests },
+    totals: { count, revenue, receivable, avgTicket: count ? Math.round(revenue / count) : 0, discount, tips, guests },
     byType: [...byType.values()].sort((a, b) => b.revenue - a.revenue),
     byMethod: [...byMethod.values()].sort((a, b) => b.amount - a.amount),
     topProducts: [...products.values()].sort((a, b) => b.qty - a.qty || b.revenue - a.revenue).slice(0, 15),
     byHour,
     byWaiter: [...byWaiter.values()].sort((a, b) => b.revenue - a.revenue),
+    settlements: {
+      count: settlements.length,
+      value: settlements.reduce((s, x) => s + x.amount, 0),
+      rows: settlements.slice(0, 100).map((x) => ({ ...x, label: METHOD_LABELS[x.method] ?? x.method })),
+    },
     payLater: { count: payLaterRows.length, value: payLaterRows.reduce((s, r) => s + r.value, 0), rows: payLaterRows.slice(0, 50) },
   }
 }

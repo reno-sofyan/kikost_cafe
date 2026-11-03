@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db/schema'
 import { resetLocalDb } from '@/test/db'
-import { addOrderItem, startOrder } from './orders'
+import { addOrderItem, markOrderPayLater, startOrder } from './orders'
 import { openShift } from './shifts'
 import { updateSettings } from './settings'
 import { finalizePayment, voidOrder } from './checkout'
@@ -105,5 +105,43 @@ describe('buildAccountingExport', () => {
     expect(exp.totals.balanced).toBe(true)
     expect(exp.inventoryValueNow).toBe(3000) // 1000 g * 3
     expect(exp.cashVariance).toHaveLength(1)
+  })
+
+  it('akrual: tagihan tertunda → piutang di tanggal pesanan, kas & pelunasan piutang di tanggal bayar', async () => {
+    await updateSettings({ taxPercent: 0, serviceChargePercent: 0, roundingIncrement: 1 })
+    await seedProduct('nasi', 15000, 0)
+    const shift = await openShift({ cashierId: 'u1', cashierName: 'K', openingCash: 0 })
+    const order = await startOrder({ type: 'dine_in', cashierId: 'u1', cashierName: 'K', shiftId: shift.id })
+    await addOrderItem({ orderId: order.id, productId: 'nasi', productName: 'nasi', unitPrice: 15000, qty: 1, modifiers: [], notes: '' })
+    await markOrderPayLater(order.id, { name: 'Pak Budi', note: '', shiftId: shift.id }, { userId: 'u1', userName: 'K' })
+    await finalizePayment({ orderId: order.id, payments: [{ method: 'cash', amount: 15000 }], confirmedByUserId: 'u1' })
+    // Pesanan tanggal 1, dilunasi tanggal 2 (WIB).
+    const day1 = Date.UTC(2026, 9, 1, 5) // 12.00 WIB
+    const day2 = Date.UTC(2026, 9, 2, 3) // 10.00 WIB
+    await db.orders.update(order.id, { createdAt: day1, paidAt: day2 })
+    await db.payments.where('orderId').equals(order.id).modify({ createdAt: day2 })
+
+    const both = await buildAccountingExport({ from: day1 - 3_600_000, to: day2 + 3_600_000 })
+    expect(both.totals.balanced).toBe(true)
+    const linesOf = (account: string) => both.lines.filter((l) => l.account === account).map((l) => [l.date, l.debit, l.credit])
+    expect(linesOf(ACCOUNTS.SALES)).toEqual([['2026-10-01', 0, 15000]])
+    expect(linesOf(ACCOUNTS.TRADE_RECEIVABLE)).toEqual([
+      ['2026-10-01', 15000, 0],
+      ['2026-10-02', 0, 15000],
+    ])
+    expect(linesOf(ACCOUNTS.CASH)).toEqual([['2026-10-02', 15000, 0]])
+
+    // Rentang tanggal 1 saja: penjualan & piutang terbuka, belum ada kas.
+    const d1 = await buildAccountingExport({ from: day1 - 3_600_000, to: day1 + 3_600_000 })
+    expect(d1.totals.balanced).toBe(true)
+    expect(bal(d1, ACCOUNTS.TRADE_RECEIVABLE)).toEqual({ debit: 15000, credit: 0 })
+    expect(bal(d1, ACCOUNTS.CASH)).toEqual({ debit: 0, credit: 0 })
+
+    // Rentang tanggal 2 saja: hanya pelunasan piutang, tanpa penjualan.
+    const d2 = await buildAccountingExport({ from: day2 - 3_600_000, to: day2 + 3_600_000 })
+    expect(d2.totals.balanced).toBe(true)
+    expect(bal(d2, ACCOUNTS.SALES)).toEqual({ debit: 0, credit: 0 })
+    expect(bal(d2, ACCOUNTS.CASH)).toEqual({ debit: 15000, credit: 0 })
+    expect(bal(d2, ACCOUNTS.TRADE_RECEIVABLE)).toEqual({ debit: 0, credit: 15000 })
   })
 })

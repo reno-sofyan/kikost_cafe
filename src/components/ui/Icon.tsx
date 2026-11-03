@@ -7,6 +7,8 @@ export type IconName =
   | 'close'
   | 'check'
   | 'star'
+  | 'megaphone'
+  | 'award'
   | 'table'
   | 'chef'
   | 'clock'
@@ -53,6 +55,18 @@ const SHAPES: Record<IconName, ReactNode> = {
   check: <path d="M5 13l4 4L19 7" />,
   star: (
     <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5Z" />
+  ),
+  megaphone: (
+    <>
+      <path d="M4 10v4a1 1 0 0 0 1 1h2l8 4.5V4.5L7 9H5a1 1 0 0 0-1 1Z" />
+      <path d="M7 15l1.5 5h2.5L10 15.8M18.5 9a4 4 0 0 1 0 6" />
+    </>
+  ),
+  award: (
+    <>
+      <circle cx="12" cy="9" r="5.5" />
+      <path d="M8.5 13.5 7 21l5-2.8 5 2.8-1.5-7.5" />
+    </>
   ),
   table: (
     <>

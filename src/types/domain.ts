@@ -155,6 +155,8 @@ export interface AppSettings {
   staffPay?: Record<string, StaffPay>
   /** Jadwal kerja mingguan per karyawan (kunci = id pengguna). */
   staffRoster?: Record<string, StaffRoster>
+  /** Absen lewat HP: selfie wajib (bawaan) atau opsional. Dibaca server saat HP absen. */
+  attendancePhoneSelfie?: 'required' | 'optional'
   /** Kantin: diskon kasir di atas persen ini (dari subtotal) wajib kode Pemilik. Default 10. */
   cashierDiscountMaxPercent?: number
   /** Basis URL publik halaman pesan-mandiri (mis. https://pesan.usahaanda.com). Kosong = pakai origin perangkat. QR berisi `<base>/order/<token>`. */

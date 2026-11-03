@@ -521,13 +521,15 @@ export function CashierScreen() {
           </button>
         </div>
 
-        <div className="flex flex-none gap-1.5 overflow-x-auto px-3 pb-2">
+        {/* Satu baris yang digeser ke samping: tombol tidak boleh menyusut,
+            supaya kategori yang banyak tidak saling tumpuk. */}
+        <div className="flex flex-none gap-1.5 overflow-x-auto overscroll-x-contain px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {[{ id: 'all', name: 'Semua' }, ...categories].map((c) => (
             <button
               key={c.id}
               onClick={() => setCategoryId(c.id)}
               aria-pressed={categoryId === c.id}
-              className={`btn btn-compact min-w-[5.6rem] whitespace-nowrap border !px-4 text-sm ${
+              className={`btn btn-compact min-w-[5.6rem] flex-none whitespace-nowrap border !px-4 text-sm ${
                 categoryId === c.id ? 'border-brand-600 bg-brand-600 text-white' : 'border-ink-600 bg-ink-900 text-ink-100 hover:bg-ink-800'
               }`}
             >
