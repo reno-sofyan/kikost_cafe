@@ -85,10 +85,12 @@ describe('Pesanan KOL / Compliment (harga HPP)', () => {
     expect((await order(id)).grandTotal).toBe(9000)
   })
 
-  it('tanpa PIN, tapi nama penerima & alasan compliment wajib, dan tak bisa setelah ada pembayaran', async () => {
+  it('compliment satu ketukan (penerima dari catatan pesanan), KOL wajib dipilih, dan tak bisa setelah ada pembayaran', async () => {
     const id = await openOrder([['latte', 1]])
-    await expect(setOrderHppPricing(id, { kind: 'compliment', kolId: null, name: 'X', reason: '' }, ACTOR)).rejects.toThrow(/alasan/)
     await expect(setOrderHppPricing(id, { kind: 'kol', kolId: null, name: ' ', reason: '' }, ACTOR)).rejects.toThrow(/KOL/)
+    await db.orders.update(id, { notes: 'Meja 4 - Pak Andi' })
+    await setOrderHppPricing(id, { kind: 'compliment', kolId: null, name: '', reason: '' }, ACTOR)
+    expect((await order(id)).hppPricing).toMatchObject({ kind: 'compliment', name: 'Meja 4 - Pak Andi', reason: '' })
 
     const paidId = await openOrder([['roti', 1]])
     await finalizePayment({ orderId: paidId, payments: [{ method: 'cash', amount: (await order(paidId)).grandTotal }], confirmedByUserId: 'u1' })

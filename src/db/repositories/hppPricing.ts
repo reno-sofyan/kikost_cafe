@@ -42,12 +42,11 @@ export async function setOrderHppPricing(orderId: string, input: HppPricingInput
   if (!featuresForBusinessType(settings.businessType).hppPricing) throw new Error('Fitur KOL/Compliment hanya untuk Kafe & Restoran.')
   const kol = input.kind === 'kol' && input.kolId ? (settings.kols ?? []).find((k) => k.id === input.kolId && k.active) : undefined
   if (input.kind === 'kol' && input.kolId && !kol) throw new Error('KOL tidak ditemukan atau sudah nonaktif.')
-  const name = (kol?.name ?? input.name).trim()
-  if (!name) throw new Error(input.kind === 'kol' ? 'Pilih KOL atau tulis namanya.' : 'Tulis nama penerima compliment.')
-  const reason = input.reason.trim()
-  if (input.kind === 'compliment' && reason.length < 3) throw new Error('Tulis alasan compliment.')
-
   const order = await assertEditable(orderId)
+  // Compliment = satu ketukan: penerima dari catatan/nama pelanggan pesanan bila tak diisi.
+  const name = (kol?.name ?? input.name).trim() || (input.kind === 'compliment' ? order.notes?.trim() || 'Tamu' : '')
+  if (!name) throw new Error('Pilih KOL atau tulis namanya.')
+  const reason = input.reason.trim()
   const items = (await db.orderItems.where('orderId').equals(orderId).toArray()).filter((i) => !i.removed && !i.voided)
   const hpp = new Map<string, number>()
   for (const i of items) if (!hpp.has(i.productId)) hpp.set(i.productId, await hppOfProduct(i.productId))
