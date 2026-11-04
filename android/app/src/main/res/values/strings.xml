@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Kione POS</string>
+    <string name="app_name">Kione POS (baru)</string>
     <string name="title_activity_main">Kione POS</string>
-    <string name="package_name">com.kione.pos</string>
-    <string name="custom_url_scheme">com.kione.pos</string>
+    <string name="package_name">com.kione.pos.v2</string>
+    <string name="custom_url_scheme">com.kione.pos.v2</string>
 </resources>

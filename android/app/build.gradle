@@ -12,7 +12,10 @@ android {
     namespace "com.kione.pos"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.kione.pos"
+        // .v2: keystore rilis lama (com.kione.pos) hilang 4 Nov 2026 — APK baru tak bisa
+        // meng-update aplikasi lama, jadi dipasang BERDAMPINGAN lalu data dipindah lewat
+        // backup + sinkronisasi. Jangan diubah lagi.
+        applicationId "com.kione.pos.v2"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 50
