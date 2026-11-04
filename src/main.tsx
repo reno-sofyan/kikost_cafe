@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ErrorBoundary } from '@/app/ErrorBoundary'
 import { ToastHost } from '@/components/ui/ToastHost'
 import { installGlobalErrorHandlers } from '@/lib/globalErrorHandler'
+import { toast } from '@/state/toastStore'
 import { cleanupLegacyBrand } from '@/lib/legacyCleanup'
 import { ensurePersistentStorage } from '@/lib/persistentStorage'
 import { menuTokenFromPath, preloadMenu } from '@/features/order/menuPreload'
@@ -33,10 +34,32 @@ function startPosRuntime(): void {
   // di halaman pelanggan. Isinya sama persis dengan registerSW.js yang dulu disuntikkan
   // plugin PWA.
   if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-    const register = () => void navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    const register = () =>
+      void navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
+        // Tablet kasir bisa terbuka berhari-hari tanpa dimuat ulang: cek versi baru tiap 30 menit.
+        setInterval(() => void reg.update().catch(() => undefined), 30 * 60_000)
+      })
     if (document.readyState === 'complete') register()
     else window.addEventListener('load', register)
+    watchForAppUpdate()
   }
+}
+
+/**
+ * SW baru (skipWaiting + clientsClaim) langsung mengambil alih, tetapi halaman yang
+ * sedang terbuka tetap menjalankan kode lama sampai dimuat ulang. Beri tahu pengguna
+ * dengan toast yang menetap — sengaja TIDAK muat ulang otomatis supaya transaksi yang
+ * sedang dikerjakan kasir tidak terpotong.
+ */
+function watchForAppUpdate(): void {
+  // Kunjungan pertama (belum ada SW pengendali) bukan pembaruan — jangan tampilkan apa pun.
+  if (!navigator.serviceWorker.controller) return
+  let shown = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (shown) return
+    shown = true
+    toast.action('Versi baru Kione POS tersedia — ketuk untuk memuat ulang.', () => window.location.reload())
+  })
 }
 
 const rootEl = document.getElementById('root')!

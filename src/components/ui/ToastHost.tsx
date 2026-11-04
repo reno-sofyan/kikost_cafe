@@ -42,7 +42,10 @@ function ToastItem({ toast: t, onDismiss }: { toast: Toast; onDismiss: () => voi
 
   return (
     <button
-      onClick={onDismiss}
+      onClick={() => {
+        onDismiss()
+        t.onTap?.()
+      }}
       className={`pointer-events-auto flex max-w-md items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium shadow-pop ${TONE_STYLE[t.tone]}`}
     >
       <Icon name={TONE_ICON[t.tone]} size={16} className="flex-none" />

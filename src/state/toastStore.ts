@@ -9,19 +9,21 @@ export interface Toast {
   tone: ToastTone
   /** ms sebelum otomatis hilang; 0 = tidak auto-dismiss (butuh tap manual). */
   duration: number
+  /** Dijalankan saat toast diketuk (selain menutupnya), mis. muat ulang ke versi baru. */
+  onTap?: () => void
 }
 
 interface ToastState {
   toasts: Toast[]
-  push: (message: string, tone: ToastTone, duration: number) => string
+  push: (message: string, tone: ToastTone, duration: number, onTap?: () => void) => string
   dismiss: (id: string) => void
 }
 
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  push: (message, tone, duration) => {
+  push: (message, tone, duration, onTap) => {
     const id = randomUUID()
-    set((state) => ({ toasts: [...state.toasts, { id, message, tone, duration }] }))
+    set((state) => ({ toasts: [...state.toasts, { id, message, tone, duration, onTap }] }))
     return id
   },
   dismiss: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
@@ -36,4 +38,6 @@ export const toast = {
   show: (message: string, duration = 4000) => useToastStore.getState().push(message, 'info', duration),
   success: (message: string, duration = 4000) => useToastStore.getState().push(message, 'success', duration),
   error: (message: string, duration = 6000) => useToastStore.getState().push(message, 'error', duration),
+  /** Toast menetap yang menjalankan `onTap` saat diketuk. */
+  action: (message: string, onTap: () => void) => useToastStore.getState().push(message, 'info', 0, onTap),
 }
