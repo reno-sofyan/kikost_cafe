@@ -12,6 +12,7 @@ import { formatNumber, formatRupiah } from '@/lib/currency'
 import type { BusinessFeatures } from '@/lib/businessType'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
+import { HppPricingControl } from '@/features/pos/HppPricingControl'
 import { toast } from '@/state/toastStore'
 import type { Order } from '@/types/domain'
 
@@ -37,7 +38,8 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
   )
 
   const memberOn = features.loyalty && !!loyalty?.enabled
-  if (!features.promos && !memberOn && !order.customerId) return null
+  if (!features.promos && !features.hppPricing && !memberOn && !order.customerId) return null
+  const hppMode = !!order.hppPricing
   const voucher = order.appliedPromos?.find((p) => p.voucherCode)
 
   return (
@@ -53,7 +55,7 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
               {customer && isBirthdayAt(customer.birthDate, Date.now(), 'month') ? ' • ulang tahun bulan ini' : ''}
             </span>
           </button>
-          {customer && memberOn && info && loyalty && (
+          {customer && memberOn && info && loyalty && !hppMode && (
             <button
               className="flex-none rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500 disabled:opacity-40"
               disabled={!order.pointsRedeemed && info.available < loyalty.minRedeem}
@@ -65,7 +67,8 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
           )}
         </div>
       )}
-      {features.promos && (
+      {features.hppPricing && <HppPricingControl order={order} />}
+      {features.promos && !hppMode && (
         <div className="flex items-center justify-between gap-2 text-sm">
           {voucher ? (
             <>

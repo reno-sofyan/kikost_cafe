@@ -745,6 +745,11 @@ export interface OrderItem {
   removedApproval?: 'reason' | 'owner_code' | null
   /** Akumulasi nilai (Rp) yang hilang karena qty item ini dikurangi — jejak koreksi. */
   reducedValue?: number
+  /**
+   * Harga jual normal sebelum pesanan dijadikan KOL/Compliment (harga HPP) — untuk
+   * dikembalikan bila mode itu dilepas, dan sebagai "nilai jual" di laporan.
+   */
+  normalPrice?: { unitPrice: number; modifierDeltas: number[]; discountAmount: number } | null
   /** Waktu item ini dicetak ke tiket dapur/bar. Item tambahan (belum tercetak) tak
    *  memicu cetak ulang seluruh pesanan. */
   kitchenPrintedAt: number | null
@@ -995,6 +1000,8 @@ export interface Order {
   /** "Tagihan Tertunda" (kantin): pesanan internal yang dicatat sekarang, dibayar nanti.
    *  Tetap terisi setelah lunas sebagai jejak. Kosong/undefined = pesanan biasa. */
   payLater?: PayLaterInfo | null
+  /** Pesanan KOL / Compliment (kafe): semua item dihargai HPP. */
+  hppPricing?: HppPricing | null
   createdAt: number
   updatedAt: number
   paidAt: number | null
@@ -1002,6 +1009,26 @@ export interface Order {
 
 /** `self` = tanpa persetujuan atasan; `supervisor` = PIN supervisor/admin; `owner_code` = kode sekali pakai Pemilik. */
 export type VoidApproval = 'self' | 'supervisor' | 'owner_code'
+
+export type HppPricingKind = 'kol' | 'compliment'
+
+/** Pesanan KOL / Compliment: tamu membayar seharga HPP (harga pokok), bukan harga jual. */
+export interface HppPricing {
+  kind: HppPricingKind
+  /** KOL terdaftar (menu KOL). Null = compliment, atau KOL yang belum terdaftar. */
+  kolId: string | null
+  /** Nama KOL / penerima compliment. */
+  name: string
+  reason: string
+  /** Yang menerapkan (kasir yang login) — tanpa PIN atasan. */
+  approvedByUserId: string
+  approvedByName: string
+  requestedByName: string
+  at: number
+  /** Pajak & service charge pesanan sebelum mode HPP — dikembalikan bila dilepas. */
+  prevTaxPercent: number
+  prevServiceChargePercent: number
+}
 
 export interface PayLaterInfo {
   /** Atas nama siapa tagihan ini (mis. nama karyawan / divisi). */

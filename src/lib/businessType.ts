@@ -100,6 +100,8 @@ export interface BusinessFeatures {
    * ringkasan harian via WhatsApp, pesanan terjadwal, label/alergen menu, layar pelanggan.
    */
   proTools: boolean
+  /** Pesanan KOL / Compliment di kasir: item dihargai HPP. */
+  hppPricing: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -132,13 +134,14 @@ const ALL_FEATURES: BusinessFeatures = {
   combos: true,
   attendance: true,
   proTools: true,
+  hppPricing: true,
 }
 
 /** Fitur layanan meja ala restoran — tak relevan untuk kantin & minimarket. */
 const NO_TABLE_SERVICE = { preBill: false, tips: false, reservations: false, waiterTracking: false } as const
 
 /** Fitur premium kafe & restoran — belum dipasang untuk kantin & minimarket. */
-const NO_PREMIUM = { promos: false, loyalty: false, combos: false, attendance: false, proTools: false } as const
+const NO_PREMIUM = { promos: false, loyalty: false, combos: false, attendance: false, proTools: false, hppPricing: false } as const
 
 /**
  * Fitur yang relevan per jenis usaha. Ini HANYA mengatur apa yang TERLIHAT di

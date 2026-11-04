@@ -17,7 +17,8 @@ import {
 } from '../lib/ownerConsole.js'
 import { listPhones, loadAttendanceLog, loadSelfie, revokePhone } from '../lib/staffAttendance.js'
 import { generateOwnerCode, getOwnerCodeStatus, revokeOwnerCode } from '../lib/ownerCancelCodes.js'
-import { buildTenantExport, loadCancellationReport, loadSalesReport, loadTenantDetail, loadTenantOverview, num, parseWibRange } from '../lib/tenantReports.js'
+import { loadCancellationReport, loadSalesReport, loadTenantDetail, loadTenantOverview, num, parseWibRange } from '../lib/tenantReports.js'
+import { buildAnyTenantExport } from '../lib/tenantDataExport.js'
 import { OWNER_DASHBOARD_HTML } from './ownerDashboard.js'
 
 /**
@@ -127,21 +128,15 @@ export async function registerOwnerRoutes(app: FastifyInstance, opts: { area: Ow
   app.get<{ Params: { kind: string }; Querystring: { from?: string; to?: string } }>(
     '/api/export/:kind',
     async (request, reply) => {
-      const result = await buildTenantExport(
-        getPool(),
-        request.ownerTenantId,
-        request.params.kind,
-        request.query.from,
-        request.query.to,
-      )
+      const result = await buildAnyTenantExport(getPool(), request.ownerTenantId, request.params.kind, request.query.from, request.query.to)
       if (!result.ok) {
         reply.code(result.status)
         return { error: result.error }
       }
-      reply.header('content-type', 'application/pdf')
+      reply.header('content-type', result.contentType)
       reply.header('content-disposition', `attachment; filename="${result.filename}"`)
       reply.header('cache-control', 'no-store')
-      return reply.send(result.pdf)
+      return reply.send(result.body)
     },
   )
 

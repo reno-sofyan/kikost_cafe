@@ -118,6 +118,42 @@ function KolTab() {
         </div>
       )}
 
+      {report && report.hppPricing.count > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-1 font-semibold text-ink-100">Pesanan KOL & Compliment harga HPP • 30 hari</h2>
+          <p className="mb-3 text-sm text-ink-400">
+            Dari kasir (tombol KOL / Compliment). Dibayar = harga HPP yang dibayar tamu; nilai diberikan = selisih dengan harga jual normal.
+          </p>
+          <div className="card overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="bg-ink-800 text-left text-ink-300">
+                <tr>
+                  <th className="px-4 py-2">Penerima</th>
+                  <th className="px-4 py-2 text-right">Pesanan</th>
+                  <th className="px-4 py-2 text-right">Dibayar (HPP)</th>
+                  <th className="px-4 py-2 text-right">Harga jual normal</th>
+                  <th className="px-4 py-2 text-right">Nilai diberikan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ...report.hppPricing.byKol.map((r) => ({ key: r.kolId ?? r.name, label: `KOL • ${r.name}${r.kolId ? '' : ' (belum terdaftar)'}`, ...r })),
+                  ...report.hppPricing.byKind.filter((r) => r.kind === 'compliment').map((r) => ({ key: 'compliment', label: 'Compliment (semua penerima)', ...r })),
+                ].map((r) => (
+                  <tr key={r.key} className="border-t border-ink-800">
+                    <td className="px-4 py-2 text-ink-50">{r.label}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatNumber(r.count)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-ink-100">{formatRupiah(r.paid)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-ink-300">{formatRupiah(r.normalValue)}</td>
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-ink-50">{formatRupiah(r.normalValue - r.paid)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {editing && <KolFormModal initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       {voucherFor && <PromoFormModal initial={null} asVoucher kols={kols} presetKolId={voucherFor.id} onClose={() => setVoucherFor(null)} />}
       {payoutFor && <KolPayoutModal kol={payoutFor} commission={ledger?.get(payoutFor.id)} onClose={() => setPayoutFor(null)} />}

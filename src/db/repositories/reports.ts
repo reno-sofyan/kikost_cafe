@@ -2,7 +2,8 @@ import { db } from '@/db/schema'
 import { listLowStockIngredients, listLowStockProducts } from '@/db/repositories/stock'
 import { jakartaDateKey } from '@/lib/datetime'
 import { isOnlineOrder, onlineCommissionOf, onlinePlatformOf } from '@/lib/onlineOrders'
-import type { OnlinePlatform, Order, OrderType, PaymentMethod } from '@/types/domain'
+import { normalLineValue } from '@/lib/hppPricing'
+import type { HppPricingKind, OnlinePlatform, Order, OrderItem, OrderType, PaymentMethod } from '@/types/domain'
 
 export interface DateRange {
   from: number
@@ -94,6 +95,17 @@ export interface SalesReport {
   /** Penjualan lewat voucher KOL; komisi = persen komisi × penjualan bersih transaksinya. */
   byKol: { kolId: string; name: string; transactionCount: number; revenue: number; discount: number; commission: number }[]
   kolCommissionTotal: number
+  /**
+   * Pesanan KOL / Compliment (harga HPP): `paid` = yang dibayar tamu (sudah termasuk
+   * omzet), `normalValue` = nilai jual normalnya — selisihnya = nilai yang diberikan.
+   */
+  hppPricing: {
+    count: number
+    paid: number
+    normalValue: number
+    byKind: { kind: HppPricingKind; count: number; paid: number; normalValue: number }[]
+    byKol: { kolId: string | null; name: string; count: number; paid: number; normalValue: number }[]
+  }
   roundingTotal: number
   itemsSold: number
 
@@ -113,6 +125,39 @@ export interface SalesReport {
   byHour: { hour: number; revenue: number; transactionCount: number }[]
   /** Satu baris per hari yang ADA transaksinya, urut naik. */
   byDay: { dateKey: string; revenue: number; transactionCount: number }[]
+}
+
+function summarizeHppPricing(orders: Order[], items: OrderItem[]): SalesReport['hppPricing'] {
+  const hppOrders = orders.filter((o) => o.hppPricing)
+  const normalByOrder = new Map<string, number>()
+  for (const i of items) if (i.normalPrice) normalByOrder.set(i.orderId, (normalByOrder.get(i.orderId) ?? 0) + normalLineValue(i))
+  const byKind = new Map<HppPricingKind, { kind: HppPricingKind; count: number; paid: number; normalValue: number }>()
+  const byKol = new Map<string, { kolId: string | null; name: string; count: number; paid: number; normalValue: number }>()
+  for (const o of hppOrders) {
+    const p = o.hppPricing!
+    const normalValue = normalByOrder.get(o.id) ?? o.grandTotal
+    const k = byKind.get(p.kind) ?? { kind: p.kind, count: 0, paid: 0, normalValue: 0 }
+    k.count += 1
+    k.paid += o.grandTotal
+    k.normalValue += normalValue
+    byKind.set(p.kind, k)
+    if (p.kind === 'kol') {
+      const key = p.kolId ?? `nama:${p.name.toLowerCase()}`
+      const r = byKol.get(key) ?? { kolId: p.kolId, name: p.name, count: 0, paid: 0, normalValue: 0 }
+      r.count += 1
+      r.paid += o.grandTotal
+      r.normalValue += normalValue
+      byKol.set(key, r)
+    }
+  }
+  const rows = [...byKind.values()]
+  return {
+    count: hppOrders.length,
+    paid: rows.reduce((s, r) => s + r.paid, 0),
+    normalValue: rows.reduce((s, r) => s + r.normalValue, 0),
+    byKind: rows.sort((a, b) => b.normalValue - a.normalValue),
+    byKol: [...byKol.values()].sort((a, b) => b.normalValue - a.normalValue),
+  }
 }
 
 export const UNASSIGNED_WAITER = 'Tanpa pelayan'
@@ -176,6 +221,7 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
   const categoryById = new Map(categories.map((c) => [c.id, c]))
 
   const revenue = orders.reduce((s, o) => s + o.grandTotal, 0)
+  const hppPricing = summarizeHppPricing(orders, activeItems)
   const discountTotal = orders.reduce((s, o) => s + o.discountAmount, 0)
   const taxTotal = orders.reduce((s, o) => s + o.taxAmount, 0)
   const serviceChargeTotal = orders.reduce((s, o) => s + o.serviceChargeAmount, 0)
@@ -398,6 +444,7 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
     memberTransactionCount,
     memberRevenue,
     byKol,
+    hppPricing,
     kolCommissionTotal,
     channelSplit,
     onlineCommissionTotal,

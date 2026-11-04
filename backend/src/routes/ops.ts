@@ -5,8 +5,8 @@ import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
 import { generateOwnerCode, getOwnerCodeStatus, revokeOwnerCode } from '../lib/ownerCancelCodes.js'
 import { createOwnerAccess, listOwnerAccess, revokeOwnerAccess } from '../lib/ownerAccess.js'
 import { loadTenantBusinessType, ownerConsoleAreaFor, ownerConsolePath } from '../lib/ownerConsole.js'
+import { buildAnyTenantExport } from '../lib/tenantDataExport.js'
 import {
-  buildTenantExport,
   COUNTED_CANCEL_SQL,
   CORRECTED_VALUE_SQL,
   GRAND_TOTAL,
@@ -342,7 +342,7 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
     },
   )
 
-  // ---- Export PDF: transaksi & pembatalan untuk satu periode (WIB) ----
+  // ---- Export: PDF (transaksi & pembatalan) atau Excel `<jenis>.xlsx` untuk satu periode (WIB) ----
   app.get<{ Params: { tenantId: string; kind: string }; Querystring: { from?: string; to?: string } }>(
     '/api/tenant/:tenantId/export/:kind',
     async (request, reply) => {
@@ -351,16 +351,15 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
         reply.code(400)
         return { error: 'tenantId tidak valid' }
       }
-      const result = await buildTenantExport(getPool(), tenantId, kind, request.query.from, request.query.to)
+      const result = await buildAnyTenantExport(getPool(), tenantId, kind, request.query.from, request.query.to)
       if (!result.ok) {
         reply.code(result.status)
         return { error: result.error }
       }
-      const { pdf, filename } = result
-      reply.header('content-type', 'application/pdf')
-      reply.header('content-disposition', `attachment; filename="${filename}"`)
+      reply.header('content-type', result.contentType)
+      reply.header('content-disposition', `attachment; filename="${result.filename}"`)
       reply.header('cache-control', 'no-store')
-      return reply.send(pdf)
+      return reply.send(result.body)
     },
   )
 }

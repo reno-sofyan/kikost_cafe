@@ -242,7 +242,8 @@
 
     <div class="tabs" id="tabs"></div>
     <div id="exportBar" class="exportbar card">
-      <span class="t" id="expTitle">Unduh laporan PDF</span>
+      <span class="t" id="expTitle">Ekspor data</span>
+      <select id="expKind" onchange="onExportKindChange()" aria-label="Jenis data"></select>
       <select id="expPreset" onchange="onPresetChange()" aria-label="Periode">
         <option value="today">Hari ini</option>
         <option value="yesterday">Kemarin</option>
@@ -250,11 +251,16 @@
         <option value="30d">30 hari terakhir</option>
         <option value="month">Bulan ini</option>
         <option value="lastmonth">Bulan lalu</option>
+        <option value="all">Semua data (sejak awal)</option>
         <option value="custom">Pilih tanggal…</option>
       </select>
       <input type="date" id="expFrom" class="hide" aria-label="Dari tanggal" />
       <input type="date" id="expTo" class="hide" aria-label="Sampai tanggal" />
-      <button class="primary" id="expBtn" onclick="exportPdf()">Unduh PDF</button>
+      <select id="expFormat" aria-label="Format">
+        <option value="xlsx">Excel</option>
+        <option value="pdf">PDF</option>
+      </select>
+      <button class="primary" id="expBtn" onclick="exportData()">Unduh</button>
       <div class="msg" id="expMsg"></div>
     </div>
     <div id="paneOrders"></div>
@@ -512,8 +518,9 @@
     currentTab = which;
     for (const [key, , pane] of TABS) document.getElementById(pane).classList.toggle('hide', which !== key);
     for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('active', b.dataset.tab === which);
-    document.getElementById('exportBar').classList.toggle('hide', which !== 'orders' && which !== 'cancels');
-    document.getElementById('expTitle').textContent = which === 'cancels' ? 'Unduh PDF pembatalan' : 'Unduh PDF transaksi';
+    // Bilah ekspor tampil di semua tab; jenis data mengikuti tab yang dibuka (tetap bisa diganti).
+    const tabKind = { orders: 'transactions', sales: 'summary', cancels: 'cancellations', payLater: 'payLater', proofs: 'proofs', attendance: 'attendance' }[which];
+    if (tabKind && EXPORT_KINDS.some(([k]) => k === tabKind)) { document.getElementById('expKind').value = tabKind; onExportKindChange(); }
     setExpMsg('');
     if (LOADERS[which] && !loaded[which]) LOADERS[which]();
   }
@@ -589,21 +596,38 @@
     const el = document.getElementById('expMsg');
     el.textContent = text || ''; el.classList.toggle('err', !!isErr);
   }
-  async function exportPdf() {
-    const kind = currentTab === 'cancels' ? 'cancellations' : 'transactions';
-    const [from, to] = presetRange(document.getElementById('expPreset').value);
+  // Jenis data yang bisa diekspor (Excel); PDF hanya untuk transaksi & pembatalan.
+  const EXPORT_KINDS = [['all', 'Semua data'], ['summary', 'Ringkasan'], ['transactions', 'Transaksi'], ['items', 'Item terjual'], ['products', 'Rekap menu'],
+    ['payments', 'Pembayaran'], ['cancellations', 'Pembatalan'], ['shifts', 'Shift'], ['expenses', 'Pengeluaran & kas']]
+    .concat(AREA === 'kantin' ? [['payLater', 'Tagihan Tertunda'], ['proofs', 'Bukti bayar']] : [])
+    .concat(AREA === 'kafe' ? [['attendance', 'Absensi'], ['hppPricing', 'KOL & Compliment']] : []);
+  const PDF_KINDS = ['transactions', 'cancellations'];
+  document.getElementById('expKind').innerHTML = EXPORT_KINDS.map(([k, label]) => '<option value="' + k + '">' + label + '</option>').join('');
+  function onExportKindChange() {
+    const kind = document.getElementById('expKind').value;
+    const fmt = document.getElementById('expFormat');
+    const pdfOk = PDF_KINDS.includes(kind);
+    fmt.querySelector('option[value="pdf"]').disabled = !pdfOk;
+    if (!pdfOk) fmt.value = 'xlsx';
+    setExpMsg(kind === 'all' ? 'Excel berisi satu sheet untuk tiap jenis data.' : '');
+  }
+  async function exportData() {
+    const kind = document.getElementById('expKind').value;
+    const format = document.getElementById('expFormat').value;
+    const preset = document.getElementById('expPreset').value;
+    const [from, to] = preset === 'all' ? ['all', ''] : presetRange(preset);
     const btn = document.getElementById('expBtn');
-    btn.disabled = true; btn.textContent = 'Membuat PDF…'; setExpMsg('');
+    btn.disabled = true; btn.textContent = 'Menyiapkan…'; setExpMsg('');
     try {
-      const res = await apiRes('/export/' + kind + '.pdf?from=' + from + '&to=' + to);
+      const res = await apiRes('/export/' + kind + '.' + format + '?from=' + from + (to ? '&to=' + to : ''));
       if (!res.ok) {
-        let msg = 'Gagal membuat PDF (HTTP ' + res.status + ').';
+        let msg = 'Gagal membuat file (HTTP ' + res.status + ').';
         try { const j = await res.json(); if (j && j.error) msg = j.error; } catch {}
         setExpMsg(msg, true); return;
       }
       const blob = await res.blob();
       const cd = res.headers.get('content-disposition') || '';
-      const name = (/filename="([^"]+)"/.exec(cd) || [])[1] || (kind + '.pdf');
+      const name = (/filename="([^"]+)"/.exec(cd) || [])[1] || (kind + '.' + format);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -611,7 +635,7 @@
       setExpMsg('Terunduh: ' + name);
     } catch (e) {
       if (String(e.message) !== '401') setExpMsg(e.message, true);
-    } finally { btn.disabled = false; btn.textContent = 'Unduh PDF'; }
+    } finally { btn.disabled = false; btn.textContent = 'Unduh'; }
   }
 
   // ---- Pembatalan ----

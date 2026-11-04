@@ -734,7 +734,7 @@ export function CashierScreen() {
               </div>
 
               <div className="grid grid-cols-3 gap-1.5 px-1.5 pt-1">
-                <button className={CART_OUTLINE_BTN} disabled={!canDiscount} onClick={() => setShowDiscount(true)}>
+                <button className={CART_OUTLINE_BTN} disabled={!canDiscount || !!order?.hppPricing} title={order?.hppPricing ? 'Pesanan KOL/Compliment sudah berharga HPP' : undefined} onClick={() => setShowDiscount(true)}>
                   Diskon
                 </button>
                 <button

@@ -314,7 +314,7 @@ export function ReportsScreen() {
             </div>
           )}
 
-          {(report.byPromo.length > 0 || report.byKol.length > 0 || report.pointsEarnedTotal > 0 || report.pointsRedeemedTotal > 0) && (
+          {(report.byPromo.length > 0 || report.byKol.length > 0 || report.pointsEarnedTotal > 0 || report.pointsRedeemedTotal > 0 || report.hppPricing.count > 0) && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {report.promoDiscountTotal > 0 && <MiniStat label="Potongan Promo & Voucher" value={formatRupiah(report.promoDiscountTotal)} note="sudah termasuk di Diskon" />}
@@ -327,6 +327,13 @@ export function ReportsScreen() {
                 )}
                 {report.pointsEarnedTotal > 0 && <MiniStat label="Poin Diberikan" value={formatNumber(report.pointsEarnedTotal)} />}
                 {report.pointsRedeemedTotal > 0 && <MiniStat label="Poin Ditukar" value={formatNumber(report.pointsRedeemedTotal)} note={`senilai ${formatRupiah(report.pointsRedeemedValue)}`} />}
+                {report.hppPricing.count > 0 && (
+                  <MiniStat
+                    label="KOL & Compliment (harga HPP)"
+                    value={formatRupiah(report.hppPricing.paid)}
+                    note={`${formatNumber(report.hppPricing.count)} pesanan • harga normal ${formatRupiah(report.hppPricing.normalValue)}`}
+                  />
+                )}
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {report.byPromo.length > 0 && (
@@ -341,6 +348,16 @@ export function ReportsScreen() {
                     title="Penjualan lewat KOL"
                     headers={['KOL', 'Transaksi', 'Omzet', 'Potongan', 'Komisi (est.)']}
                     rows={report.byKol.map((k) => [k.name, formatNumber(k.transactionCount), formatRupiah(k.revenue), `−${formatRupiah(k.discount)}`, formatRupiah(k.commission)])}
+                  />
+                )}
+                {report.hppPricing.count > 0 && (
+                  <ReportTable
+                    title="KOL & Compliment (harga HPP)"
+                    headers={['Jenis / penerima', 'Pesanan', 'Dibayar (HPP)', 'Nilai diberikan']}
+                    rows={[
+                      ...report.hppPricing.byKol.map((k) => [`KOL • ${k.name}`, formatNumber(k.count), formatRupiah(k.paid), formatRupiah(k.normalValue - k.paid)]),
+                      ...report.hppPricing.byKind.filter((k) => k.kind === 'compliment').map((k) => ['Compliment', formatNumber(k.count), formatRupiah(k.paid), formatRupiah(k.normalValue - k.paid)]),
+                    ]}
                   />
                 )}
               </div>

@@ -33,6 +33,7 @@ export function renderReceiptBodyHtml(data: ReceiptData): string {
     rows.push(`<div>Tipe: ${escapeHtml(data.orderTypeLabel)}${data.tableLabel ? ` (${escapeHtml(data.tableLabel)})` : ''}</div>`)
   }
   if (data.onlineChannel) rows.push(`<div>Kanal: ${escapeHtml(data.onlineChannel)}</div>`)
+  if (data.priceNote) rows.push(`<div><b>${escapeHtml(data.priceNote)}</b></div>`)
   if (data.guestCount) rows.push(`<div>Tamu: ${data.guestCount} orang</div>`)
   if (data.queueLabel) rows.push(`<div>${escapeHtml(data.queueLabel)}</div>`)
   if (data.customerNote) rows.push(`<div>Pelanggan: ${escapeHtml(data.customerNote)}</div>`)

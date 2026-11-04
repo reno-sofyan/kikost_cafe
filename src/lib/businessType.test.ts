@@ -34,6 +34,7 @@ describe('featuresForBusinessType', () => {
       combos: false,
       attendance: false,
       proTools: false,
+      hppPricing: false,
     })
   })
 
@@ -94,6 +95,7 @@ describe('featuresForBusinessType', () => {
       combos: true,
       attendance: true,
       proTools: true,
+      hppPricing: true,
     })
   })
 
@@ -129,6 +131,7 @@ describe('featuresForBusinessType', () => {
       combos: true,
       attendance: true,
       proTools: true,
+      hppPricing: true,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
       tables: true,
@@ -161,6 +164,7 @@ describe('featuresForBusinessType', () => {
       combos: true,
       attendance: true,
       proTools: true,
+      hppPricing: true,
     })
   })
 

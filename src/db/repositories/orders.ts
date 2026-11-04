@@ -17,6 +17,7 @@ import { getTrustedNow } from '@/lib/clockGuard'
 import { evaluatePromos, normalizeVoucherCode, promoCustomerBlock, promoDiscountFor, isPromoActiveAt, usedUpPromoIds, type PromoCustomer } from '@/lib/promos'
 import { loyaltySettingsOf } from '@/lib/loyalty'
 import { getCustomerLoyalty } from '@/db/repositories/loyalty'
+import { HppPricingBlockedError, hppItemPatch, productHpp } from '@/lib/hppPricing'
 import type {
   AppliedPromo,
   ComboComponent,
@@ -458,6 +459,13 @@ export async function listOrderItems(orderId: string): Promise<OrderItem[]> {
 /** `groupId` baris modifier yang mewakili isi menu paket. */
 export const COMBO_GROUP_ID = 'combo'
 
+/** HPP produk (harga pokok, atau HPP isi paket) — dasar harga pesanan KOL/Compliment. */
+export async function hppOfProduct(productId: string): Promise<number> {
+  const product = await db.products.get(productId)
+  const components = new Map((await db.products.bulkGet((product?.comboItems ?? []).map((c) => c.productId))).filter(Boolean).map((p) => [p!.id, p!.costPrice]))
+  return productHpp(product, (id) => components.get(id) ?? 0)
+}
+
 export async function addOrderItem(params: {
   orderId: string
   productId: string
@@ -479,6 +487,7 @@ export async function addOrderItem(params: {
   })
   const product = await db.products.get(params.productId)
   const skipKitchen = (await stationForCategory(product?.categoryId ?? null)) === 'direct'
+  const hppOrder = (await db.orders.get(params.orderId))?.hppPricing ? true : false
   // Menu paket: snapshot isinya dari master produk. Isi paket juga dicatat sebagai
   // baris "Isi paket" supaya ikut tercetak di tiket dapur & struk tanpa kode khusus.
   let comboComponents = params.comboComponents
@@ -522,6 +531,8 @@ export async function addOrderItem(params: {
     createdAt: now,
     updatedAt: now,
   }
+  // Pesanan KOL/Compliment: item baru langsung dihargai HPP (harga jual disimpan).
+  if (hppOrder) Object.assign(item, hppItemPatch(item, await hppOfProduct(params.productId)))
   await db.transaction(
     'rw',
     [db.orderItems, db.orders, db.syncQueue, db.settings, db.customers],
@@ -622,6 +633,7 @@ export async function updateOrderItemQty(itemId: string, qty: number, correction
 export async function setOrderItemDiscount(itemId: string, discountAmount: number): Promise<void> {
   const item = await db.orderItems.get(itemId)
   if (!item) return
+  if (discountAmount > 0 && (await db.orders.get(item.orderId))?.hppPricing) throw new HppPricingBlockedError('Diskon item')
   const lineTotal = computeLineTotal({
     unitPrice: item.unitPrice,
     qty: item.qty,
@@ -806,6 +818,7 @@ export async function setOrderDiscount(
   control?: { reason: string; actor: { userId: string; userName: string }; ownerApproval?: OwnerApproval },
 ): Promise<void> {
   const removing = !discountType || discountValue <= 0
+  if (!removing && (await db.orders.get(orderId))?.hppPricing) throw new HppPricingBlockedError('Diskon')
   const req = await discountRequirements(orderId, discountType, discountValue)
   const reason = control?.reason.trim() ?? ''
   if (!removing && req.controlled) {
@@ -980,13 +993,13 @@ export async function recalcOrderTotals(orderId: string): Promise<void> {
     const promos = settings.promos ?? []
     const now = getTrustedNow()
     const eligibility = await promoEligibilityFor(order, promos, now)
-    appliedPromos = featuresForBusinessType(settings.businessType).promos
+    appliedPromos = featuresForBusinessType(settings.businessType).promos && !order.hppPricing
       ? evaluatePromos({ promos, items, orderType: order.type, now, voucherCode: order.voucherCode, kols: settings.kols, ...eligibility })
       : []
   }
   const activeSubtotal = items.filter((i) => !i.voided && !i.removed).reduce((s, i) => s + i.lineTotal, 0)
   const promoTotal = Math.min(activeSubtotal, appliedPromos.reduce((s, p) => s + p.amount, 0))
-  const pointsDiscount = Math.min(Math.max(0, activeSubtotal - promoTotal), (order.pointsRedeemed ?? 0) * (order.pointsRedeemValue ?? 0))
+  const pointsDiscount = order.hppPricing ? 0 : Math.min(Math.max(0, activeSubtotal - promoTotal), (order.pointsRedeemed ?? 0) * (order.pointsRedeemValue ?? 0))
   const extraDiscount = promoTotal + pointsDiscount
 
   const totals = computeOrderTotals({
@@ -1025,6 +1038,7 @@ export async function setOrderVoucher(orderId: string, code: string | null): Pro
   const normalized = normalizeVoucherCode(code)
   const order = await db.orders.get(orderId)
   if (!order) throw new Error('Pesanan tidak ditemukan')
+  if (normalized && order.hppPricing) throw new HppPricingBlockedError('Voucher')
   if (normalized) {
     const settings = await getSettings()
     const voucher = (settings.promos ?? []).find((p) => normalizeVoucherCode(p.voucherCode) === normalized)
@@ -1079,6 +1093,7 @@ export async function setOrderPointsRedeem(orderId: string, points: number): Pro
   const order = await db.orders.get(orderId)
   if (!order) throw new Error('Pesanan tidak ditemukan')
   const want = Math.max(0, Math.floor(points))
+  if (want > 0 && order.hppPricing) throw new HppPricingBlockedError('Tukar poin')
   const settings = await getSettings()
   const loyalty = loyaltySettingsOf(settings)
   if (want > 0) {

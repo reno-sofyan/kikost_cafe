@@ -323,4 +323,37 @@ suite('konsol Pemilik /owner (integrasi)', () => {
     }
     expect((await app.inject({ method: 'GET', url: '/owner/api/overview', headers: bearer(token) })).statusCode).toBe(429)
   })
+
+  it('ekspor Excel: semua data (sheet per jenis) & per jenis, periode "Semua data", terpisah per tenant', async () => {
+    await seed()
+    const kantin = await createAccess('kantin')
+    const cafe = await createAccess('cafe')
+    const get = (path: string, token: string) => app.inject({ method: 'GET', url: path, headers: bearer(token) })
+    const sheetsOf = (body: Buffer) => [...body.toString('latin1').matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1])
+
+    const all = await get('/owner/kantin/api/export/all.xlsx?from=all', kantin.token)
+    expect(all.statusCode).toBe(200)
+    expect(all.headers['content-type']).toContain('spreadsheetml')
+    expect(all.headers['content-disposition']).toMatch(/semua-data-kantin-.*\.xlsx/)
+    const body = all.rawPayload
+    expect(body.subarray(0, 2).toString()).toBe('PK')
+    expect(sheetsOf(body)).toEqual(['Ringkasan', 'Transaksi', 'Item terjual', 'Rekap menu', 'Pembayaran', 'Pembatalan', 'Shift', 'Pengeluaran &amp; kas', 'Tagihan Tertunda', 'Bukti bayar'])
+    const text = body.toString('utf8')
+    expect(text).toContain('TRX-1')
+    expect(text).toContain('Salah input')
+    expect(text).not.toContain('CAFE-1')
+
+    // Kafe punya sheet Absensi & KOL/Compliment, bukan Tagihan Tertunda.
+    const cafeAll = await get('/owner/kafe/api/export/all.xlsx?from=all', cafe.token)
+    expect(sheetsOf(cafeAll.rawPayload)).toEqual(expect.arrayContaining(['Absensi', 'KOL &amp; Compliment']))
+    expect(sheetsOf(cafeAll.rawPayload)).not.toContain('Tagihan Tertunda')
+
+    const one = await get('/owner/kantin/api/export/transactions.xlsx?from=all', kantin.token)
+    expect(sheetsOf(one.rawPayload)).toEqual(['Transaksi'])
+    // Jenis milik area lain ditolak; PDF lama tetap jalan; rentang Excel boleh > 92 hari.
+    expect((await get('/owner/kantin/api/export/attendance.xlsx?from=all', kantin.token)).statusCode).toBe(404)
+    expect((await get('/owner/kantin/api/export/transactions.pdf', kantin.token)).headers['content-type']).toBe('application/pdf')
+    expect((await get('/owner/kantin/api/export/payments.xlsx?from=2025-01-01&to=2026-06-30', kantin.token)).statusCode).toBe(200)
+    expect((await app.inject({ method: 'GET', url: '/owner/kantin/api/export/all.xlsx?from=all' })).statusCode).toBe(401)
+  })
 })

@@ -76,6 +76,7 @@ export function parseWibRange(
   from: string | undefined,
   to: string | undefined,
   now = Date.now(),
+  maxDays = 92,
 ): { sinceMs: number; untilMs: number; label: string; fileLabel: string } | { error: string } {
   const today = new Date(now + WIB_OFFSET_MS).toISOString().slice(0, 10)
   const f = from || today
@@ -90,7 +91,7 @@ export function parseWibRange(
   if (!Number.isFinite(sinceMs) || !Number.isFinite(untilMs) || untilMs <= sinceMs) {
     return { error: 'Tanggal akhir harus sama atau setelah tanggal awal' }
   }
-  if (untilMs - sinceMs > 92 * 86_400_000) return { error: 'Rentang maksimal 92 hari' }
+  if (untilMs - sinceMs > maxDays * 86_400_000) return { error: `Rentang maksimal ${maxDays} hari` }
   const fmt = (ms: number) =>
     new Date(ms).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' })
   const label = f === t ? fmt(sinceMs) : `${fmt(sinceMs)} - ${fmt(untilMs - 1)}`

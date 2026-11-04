@@ -104,6 +104,7 @@ export function buildEscPosReceipt(data: ReceiptData, logo?: MonoBitmap | null):
   b.line(`Waktu: ${data.createdAtLabel}`)
   if (data.orderTypeLabel) b.line(`Tipe: ${data.orderTypeLabel}${data.tableLabel ? ` (${data.tableLabel})` : ''}`)
   if (data.onlineChannel) b.line(`Kanal: ${data.onlineChannel}`)
+  if (data.priceNote) b.line(data.priceNote)
   if (data.guestCount) b.line(`Tamu: ${data.guestCount} orang`)
   if (data.queueLabel) b.line(data.queueLabel)
   if (data.customerNote) b.line(`Pelanggan: ${data.customerNote}`)
