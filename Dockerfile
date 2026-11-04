@@ -17,7 +17,11 @@ ARG VITE_BUILD_LABEL="kione-pos"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_BUILD_LABEL=$VITE_BUILD_LABEL
 
-RUN npm run build
+# NODE_ENV=development di atas hanya agar `npm ci` memasang devDependencies (vite, tsc).
+# Build-nya WAJIB produksi: dengan NODE_ENV=development, Vite menghasilkan React mode
+# development dan `import.meta.env.PROD` = false — service worker (offline) tak pernah
+# didaftarkan.
+RUN NODE_ENV=production npm run build
 
 # ---- Runtime ----
 FROM nginx:1.30-alpine AS runtime
