@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { featuresForBusinessType } from '@/lib/businessType'
-import { canOpenPath, homePathFor, resolveNavItems, visibleNavItems } from '@/lib/navAccess'
+import { canOpenPath, homePathFor, NAV_ITEM_DEFS, resolveNavItems, visibleNavItems } from '@/lib/navAccess'
 
 const cafe = featuresForBusinessType('cafe_resto')
 const keys = (items: { key: string }[]) => items.map((i) => i.key)
@@ -57,5 +57,15 @@ describe('navAccess', () => {
     expect(homePathFor(items, 'dapur')).toBe('/dapur')
     const none = resolveNavItems({ navAccess: { dapur: { roles: [] }, cetak: { roles: [] }, absensi: { roles: [] } } }, cafe)
     expect(homePathFor(none, 'dapur')).toBeNull()
+  })
+})
+
+describe('menu KOL per jenis usaha', () => {
+  it('minimarket: Promo & Member tampil, KOL tidak; kafe tetap ada KOL', () => {
+    const navKeys = (type: Parameters<typeof featuresForBusinessType>[0]) =>
+      NAV_ITEM_DEFS.filter((n) => !n.feature || featuresForBusinessType(type)[n.feature]).map((n) => n.key)
+    expect(navKeys('minimarket')).toEqual(expect.arrayContaining(['promo', 'member']))
+    expect(navKeys('minimarket')).not.toContain('kol')
+    expect(navKeys('cafe_resto')).toContain('kol')
   })
 })

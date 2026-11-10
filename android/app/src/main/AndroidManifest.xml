@@ -51,6 +51,11 @@
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 
+    <!-- Kamera belakang untuk tombol "Scan" barcode (minimarket). Izin runtime diminta
+         Capacitor saat WebView memanggil getUserMedia. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <!-- USB-OTG untuk base station pager Retekess (plugin UsbSerial). Izin runtime
          diminta lewat dialog sistem UsbManager, bukan <uses-permission>. -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />

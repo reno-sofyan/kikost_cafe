@@ -35,14 +35,16 @@ export default {
           700: "#eef2f7", // pembatas / permukaan tombol sekunder
           800: "#f4f7fb", // permukaan terangkat / hover
           900: "#ffffff", // kartu
-          950: "#f1f5f9", // kanvas aplikasi
+          950: "rgb(var(--kione-canvas) / <alpha-value>)", // kanvas aplikasi (#f1f5f9; ritel #eef4fb)
         },
         // Warna produk Kione — indigo. Sama dengan gradien pada logo (500 -> 600).
+        // Nilainya variabel CSS (src/index.css): mode Minimarket menukarnya ke biru
+        // ritel lewat `html[data-theme="retail"]` tanpa menyentuh kelas di komponen.
         brand: {
-          400: "#4f46e5", // teks & ikon aksen — 5.7:1
-          500: "#6366f1", // border, ring fokus, garis
-          600: "#4338ca", // isian tombol utama — teks putih 7.9:1
-          700: "#3730a3", // hover / tekan, judul pekat
+          400: "rgb(var(--kione-brand-400) / <alpha-value>)", // teks & ikon aksen — 5.7:1 (#4f46e5)
+          500: "rgb(var(--kione-brand-500) / <alpha-value>)", // border, ring fokus, garis (#6366f1)
+          600: "rgb(var(--kione-brand-600) / <alpha-value>)", // isian tombol utama — teks putih 7.9:1 (#4338ca)
+          700: "rgb(var(--kione-brand-700) / <alpha-value>)", // hover / tekan, judul pekat (#3730a3)
         },
         // Hijau untuk status positif (shift aktif, LUNAS, langkah selesai).
         success: {

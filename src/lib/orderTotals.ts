@@ -11,7 +11,8 @@ export function computeLineTotal(params: {
   modifiers: OrderItemModifierSnapshot[]
   discountAmount: number
 }): number {
-  const gross = (params.unitPrice + modifiersTotal(params.modifiers)) * params.qty
+  // Dibulatkan ke rupiah: qty pecahan (barang timbang, 0,354 kg) tak boleh menghasilkan sen.
+  const gross = Math.round((params.unitPrice + modifiersTotal(params.modifiers)) * params.qty)
   return Math.max(0, gross - params.discountAmount)
 }
 

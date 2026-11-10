@@ -4,6 +4,7 @@ export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   cafe_resto: 'Kafe & Restoran',
   kantin: 'Kantin',
   minimarket: 'Minimarket & Ritel',
+  laundry: 'Laundry',
   lainnya: 'Lainnya',
 }
 
@@ -11,11 +12,12 @@ export const BUSINESS_TYPE_DESCRIPTIONS: Record<BusinessType, string> = {
   cafe_resto: 'Meja, dapur, pesanan QR, dan pager — untuk makan/minum di tempat.',
   kantin: 'Nomor antrean, dapur, pesanan QR, dan pager — makan di tempat/bungkus tanpa meja & service charge.',
   minimarket: 'Kasir cepat: langsung pindai barcode, item sama otomatis dijumlahkan. Tanpa meja, dapur, antrean, modifier, atau resep.',
+  laundry: 'Layanan kiloan & satuan dengan nama pelanggan. Tanpa meja, dapur, atau pesanan QR.',
   lainnya: 'Semua fitur ditampilkan. Pilih ini bila tak ada yang cocok di atas.',
 }
 
 /** Urutan tampil di UI (onboarding, Pengaturan). */
-export const BUSINESS_TYPE_ORDER: BusinessType[] = ['cafe_resto', 'kantin', 'minimarket', 'lainnya']
+export const BUSINESS_TYPE_ORDER: BusinessType[] = ['cafe_resto', 'kantin', 'minimarket', 'laundry', 'lainnya']
 
 export interface BusinessFeatures {
   /** Menu "Meja" + denah lantai + QR per meja. */
@@ -89,6 +91,8 @@ export interface BusinessFeatures {
   onlineOrders: boolean
   /** Promo otomatis terjadwal (happy hour, per kategori/produk) & kode voucher. */
   promos: boolean
+  /** Menu KOL/influencer (voucher milik KOL & komisinya). Butuh `promos`. */
+  kol: boolean
   /** Member: poin dari tiap belanja, tukar poin jadi potongan, tingkatan member. */
   loyalty: boolean
   /** Menu paket/combo: satu harga, stok dipotong per produk isi paket. */
@@ -102,6 +106,11 @@ export interface BusinessFeatures {
   proTools: boolean
   /** Pesanan KOL / Compliment di kasir: item dihargai HPP. */
   hppPricing: boolean
+  /**
+   * Tampilan & alur ritel (minimarket): kasir kartu produk + keranjang, layar Stok
+   * dengan kedaluwarsa per penerimaan, isi per dus, menu Pembelian, nota PDF.
+   */
+  retailUi: boolean
 }
 
 const ALL_FEATURES: BusinessFeatures = {
@@ -130,18 +139,20 @@ const ALL_FEATURES: BusinessFeatures = {
   waiterTracking: true,
   onlineOrders: true,
   promos: true,
+  kol: true,
   loyalty: true,
   combos: true,
   attendance: true,
   proTools: true,
   hppPricing: true,
+  retailUi: false,
 }
 
 /** Fitur layanan meja ala restoran — tak relevan untuk kantin & minimarket. */
 const NO_TABLE_SERVICE = { preBill: false, tips: false, reservations: false, waiterTracking: false } as const
 
 /** Fitur premium kafe & restoran — belum dipasang untuk kantin & minimarket. */
-const NO_PREMIUM = { promos: false, loyalty: false, combos: false, attendance: false, proTools: false, hppPricing: false } as const
+const NO_PREMIUM = { promos: false, kol: false, loyalty: false, combos: false, attendance: false, proTools: false, hppPricing: false } as const
 
 /**
  * Fitur yang relevan per jenis usaha. Ini HANYA mengatur apa yang TERLIHAT di
@@ -174,6 +185,31 @@ export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
         payLater: false,
         cashierControls: false,
         shiftReminder: false,
+        ...NO_TABLE_SERVICE,
+        onlineOrders: false,
+        ...NO_PREMIUM,
+        // Promo (termasuk beli X gratis Y & harga paket) dan member dipasang untuk minimarket.
+        // Menu KOL tidak dipakai minimarket.
+        promos: true,
+        loyalty: true,
+        retailUi: true,
+      }
+    case 'laundry':
+      // Baru jenisnya dulu (data terpisah per tenant); alur khusus laundry (status
+      // cucian, ambil) menyusul. Nama pelanggan wajib supaya cucian bisa diambil.
+      return {
+        ...ALL_FEATURES,
+        tables: false,
+        kitchen: false,
+        qrOrdering: false,
+        pager: false,
+        recipes: false,
+        orderTypes: ['takeaway'],
+        queueNumbers: true,
+        buyerName: true,
+        stackSameItems: true,
+        serviceCharge: false,
+        paymentMethods: ['cash', 'qris', 'transfer'],
         ...NO_TABLE_SERVICE,
         onlineOrders: false,
         ...NO_PREMIUM,

@@ -13,7 +13,11 @@ import {
   serverHasForeignCatalog,
   revokeSyncDevice,
   type SyncDevice,
+  type SyncIdentity,
 } from '@/sync/client'
+import { checkTenantBinding, wipeLocalDataForNewTenant } from '@/sync/tenantGuard'
+import { BUSINESS_TYPE_LABELS } from '@/lib/businessType'
+import type { BusinessType } from '@/types/domain'
 import { triggerManualSync } from '@/sync/engine'
 import { enqueueFullResync } from '@/sync/outbox'
 import { discardUntouchedSampleCatalog, isSampleCatalogUntouched, sampleCatalogIds } from '@/db/sampleCatalog'
@@ -47,6 +51,8 @@ export function SyncPanel() {
   const [resyncState, setResyncState] = useState<'idle' | 'running' | 'done'>('idle')
   const [resyncCount, setResyncCount] = useState<number | null>(null)
   const [autoResyncDeferred, setAutoResyncDeferred] = useState(false)
+  /** Kunci yang ditolak karena milik usaha lain (beserta kunci yang dipakai sebelumnya). */
+  const [foreignTenant, setForeignTenant] = useState<{ identity: SyncIdentity; rejected: { apiBaseUrl: string; deviceKey: string } } | null>(null)
   const { confirm: confirmResync, dialog: resyncConfirmDialog } = useConfirmDialog()
 
   async function handleFullResync() {
@@ -59,6 +65,7 @@ export function SyncPanel() {
       confirmLabel: 'Sinkron Ulang',
     })
     if (!ok) return
+    if (!(await tenantAllowed())) return
     setResyncState('running')
     try {
       const count = await enqueueFullResync()
@@ -79,11 +86,52 @@ export function SyncPanel() {
   }
 
   function handleSave() {
+    const previous = { apiBaseUrl: getApiBaseUrl(), deviceKey: getDeviceKey() }
     saveDeviceSyncConfig({ apiBaseUrl: apiUrl, deviceKey })
-    setSaved(true)
+    setForeignTenant(null)
     setTestState('idle')
-    setTimeout(() => setSaved(false), 2500)
-    void syncAfterSave()
+    void (async () => {
+      // Kunci milik usaha lain sementara perangkat ini berisi data usaha: tolak &
+      // kembalikan kunci lama, supaya data tak pernah terdorong ke tenant lain.
+      if (!(await tenantAllowed(previous))) return
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+      await syncAfterSave()
+    })()
+  }
+
+  /**
+   * Cek kunci aktif masih milik usaha perangkat ini. Server tak terjangkau = lolos
+   * (mesin sinkron mengecek lagi sebelum mendorong data). Bila ditolak dan `previous`
+   * diberikan, konfigurasi lama dipulihkan.
+   */
+  async function tenantAllowed(previous?: { apiBaseUrl: string; deviceKey: string }): Promise<boolean> {
+    const res = await checkTenantBinding().catch(() => null)
+    if (!res || res.ok) return true
+    const rejected = { apiBaseUrl: getApiBaseUrl(), deviceKey: getDeviceKey() }
+    if (previous) {
+      saveDeviceSyncConfig(previous)
+      setApiUrl(previous.apiBaseUrl)
+      setDeviceKey(previous.deviceKey)
+    }
+    setForeignTenant({ identity: res.identity, rejected })
+    return false
+  }
+
+  async function handleMoveToForeignTenant() {
+    if (!foreignTenant) return
+    const name = foreignTenant.identity.businessName ?? 'usaha lain'
+    const ok = await confirmResync({
+      title: `Hapus semua data di perangkat ini?`,
+      description:
+        `Perangkat ini akan dikosongkan (produk, transaksi, shift, pengguna, pengaturan) lalu disambungkan ke "${name}". ` +
+        'Data yang belum tersinkron akan HILANG. Buat backup dulu di Pengaturan → Backup bila perlu. Tindakan ini tidak dapat dibatalkan.',
+      confirmLabel: 'Hapus & Pindah',
+      tone: 'danger',
+    })
+    if (!ok) return
+    saveDeviceSyncConfig(foreignTenant.rejected)
+    await wipeLocalDataForNewTenant()
   }
 
   /**
@@ -170,6 +218,33 @@ export function SyncPanel() {
         )}
       </div>
       {resyncConfirmDialog}
+
+      {foreignTenant && (
+        <div className="card border-red-500 p-5">
+          <h3 className="mb-1 flex items-center gap-2 font-semibold text-red-400">
+            <Icon name="alertTriangle" size={18} /> Kunci milik usaha lain
+          </h3>
+          <p className="text-sm text-ink-200">
+            Kunci yang dimasukkan terdaftar untuk{' '}
+            <span className="font-semibold">
+              {foreignTenant.identity.businessName ?? 'usaha lain'}
+              {foreignTenant.identity.businessType ? ` (${BUSINESS_TYPE_LABELS[foreignTenant.identity.businessType as BusinessType] ?? foreignTenant.identity.businessType})` : ''}
+            </span>
+            , sedangkan perangkat ini sudah berisi data usaha lain. Supaya data tidak tercampur, kunci tidak disimpan dan kunci sebelumnya dipulihkan.
+          </p>
+          <p className="mt-2 text-sm text-ink-300">Untuk memindahkan tablet ini ke usaha tersebut, kosongkan dulu datanya.</p>
+          <div className="mt-3 flex gap-2">
+            <button className="btn-secondary" onClick={() => setForeignTenant(null)}>
+              Tetap di usaha ini
+            </button>
+            {canManageDevices && (
+              <button className="btn-danger" onClick={() => void handleMoveToForeignTenant()}>
+                Kosongkan perangkat &amp; pindah
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="card p-5">
         <h3 className="mb-1 font-semibold text-ink-100">Konfigurasi Backend Perangkat</h3>

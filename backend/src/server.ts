@@ -197,6 +197,19 @@ export async function buildServer(): Promise<FastifyInstance> {
   // ---- Absensi karyawan lewat HP: rute tablet di /api/sync, rute HP di /api/absen (publik) ----
   await registerStaffAttendanceRoutes(app)
 
+  // ---- Identitas tenant kunci ini ----
+  // Tablet mengikat data lokalnya ke satu tenant; sebelum mendorong data, ia mengecek
+  // kunci yang dipakai masih milik tenant yang sama (lihat src/sync/tenantGuard.ts),
+  // supaya data kantin tak pernah terdorong ke tenant minimarket/kafe/laundry lain.
+  app.get('/api/sync/whoami', async (request) => {
+    const { rows } = await getPool().query<{ business_name: string | null; business_type: string | null }>(
+      `SELECT payload->>'businessName' AS business_name, payload->>'businessType' AS business_type
+         FROM sync_entity_state WHERE tenant_id = $1 AND entity = 'settings' AND deleted = FALSE LIMIT 1`,
+      [request.tenantId],
+    )
+    return { tenantId: request.tenantId, businessName: rows[0]?.business_name ?? null, businessType: rows[0]?.business_type ?? null }
+  })
+
   // ---- Sync push ----
   app.post('/api/sync/push', async (request, reply) => {
     const parsed = pushBodySchema.safeParse(request.body)

@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { listCategories } from '@/db/repositories/categories'
 import { listModifierGroups } from '@/db/repositories/modifiers'
 import { createProduct, getRecipeForProduct, listProducts, saveRecipe, updateProduct } from '@/db/repositories/products'
-import { listIngredients } from '@/db/repositories/stock'
+import { adjustProductStock, listIngredients } from '@/db/repositories/stock'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { parseRupiahInput, formatRupiah } from '@/lib/currency'
@@ -12,19 +12,23 @@ import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { db } from '@/db/schema'
+import { useSessionStore } from '@/state/sessionStore'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { normalizeProductTags, PRODUCT_TAGS } from '@/lib/productTags'
-import type { OnlinePlatform, Product, RecipeItem, UnitOfMeasure } from '@/types/domain'
+import { RetailPricingFields } from '@/features/retail/RetailPricingFields'
+import { cleanRetailPricing } from '@/lib/retailPricing'
+import type { OnlinePlatform, Product, RecipeItem, SellUnit, TierPrice, UnitOfMeasure } from '@/types/domain'
 
 const PRICED_PLATFORMS: OnlinePlatform[] = ['gofood', 'grabfood', 'shopeefood']
 
 const UNITS: UnitOfMeasure[] = ['pcs', 'g', 'kg', 'ml', 'l']
 
-export function ProductFormModal({ initial, onClose }: { initial: Product | null; onClose: () => void }) {
+export function ProductFormModal({ initial, initialBarcode, onClose }: { initial: Product | null; initialBarcode?: string; onClose: () => void }) {
   const categories = useLiveQuery(() => listCategories(), []) ?? []
   const modifierGroups = useLiveQuery(() => listModifierGroups(), []) ?? []
   const ingredients = useLiveQuery(() => listIngredients(), []) ?? []
   const settings = useLiveQuery(() => getSettings(), [])
+  const currentUser = useSessionStore((s) => s.currentUser)
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const existingRecipe = useLiveQuery(() => (initial ? getRecipeForProduct(initial.id) : undefined), [initial?.id])
 
@@ -38,8 +42,8 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   useEffect(() => {
     if (!categoryId && firstCategoryId) setCategoryId(firstCategoryId)
   }, [categoryId, firstCategoryId])
-  const [sku, setSku] = useState(initial?.sku ?? '')
-  const [barcode, setBarcode] = useState(initial?.barcode ?? '')
+  const [sku, setSku] = useState(initial?.sku ?? initialBarcode ?? '')
+  const [barcode, setBarcode] = useState(initial?.barcode ?? initialBarcode ?? '')
   const [price, setPrice] = useState(initial?.price ?? 0)
   const [onlinePrice, setOnlinePrice] = useState(initial?.onlinePrice ?? 0)
   const [platformPrices, setPlatformPrices] = useState<Partial<Record<OnlinePlatform, number>>>(initial?.platformPrices ?? {})
@@ -47,6 +51,14 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
   const [unit, setUnit] = useState<UnitOfMeasure>(initial?.unit ?? 'pcs')
   const [stockQty, setStockQty] = useState(initial?.stockQty ?? 0)
   const [lowStockThreshold, setLowStockThreshold] = useState(initial?.lowStockThreshold ?? 10)
+  // Minimarket: isi per dus & tanggal kedaluwarsa stok awal. Stok produk lama diubah
+  // lewat Stok → Sesuaikan Stok supaya riwayat & batch kedaluwarsa tetap benar.
+  const retail = features.retailUi
+  const [packSize, setPackSize] = useState(initial?.packSize ?? 0)
+  const [initialExpiry, setInitialExpiry] = useState('')
+  const [sellUnits, setSellUnits] = useState<SellUnit[]>(initial?.sellUnits ?? [])
+  const [tierPrices, setTierPrices] = useState<TierPrice[]>(initial?.tierPrices ?? [])
+  const [scaleCode, setScaleCode] = useState(initial?.scaleCode ?? '')
   const [isAvailable, setIsAvailable] = useState(initial?.isAvailable ?? true)
   const [isFavorite, setIsFavorite] = useState(initial?.isFavorite ?? false)
   const [tags, setTags] = useState<string[]>(normalizeProductTags(initial?.tags))
@@ -103,6 +115,31 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
         return
       }
     }
+    let retailPricing: ReturnType<typeof cleanRetailPricing> | null = null
+    if (retail) {
+      try {
+        retailPricing = cleanRetailPricing(sellUnits, tierPrices, price)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Isian harga belum lengkap')
+        return
+      }
+      // Barcode pak/dus tak boleh bentrok dengan barcode produk mana pun.
+      const codes = retailPricing.sellUnits.map((u) => u.barcode?.toLowerCase()).filter((c): c is string => !!c)
+      const taken = codes.find(
+        (c) =>
+          c === normalizedBarcode ||
+          codes.indexOf(c) !== codes.lastIndexOf(c) ||
+          allProducts.some((p) => (p.barcode ?? '').toLowerCase() === c || (p.id !== initial?.id && (p.sellUnits ?? []).some((u) => u.barcode?.toLowerCase() === c))),
+      )
+      if (taken) {
+        setError(`Barcode satuan ${taken} sudah dipakai`)
+        return
+      }
+      if (scaleCode && allProducts.some((p) => p.id !== initial?.id && (p.scaleCode ?? '').replace(/^0+/, '') === scaleCode.replace(/^0+/, ''))) {
+        setError('Kode PLU timbangan sudah dipakai produk lain')
+        return
+      }
+    }
     const payload = {
       categoryId,
       name: name.trim(),
@@ -121,7 +158,10 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
       // Menu paket tak punya stok sendiri — stok dipotong dari produk isinya.
       trackOwnStock: recipeItems.length === 0 && comboItems.length === 0,
       comboItems: comboItems.filter((c) => c.qty > 0),
-      stockQty,
+      // Minimarket: stok awal produk baru dicatat sebagai pergerakan "Awal" (lihat di bawah).
+      ...(retail ? (initial ? {} : { stockQty: 0 }) : { stockQty }),
+      ...(retail ? { packSize: packSize > 1 ? Math.round(packSize) : null } : {}),
+      ...(retailPricing ? { sellUnits: retailPricing.sellUnits, tierPrices: retailPricing.tierPrices, scaleCode: scaleCode || null } : {}),
       lowStockThreshold,
       isFavorite,
       isAvailable,
@@ -132,8 +172,11 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
     if (initial) {
       await updateProduct(initial.id, payload)
     } else {
-      const created = await createProduct(payload)
+      const created = await createProduct({ stockQty: 0, ...payload })
       productId = created.id
+      if (retail && stockQty > 0 && payload.trackOwnStock) {
+        await adjustProductStock({ productId, qtyDelta: stockQty, reason: 'initial', userId: currentUser?.id ?? 'system', note: 'Stok awal', expiryDate: initialExpiry || null })
+      }
     }
     if (productId && recipeItems.length > 0) {
       await saveRecipe(productId, recipeItems)
@@ -252,14 +295,45 @@ export function ProductFormModal({ initial, onClose }: { initial: Product | null
         {recipeItems.length === 0 && (
           <div className="mt-4 grid grid-cols-2 gap-4">
             <label>
-              <span className="mb-1 block text-sm text-ink-300">Stok</span>
-              <input type="number" className="input-field" value={stockQty} onChange={(e) => setStockQty(Number(e.target.value))} />
+              <span className="mb-1 block text-sm text-ink-300">{retail && !initial ? 'Stok awal' : 'Stok'}</span>
+              <input
+                type="number"
+                className="input-field disabled:opacity-60"
+                value={stockQty}
+                disabled={retail && !!initial}
+                onChange={(e) => setStockQty(Number(e.target.value))}
+              />
+              {retail && initial && <span className="mt-1 block text-xs text-ink-400">Ubah lewat Stok → Sesuaikan Stok.</span>}
             </label>
             <label>
-              <span className="mb-1 block text-sm text-ink-300">Batas Stok Menipis</span>
+              <span className="mb-1 block text-sm text-ink-300">{retail ? 'Batas minimum' : 'Batas Stok Menipis'}</span>
               <input type="number" className="input-field" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(Number(e.target.value))} />
             </label>
+            {retail && (
+              <label>
+                <span className="mb-1 block text-sm text-ink-300">Isi per dus (opsional)</span>
+                <input type="number" min={0} className="input-field" placeholder="mis. 24" value={packSize || ''} onChange={(e) => setPackSize(Number(e.target.value))} />
+              </label>
+            )}
+            {retail && !initial && (
+              <label>
+                <span className="mb-1 block text-sm text-ink-300">Kedaluwarsa stok awal (opsional)</span>
+                <input type="date" className="input-field" value={initialExpiry} onChange={(e) => setInitialExpiry(e.target.value)} />
+              </label>
+            )}
           </div>
+        )}
+
+        {retail && (
+          <RetailPricingFields
+            basePrice={price}
+            sellUnits={sellUnits}
+            onSellUnits={setSellUnits}
+            tierPrices={tierPrices}
+            onTierPrices={setTierPrices}
+            scaleCode={scaleCode}
+            onScaleCode={setScaleCode}
+          />
         )}
 
         <div className="mt-4 flex flex-wrap gap-4">

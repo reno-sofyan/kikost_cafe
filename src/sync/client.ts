@@ -121,6 +121,21 @@ export async function serverHasForeignCatalog(ownIds: Set<string>): Promise<bool
   return rows.some((r) => typeof r.id === 'string' && !ownIds.has(r.id))
 }
 
+export interface SyncIdentity {
+  tenantId: string
+  businessName: string | null
+  businessType: string | null
+}
+
+/** Tenant pemilik kunci perangkat ini. `null` = server lama tanpa endpoint ini. */
+export async function fetchSyncIdentity(): Promise<SyncIdentity | null> {
+  const response = await authorizedFetch('/api/sync/whoami', { method: 'GET' })
+  if (response.status === 404) return null
+  const data = await parseJsonOrThrow<SyncIdentity>(response, 'Gagal memeriksa identitas usaha')
+  if (!response.ok) throw new SyncHttpError(`Gagal memeriksa identitas usaha (HTTP ${response.status})`, response.status)
+  return typeof data.tenantId === 'string' && data.tenantId ? data : null
+}
+
 export async function pingBackend(): Promise<boolean> {
   try {
     const response = await authorizedFetch('/api/health', { method: 'GET' })

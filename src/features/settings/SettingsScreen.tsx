@@ -18,6 +18,7 @@ import { OutletSettings } from '@/features/settings/OutletSettings'
 import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
 import { AboutPanel } from '@/features/settings/AboutPanel'
+import { ScaleBarcodeSettings } from '@/features/settings/ScaleBarcodeSettings'
 import { readFileAsResizedDataUrl } from '@/lib/image'
 import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
@@ -31,6 +32,7 @@ type Tab =
   | 'antrean'
   | 'qris'
   | 'printer'
+  | 'timbangan'
   | 'pager'
   | 'meja-qr'
   | 'fitur-akses'
@@ -49,6 +51,7 @@ const TAB_KEYS: Tab[] = [
   'antrean',
   'qris',
   'printer',
+  'timbangan',
   'pager',
   'meja-qr',
   'fitur-akses',
@@ -79,6 +82,7 @@ export function SettingsScreen() {
     { key: 'antrean', label: 'Antrean', visible: features.queueNumbers && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
+    { key: 'timbangan', label: 'Barcode Timbangan', visible: features.retailUi && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'meja-qr', label: 'Meja & QR', visible: features.qrOrdering && roleHasPermission(currentUser.role, 'qr.manage') },
     { key: 'fitur-akses', label: 'Fitur & Akses', visible: roleHasPermission(currentUser.role, 'users.manage') },
@@ -112,6 +116,7 @@ export function SettingsScreen() {
         {tab === 'antrean' && <QueueSettings />}
         {tab === 'qris' && <QrisForm />}
         {tab === 'printer' && <PrinterSettings />}
+        {tab === 'timbangan' && <ScaleBarcodeSettings />}
         {tab === 'pager' && <PagerSettings />}
         {tab === 'meja-qr' && <TableQrSettings />}
         {tab === 'fitur-akses' && <FeatureAccessSettings />}

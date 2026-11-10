@@ -5,6 +5,25 @@
 @tailwind utilities;
 
 @layer base {
+  /* Kanal RGB warna merek (lihat tailwind.config.ts). Bawaan = indigo Kione. */
+  :root {
+    --kione-brand-400: 79 70 229;
+    --kione-brand-500: 99 102 241;
+    --kione-brand-600: 67 56 202;
+    --kione-brand-700: 55 48 163;
+    --kione-canvas: 241 245 249;
+  }
+
+  /* Minimarket: biru ritel. Kontras tetap dijaga — 400 di putih 6.4:1,
+     teks putih di 600 5.9:1. */
+  html[data-theme='retail'] {
+    --kione-brand-400: 26 95 180;
+    --kione-brand-500: 59 130 246;
+    --kione-brand-600: 31 102 193;
+    --kione-brand-700: 23 81 156;
+    --kione-canvas: 238 244 251;
+  }
+
   html,
   body,
   #root {
@@ -43,7 +62,7 @@
   }
 
   ::selection {
-    background: theme('colors.brand.500');
+    background: rgb(var(--kione-brand-500));
     color: #fff;
   }
 }
@@ -121,7 +140,7 @@
     align-items: center;
     justify-content: center;
     padding: 2rem;
-    background: theme('colors.ink.950');
+    background: rgb(var(--kione-canvas));
     color: theme('colors.ink.100');
     text-align: center;
   }

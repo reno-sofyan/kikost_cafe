@@ -11,6 +11,7 @@ vi.mock('@/sync/client', () => ({
   isBackendConfigured: () => true,
   pushSyncBatch: (...args: unknown[]) => pushSyncBatch(...args),
   pullSyncChanges: (...args: unknown[]) => pullSyncChanges(...args),
+  fetchSyncIdentity: async () => null,
 }))
 
 const { runSyncCycle } = await import('./engine')

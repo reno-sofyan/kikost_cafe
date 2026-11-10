@@ -29,13 +29,21 @@ describe('featuresForBusinessType', () => {
       reservations: false,
       waiterTracking: false,
       onlineOrders: false,
-      promos: false,
-      loyalty: false,
+      promos: true,
+      kol: false,
+      loyalty: true,
       combos: false,
       attendance: false,
       proTools: false,
       hppPricing: false,
+      retailUi: true,
     })
+  })
+
+  it('laundry: tanpa meja, dapur, pesanan QR; nama pelanggan wajib; bukan tampilan ritel', () => {
+    const f = featuresForBusinessType('laundry')
+    expect(f).toMatchObject({ tables: false, kitchen: false, qrOrdering: false, pager: false, recipes: false, buyerName: true, retailUi: false, onlineOrders: false })
+    expect(f.orderTypes).toEqual(['takeaway'])
   })
 
   it('kantin: dapur & pesanan QR aktif, tanpa meja', () => {
@@ -91,11 +99,13 @@ describe('featuresForBusinessType', () => {
       waiterTracking: true,
       onlineOrders: true,
       promos: true,
+      kol: true,
       loyalty: true,
       combos: true,
       attendance: true,
       proTools: true,
       hppPricing: true,
+      retailUi: false,
     })
   })
 
@@ -127,11 +137,13 @@ describe('featuresForBusinessType', () => {
       waiterTracking: true,
       onlineOrders: true,
       promos: true,
+      kol: true,
       loyalty: true,
       combos: true,
       attendance: true,
       proTools: true,
       hppPricing: true,
+      retailUi: false,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
       tables: true,
@@ -160,11 +172,13 @@ describe('featuresForBusinessType', () => {
       waiterTracking: true,
       onlineOrders: true,
       promos: true,
+      kol: true,
       loyalty: true,
       combos: true,
       attendance: true,
       proTools: true,
       hppPricing: true,
+      retailUi: false,
     })
   })
 

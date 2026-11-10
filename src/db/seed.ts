@@ -24,6 +24,8 @@ export async function seedInitialCatalog(businessType: BusinessType = 'cafe_rest
       return seedKantinCatalog(now)
     case 'minimarket':
       return seedMinimarketCatalog(now)
+    case 'laundry':
+      return seedLaundryCatalog(now)
     default:
       return seedCafeCatalog(now)
   }
@@ -284,4 +286,27 @@ async function seedMinimarketCatalog(now: number): Promise<void> {
     product({ categoryId: perawatan!.id, name: 'Pasta Gigi 150g', sku: 'MM-402', barcode: '8990000000413', price: 13000, costPrice: 10500, stockQty: 12, lowStockThreshold: 3, modifierGroupIds: [] }),
   ]
   await db.products.bulkAdd(products)
+}
+
+/** Laundry: layanan kiloan (kg) & satuan — jasa, jadi tanpa stok. */
+async function seedLaundryCatalog(now: number): Promise<void> {
+  const service = (input: Parameters<typeof makeProduct>[1] & { unit?: Product['unit'] }): Product => ({
+    ...makeProduct(now, input),
+    unit: input.unit ?? 'pcs',
+    trackOwnStock: false,
+    stockQty: 0,
+    lowStockThreshold: 0,
+  })
+  const categories = [category(now, 'Kiloan', 0), category(now, 'Satuan', 1), category(now, 'Tambahan', 2)]
+  await db.categories.bulkAdd(categories)
+  const [kiloan, satuan, tambahan] = categories
+  await db.products.bulkAdd([
+    service({ categoryId: kiloan!.id, name: 'Cuci Kering Lipat (per kg)', sku: 'LDR-001', unit: 'kg', price: 7000, costPrice: 3000, stockQty: 0, modifierGroupIds: [], isFavorite: true }),
+    service({ categoryId: kiloan!.id, name: 'Cuci Setrika (per kg)', sku: 'LDR-002', unit: 'kg', price: 9000, costPrice: 4000, stockQty: 0, modifierGroupIds: [], isFavorite: true }),
+    service({ categoryId: kiloan!.id, name: 'Setrika Saja (per kg)', sku: 'LDR-003', unit: 'kg', price: 5000, costPrice: 2000, stockQty: 0, modifierGroupIds: [] }),
+    service({ categoryId: satuan!.id, name: 'Bed Cover', sku: 'LDR-101', price: 30000, costPrice: 12000, stockQty: 0, modifierGroupIds: [] }),
+    service({ categoryId: satuan!.id, name: 'Selimut', sku: 'LDR-102', price: 20000, costPrice: 8000, stockQty: 0, modifierGroupIds: [] }),
+    service({ categoryId: satuan!.id, name: 'Jas / Blazer', sku: 'LDR-103', price: 25000, costPrice: 10000, stockQty: 0, modifierGroupIds: [] }),
+    service({ categoryId: tambahan!.id, name: 'Express (selesai 1 hari)', sku: 'LDR-201', price: 10000, costPrice: 0, stockQty: 0, modifierGroupIds: [] }),
+  ])
 }

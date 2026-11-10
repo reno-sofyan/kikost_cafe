@@ -19,6 +19,7 @@ import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
+import { RETAIL_NAV_ORDER, retailPageHeading } from '@/features/retail/retailNav'
 import { ShiftReminder } from '@/features/shifts/ShiftReminder'
 import { formatTime, startOfJakartaDay } from '@/lib/datetime'
 import { listLateKitchenOrders } from '@/db/repositories/serviceInsights'
@@ -107,9 +108,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Sebelum `settings` termuat, anggap semua fitur relevan — lebih baik sekejap
   // menampilkan item ekstra daripada nav "berkedip" hilang-lalu-muncul.
   const businessFeatures = featuresForBusinessType(settings?.businessType ?? 'lainnya')
-  const visibleItems = visibleNavItems(resolveNavItems(settings, businessFeatures), currentUser.role)
+  const retail = businessFeatures.retailUi
+  const navItems = visibleNavItems(resolveNavItems(settings, businessFeatures), currentUser.role)
+  // Minimarket: menu inti ritel di atas (Kasir, Stok, Pembelian, Laporan, Produk), sisanya menyusul.
+  const visibleItems = retail
+    ? [...navItems].sort((a, b) => retailNavRank(a.key) - retailNavRank(b.key))
+    : navItems
 
   const pageTitle = visibleItems.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`))?.label ?? NAV_ITEM_DEFS.find((d) => pathname.startsWith(d.to))?.label ?? ''
+  const retailHeading = retail ? retailPageHeading(pathname, pageTitle, now) : null
   const syncPill = !isBackendConfigured()
     ? { label: 'Mode Lokal', tone: 'bg-ink-700 text-ink-200', dot: 'bg-ink-400' }
     : sync.isSyncing
@@ -123,14 +130,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             : { label: 'Tersinkron', tone: 'bg-success-600/15 text-success-500', dot: 'bg-success-500' }
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-ink-950">
+    <div className={`flex h-full w-full overflow-hidden bg-ink-950 ${retail ? 'gap-1 p-3 pr-0' : ''}`}>
       {/* flex-none pada anak nav: tanpa itu, di layar pendek (mis. Galaxy Tab A8
           landscape ≈ 1280×728 CSS px) item ikut menyusut & blok nama usaha
           terpotong alih-alih nav bisa di-scroll. */}
-      <nav className="flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3">
-        <div className="mb-2 flex flex-none flex-col items-center gap-1.5 px-2 pb-3 [@media(max-height:800px)]:mb-1 [@media(max-height:800px)]:pb-2" title={businessName}>
-          <BusinessLogo size="sm" />
-          <span className="line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight text-ink-300">
+      <nav
+        className={
+          retail
+            ? 'flex w-[6.25rem] flex-none flex-col items-stretch gap-0.5 overflow-y-auto rounded-[1.25rem] bg-brand-600 py-4 text-white shadow-card'
+            : 'flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3'
+        }
+      >
+        <div className={`mb-2 flex flex-none flex-col items-center gap-1.5 px-2 pb-3 [@media(max-height:800px)]:mb-1 [@media(max-height:800px)]:pb-2 ${retail ? 'mb-4' : ''}`} title={businessName}>
+          {retail ? (
+            <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-white">
+              <BusinessLogo size="sm" />
+            </span>
+          ) : (
+            <BusinessLogo size="sm" />
+          )}
+          <span className={`line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight ${retail ? 'text-[0.72rem] text-white' : 'text-ink-300'}`}>
             {businessName}
           </span>
         </div>
@@ -139,9 +158,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
-                isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
-              }`
+              retail
+                ? `group relative flex flex-none flex-col items-center gap-1.5 py-3 text-[0.78rem] font-medium transition-colors [@media(max-height:800px)]:py-2 ${
+                    isActive ? 'bg-white/25 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+                  }`
+                : `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
+                    isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
+                  }`
             }
           >
             <Icon name={item.icon} size={21} />
@@ -160,8 +183,21 @@ export function AppShell({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-[4.25rem] flex-none items-center gap-3 border-b border-ink-700 bg-ink-900 px-5 py-2.5">
-          <h1 className="mr-auto truncate text-xl font-bold text-ink-50">{pageTitle}</h1>
+        <header
+          className={
+            retail
+              ? 'flex min-h-[4.75rem] flex-none items-center gap-3 px-5 pb-1 pt-3'
+              : 'flex min-h-[4.25rem] flex-none items-center gap-3 border-b border-ink-700 bg-ink-900 px-5 py-2.5'
+          }
+        >
+          {retailHeading ? (
+            <div className="mr-auto min-w-0">
+              <h1 className="truncate text-[1.6rem] font-bold leading-tight text-[#14306e]">{retailHeading.title}</h1>
+              {retailHeading.subtitle && <p className="truncate text-sm text-ink-300">{retailHeading.subtitle}</p>}
+            </div>
+          ) : (
+            <h1 className="mr-auto truncate text-xl font-bold text-ink-50">{pageTitle}</h1>
+          )}
           {showBackupWarning && (
             <button
               onClick={() => navigate('/pengaturan?tab=backup')}
@@ -203,7 +239,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
           <button
             onClick={() => void triggerManualSync()}
-            className={`flex min-h-[2.75rem] items-center gap-2 rounded-full px-4 text-sm font-medium ${syncPill.tone}`}
+            className={`flex min-h-[2.75rem] items-center gap-2 rounded-full px-4 text-sm font-medium ${retail && syncPill.label === 'Tersinkron' ? 'border border-success-600 bg-white text-ink-200' : syncPill.tone}`}
             title="Sinkronisasi sekarang"
           >
             <span className={`h-2.5 w-2.5 rounded-full ${syncPill.dot}`} />
@@ -215,12 +251,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-haspopup="menu"
               aria-label="Menu akun"
               aria-expanded={showUserMenu}
-              className="flex min-h-[2.75rem] items-center rounded-full border border-ink-600 bg-ink-900 py-1 pl-1 pr-3 text-sm font-medium text-ink-100 hover:bg-ink-800"
+              className={
+                retail
+                  ? 'flex min-h-[2.75rem] items-center rounded-full border border-brand-500/50 bg-brand-600/5 py-1 pl-1 pr-4 text-sm font-medium text-ink-100 hover:bg-brand-600/10'
+                  : 'flex min-h-[2.75rem] items-center rounded-full border border-ink-600 bg-ink-900 py-1 pl-1 pr-3 text-sm font-medium text-ink-100 hover:bg-ink-800'
+              }
               title={`${currentUser.name} • ${ROLE_LABELS[currentUser.role]}`}
             >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">{currentUser.name.trim()[0]?.toUpperCase() ?? '?'}</span>
+              <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${retail ? 'bg-brand-600/15 text-brand-700' : 'bg-brand-600 text-white'}`}>
+                {currentUser.name.trim()[0]?.toUpperCase() ?? '?'}
+              </span>
               <span className="ml-2 max-w-[8rem] truncate">{currentUser.name}</span>
-              <span className="mx-2 h-6 w-px bg-ink-600" />
+              {retail ? <span className="mx-1.5 text-ink-300">·</span> : <span className="mx-2 h-6 w-px bg-ink-600" />}
               <span className={openShift ? '' : 'text-red-500'}>{openShift ? `Shift ${shiftNumber ?? ''}`.trim() : 'Belum Shift'}</span>
             </button>
             {showUserMenu && (
@@ -252,4 +294,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       {businessFeatures.shiftReminder && openShift && SHIFT_ROLES.includes(currentUser.role) && <ShiftReminder shift={openShift} />}
     </div>
   )
+}
+
+function retailNavRank(key: string): number {
+  const i = RETAIL_NAV_ORDER.indexOf(key as (typeof RETAIL_NAV_ORDER)[number])
+  // Pengaturan selalu paling bawah; menu lain di antara menu inti ritel dan Pengaturan.
+  return key === 'pengaturan' ? 1000 : i >= 0 ? i : 100
 }

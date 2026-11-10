@@ -4,6 +4,7 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { newId } from '@/lib/id'
 import { convertQty } from '@/lib/units'
 import { getTrustedNow } from '@/lib/clockGuard'
+import { applyBatchDelta } from '@/lib/expiryBatches'
 import type {
   Ingredient,
   OrderItem,
@@ -113,6 +114,15 @@ export interface StockPostInput {
   note?: string
   refType?: string
   refId?: string
+  /** Produk, stok masuk: tanggal kedaluwarsa barang (`YYYY-MM-DD`) → batch baru. */
+  expiryDate?: string | null
+  /** Produk, stok keluar: potong batch ini lebih dulu (mis. buang batch yang sudah exp). */
+  batchId?: string
+  /**
+   * Produk yang mati otomatis karena stok habis ditampilkan lagi begitu stoknya
+   * kembali > 0 (minimarket). Tanpa ini, produk tetap tersembunyi sampai diaktifkan manual.
+   */
+  restoreAvailability?: boolean
 }
 
 /**
@@ -136,9 +146,14 @@ export async function postStockMovement(input: StockPostInput): Promise<void> {
     const product = await db.products.get(input.itemId)
     if (!product) throw new Error('Produk tidak ditemukan')
     const resultingQty = roundQty(product.stockQty + input.qtyDelta)
+    const hasBatches = (product.expiryBatches?.length ?? 0) > 0 || !!input.expiryDate
     await db.products.update(input.itemId, {
       stockQty: resultingQty,
-      isAvailable: resultingQty > 0 ? product.isAvailable : false,
+      isAvailable:
+        resultingQty > 0 ? product.isAvailable || (!!input.restoreAvailability && product.stockQty <= 0 && !product.archived) : false,
+      ...(hasBatches
+        ? { expiryBatches: applyBatchDelta(product.expiryBatches, input.qtyDelta, resultingQty, { expiryDate: input.expiryDate, batchId: input.batchId, newId, now }) }
+        : {}),
       updatedAt: now,
     })
     await addMovement(input, product.name, resultingQty, now)
@@ -192,6 +207,9 @@ export async function adjustProductStock(params: {
   reason: StockMovementReason
   userId: string
   note?: string
+  expiryDate?: string | null
+  batchId?: string
+  restoreAvailability?: boolean
 }): Promise<void> {
   await db.transaction('rw', db.products, db.ingredients, db.stockMovements, db.syncQueue, db.recipes, async () => {
     await postStockMovement({
@@ -201,6 +219,9 @@ export async function adjustProductStock(params: {
       reason: params.reason,
       userId: params.userId,
       note: params.note,
+      expiryDate: params.expiryDate,
+      batchId: params.batchId,
+      restoreAvailability: params.restoreAvailability,
     })
   })
 }
@@ -272,11 +293,11 @@ interface SaleLine {
  * Baris stok dari item pesanan: menu paket dipecah jadi produk komponennya
  * (stok & resep milik komponen), produk biasa apa adanya.
  */
-export function saleLinesForItems(items: Pick<OrderItem, 'productId' | 'qty' | 'comboComponents'>[]): SaleLine[] {
+export function saleLinesForItems(items: Pick<OrderItem, 'productId' | 'qty' | 'comboComponents' | 'sellUnit'>[]): SaleLine[] {
   return items.flatMap((it) =>
     it.comboComponents?.length
       ? it.comboComponents.map((c) => ({ productId: c.productId, qty: c.qty * it.qty }))
-      : [{ productId: it.productId, qty: it.qty }],
+      : [{ productId: it.productId, qty: it.qty * (it.sellUnit?.qty && it.sellUnit.qty > 0 ? it.sellUnit.qty : 1) }],
   )
 }
 

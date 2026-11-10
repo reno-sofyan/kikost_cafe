@@ -4,6 +4,7 @@ import { enqueueSync } from '@/sync/outbox'
 import { newId } from '@/lib/id'
 import type { Product, Recipe } from '@/types/domain'
 import { getTrustedNow } from '@/lib/clockGuard'
+import { clampBatches } from '@/lib/expiryBatches'
 
 export type ProductInput = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -35,7 +36,12 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 
 export async function updateProduct(id: string, patch: Partial<ProductInput>): Promise<void> {
   await db.transaction('rw', db.products, db.syncQueue, async () => {
-    await db.products.update(id, { ...patch, updatedAt: getTrustedNow() })
+    const current = await db.products.get(id)
+    // Stok diubah langsung (form produk): batch kedaluwarsa tak boleh melebihi stok baru.
+    const batches = current?.expiryBatches?.length && patch.stockQty !== undefined && !patch.expiryBatches
+      ? { expiryBatches: clampBatches(current.expiryBatches, patch.stockQty) }
+      : {}
+    await db.products.update(id, { ...patch, ...batches, updatedAt: getTrustedNow() })
     const updated = await db.products.get(id)
     if (updated) await enqueueSync('products', id, updated)
   })

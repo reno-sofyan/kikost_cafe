@@ -182,7 +182,7 @@ export function PromoFormModal({ initial, asVoucher, kols, onClose, presetKolId 
           voucherCode: isVoucher ? voucherCode : null,
           usageLimit: isVoucher ? usageLimit : null,
           kolId: isVoucher ? kolId || null : null,
-          buyQty: kind === 'bxgy' ? buyQty : undefined,
+          buyQty: kind === 'bxgy' || kind === 'bundle' ? buyQty : undefined,
           getQty: kind === 'bxgy' ? getQty : undefined,
           memberOnly,
           oncePerCustomer,
@@ -240,9 +240,9 @@ export function PromoFormModal({ initial, asVoucher, kols, onClose, presetKolId 
         <div>
           <span className="mb-1 block text-sm text-ink-300">Jenis Potongan</span>
           <div className="flex gap-2">
-            {(['percent', 'amount', 'bxgy'] as const).map((k) => (
+            {(['percent', 'amount', 'bxgy', 'bundle'] as const).map((k) => (
               <button key={k} className={`btn btn-compact flex-1 !px-1 text-sm ${kind === k ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setKind(k)}>
-                {k === 'percent' ? 'Persen' : k === 'amount' ? 'Rupiah' : 'Beli X Gratis Y'}
+                {k === 'percent' ? 'Persen' : k === 'amount' ? 'Rupiah' : k === 'bxgy' ? 'Beli X Gratis Y' : 'Harga Paket'}
               </button>
             ))}
           </div>
@@ -258,6 +258,17 @@ export function PromoFormModal({ initial, asVoucher, kols, onClose, presetKolId 
               <input type="number" min={1} className="input-field" aria-label="Jumlah gratis" value={getQty} onChange={(e) => setGetQty(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />
             </label>
           </div>
+        ) : kind === 'bundle' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="mb-1 block text-sm text-ink-300">Isi paket</span>
+              <input type="number" min={2} className="input-field" aria-label="Jumlah item per paket" value={buyQty} onChange={(e) => setBuyQty(Math.max(2, Math.floor(Number(e.target.value) || 2)))} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-ink-300">Harga paket</span>
+              <input className="input-field" inputMode="numeric" aria-label="Harga paket" value={formatRupiah(value)} onChange={(e) => setValue(parseRupiahInput(e.target.value))} />
+            </label>
+          </div>
         ) : (
           <label className="block">
             <span className="mb-1 block text-sm text-ink-300">Nilai Potongan</span>
@@ -271,6 +282,11 @@ export function PromoFormModal({ initial, asVoucher, kols, onClose, presetKolId 
         {kind === 'bxgy' && (
           <p className="col-span-2 -mt-1 text-xs text-ink-400">
             Tiap {buyQty + getQty} item yang cocok dalam satu pesanan, {getQty} item termurah gratis. Pilih kategori/produknya di "Berlaku Untuk".
+          </p>
+        )}
+        {kind === 'bundle' && (
+          <p className="col-span-2 -mt-1 text-xs text-ink-400">
+            Tiap {buyQty} item yang cocok dibayar {formatRupiah(value)} (mis. "2 item Rp10.000"). Sisa item di luar paket tetap harga normal.
           </p>
         )}
         <label className="block">

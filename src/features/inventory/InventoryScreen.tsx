@@ -21,26 +21,12 @@ import { toast } from '@/state/toastStore'
 import { PurchasingPanel } from '@/features/inventory/PurchasingPanel'
 import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
 import { ProductionPanel } from '@/features/inventory/ProductionPanel'
+import { STOCK_REASON_LABELS as REASON_LABELS } from '@/lib/stockReasons'
 import type { Ingredient, StockMovementReason, UnitOfMeasure } from '@/types/domain'
 
 type Tab = 'bahan' | 'pembelian' | 'produksi' | 'opname' | 'riwayat'
 const UNITS: UnitOfMeasure[] = ['pcs', 'g', 'kg', 'ml', 'l']
 
-const REASON_LABELS: Record<StockMovementReason, string> = {
-  sale: 'Penjualan',
-  return: 'Retur',
-  adjustment: 'Penyesuaian',
-  waste: 'Waste',
-  stock_in: 'Stok Masuk',
-  stock_out: 'Stok Keluar',
-  initial: 'Awal',
-  purchase_receipt: 'Penerimaan Pembelian',
-  transfer_in: 'Transfer Masuk',
-  transfer_out: 'Transfer Keluar',
-  stock_opname: 'Stok Opname',
-  production_consumption: 'Konsumsi Produksi',
-  production_output: 'Hasil Produksi',
-}
 
 export function InventoryScreen() {
   const [tab, setTab] = useState<Tab>('bahan')

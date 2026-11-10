@@ -101,7 +101,7 @@ export interface StaffRoster {
  * `lainnya` (dan nilai tak dikenal apa pun) SENGAJA menampilkan semua fitur —
  * jangan pernah menyembunyikan sesuatu untuk jenis usaha yang tidak dikenali.
  */
-export type BusinessType = 'cafe_resto' | 'kantin' | 'minimarket' | 'lainnya'
+export type BusinessType = 'cafe_resto' | 'kantin' | 'minimarket' | 'laundry' | 'lainnya'
 
 export interface AppSettings {
   id: 'singleton'
@@ -139,6 +139,10 @@ export interface AppSettings {
   promos?: Promo[]
   /** KOL / influencer rekanan (pemilik kode voucher). */
   kols?: Kol[]
+  /** Minimarket: master pemasok. */
+  suppliers?: Supplier[]
+  /** Minimarket: format barcode timbangan. */
+  scaleBarcode?: ScaleBarcodeConfig
   /** Riwayat pembayaran komisi ke KOL. Terutang = komisi dari transaksi lunas − total di sini. */
   kolPayouts?: KolPayout[]
   /** Target omzet (Rp) per hari & per bulan untuk indikator pencapaian di Laporan. */
@@ -385,8 +389,83 @@ export interface Product {
   comboItems?: { productId: string; qty: number }[]
   /** Label menu & info alergen (lihat `lib/productTags.ts`), mis. `spicy`, `nuts`. */
   tags?: string[]
+  /** Minimarket: isi per dus/karton (mis. 24) — stok ditampilkan "2 dus + 6 pcs". Kosong = tak dijual per dus. */
+  packSize?: number | null
+  /**
+   * Minimarket: stok bertanggal kedaluwarsa per penerimaan (lihat `lib/expiryBatches.ts`).
+   * Jumlah qty-nya ≤ `stockQty`; sisanya stok tanpa tanggal. Dipotong FEFO saat stok berkurang.
+   */
+  expiryBatches?: ExpiryBatch[]
+  /** Minimarket: satuan jual tambahan (pak/dus) — harga & barcode sendiri, stok dipotong `qty` × satuan dasar. */
+  sellUnits?: SellUnit[]
+  /** Minimarket: harga grosir per satuan dasar saat jumlah di keranjang ≥ `minQty`. */
+  tierPrices?: TierPrice[]
+  /** Minimarket: kode PLU di barcode timbangan (lihat `AppSettings.scaleBarcode`). */
+  scaleCode?: string | null
   createdAt: number
   updatedAt: number
+}
+
+export interface SellUnit {
+  id: string
+  /** Mis. "Pak", "Dus". */
+  name: string
+  /** Isi dalam satuan dasar produk (mis. 40 pcs). */
+  qty: number
+  price: number
+  barcode?: string | null
+}
+
+export interface TierPrice {
+  minQty: number
+  /** Harga per satuan dasar. */
+  price: number
+}
+
+/** Barcode EAN-13 dari timbangan: [awalan][PLU][berat/harga][cek]. */
+export interface ScaleBarcodeConfig {
+  enabled: boolean
+  /** Awalan penanda barcode timbangan, mis. "2" (semua 20–29) atau "21". */
+  prefix: string
+  /** Panjang digit penanda di depan kode (biasanya 2). */
+  flagLength: number
+  /** Panjang kode PLU (biasanya 5). Sisanya sampai digit cek = nilai. */
+  pluLength: number
+  /** Nilai di barcode: berat gram, atau harga rupiah. */
+  valueKind: 'weight' | 'price'
+}
+
+export interface Supplier {
+  id: string
+  name: string
+  phone: string
+  address: string
+  /** Tempo pembayaran default (hari). 0 = tunai. */
+  termDays: number
+  note: string
+  active: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface PurchasePayment {
+  id: string
+  amount: number
+  method: 'cash' | 'transfer' | 'other'
+  /** Diambil dari laci kas shift (tercatat sebagai kas keluar). */
+  fromDrawer: boolean
+  note: string
+  byName: string
+  at: number
+}
+
+/** Satu kelompok stok produk dengan tanggal kedaluwarsa yang sama. */
+export interface ExpiryBatch {
+  id: string
+  /** Tanggal kedaluwarsa `YYYY-MM-DD` (kalender WIB). */
+  expiryDate: string
+  qty: number
+  receivedAt: number
 }
 
 export interface Ingredient {
@@ -452,6 +531,7 @@ export type StockMovementReason =
   | 'stock_opname'
   | 'production_consumption'
   | 'production_output'
+  | 'supplier_return'
 
 export interface StockMovement {
   id: string
@@ -480,6 +560,10 @@ export interface PurchaseLine {
   unit: UnitOfMeasure
   unitCost: number
   lineCost: number
+  /** Produk: tanggal kedaluwarsa barang yang diterima (`YYYY-MM-DD`), diisi saat penerimaan. */
+  expiryDate?: string | null
+  /** Retur ke pemasok: batch kedaluwarsa yang dikeluarkan lebih dulu. */
+  batchId?: string | null
 }
 
 /** Pembelian & penerimaan barang dari pemasok. Menerima = memposting stok. */
@@ -494,6 +578,15 @@ export interface Purchase {
   createdBy: string
   receivedBy: string | null
   receivedAt: number | null
+  /** Minimarket: pemasok dari master (Pengaturan → pemasok). `supplierName` tetap snapshot. */
+  supplierId?: string | null
+  /** `return` = retur barang ke pemasok (stok keluar; nilainya mengurangi hutang bila `returnSettlement` = debt). */
+  docType?: 'purchase' | 'return'
+  returnSettlement?: 'debt' | 'refund' | 'replace' | null
+  /** Jatuh tempo pembayaran (`YYYY-MM-DD`). Kosong = dibayar tunai saat terima. */
+  dueDate?: string | null
+  /** Pembayaran ke pemasok untuk dokumen ini (hutang = totalCost − jumlahnya). */
+  payments?: PurchasePayment[]
   createdAt: number
   updatedAt: number
 }
@@ -726,6 +819,12 @@ export interface OrderItem {
   categoryId?: string | null
   /** Menu paket: komponen per 1 paket. Stok dipotong per komponen, bukan dari produk paketnya. */
   comboComponents?: ComboComponent[]
+  /** Minimarket: dijual per satuan besar (pak/dus) — stok dipotong `qty × sellUnit.qty`. */
+  sellUnit?: { id: string; name: string; qty: number } | null
+  /** Minimarket: harga grosir aktif (unitPrice = harga tingkat, bukan harga normal). */
+  tierApplied?: boolean
+  /** HPP per satuan dasar saat item ditambahkan (HPP rata-rata saat itu) — dasar laba di laporan. */
+  unitCost?: number | null
   /** Urutan saji: 1 Pembuka, 2 Utama, 3 Penutup. Kosong = langsung dikirim. */
   course?: number | null
   kitchenStatus: KitchenItemStatus
@@ -771,13 +870,16 @@ export type DiscountType = 'percent' | 'amount'
  * sendiri di kasir saat syaratnya terpenuhi. Dengan `voucherCode` = voucher: hanya
  * terpasang bila kasir memasukkan kodenya. Disimpan di `AppSettings.promos`.
  */
-export type PromoKind = DiscountType | 'bxgy'
+export type PromoKind = DiscountType | 'bxgy' | 'bundle'
 
 export interface Promo {
   id: string
   name: string
   active: boolean
-  /** `bxgy` = beli X gratis Y: tiap (buyQty + getQty) item yang cocok, getQty termurah gratis. */
+  /**
+   * `bxgy` = beli X gratis Y: tiap (buyQty + getQty) item yang cocok, getQty termurah gratis.
+   * `bundle` = harga paket: tiap `buyQty` item yang cocok dibayar `value` rupiah.
+   */
   kind: PromoKind
   value: number
   buyQty?: number
@@ -1002,6 +1104,8 @@ export interface Order {
   payLater?: PayLaterInfo | null
   /** Pesanan KOL / Compliment (kafe): semua item dihargai HPP. */
   hppPricing?: HppPricing | null
+  /** Minimarket: nota pesanan ini disimpan ke Laporan → Nota Tersimpan (waktu disimpan). */
+  notaSavedAt?: number | null
   createdAt: number
   updatedAt: number
   paidAt: number | null

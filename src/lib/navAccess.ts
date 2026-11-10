@@ -23,6 +23,7 @@ export type NavKey =
   | 'member'
   | 'produk'
   | 'stok'
+  | 'pembelian'
   | 'shift'
   | 'absensi'
   | 'pengaturan'
@@ -57,10 +58,11 @@ export const NAV_ITEM_DEFS: NavItemDef[] = [
   { key: 'pengeluaran', to: '/pengeluaran', label: 'Pengeluaran', icon: 'wallet', description: 'Mencatat uang keluar dari kas.', defaultRoles: FRONT_ROLES },
   { key: 'laporan', to: '/laporan', label: 'Laporan', icon: 'chart', description: 'Laporan penjualan, shift & keuangan.', defaultRoles: rolesWith('reports.view') },
   { key: 'promo', to: '/promo', label: 'Promo', icon: 'star', description: 'Promo otomatis, voucher & voucher hadiah.', defaultRoles: rolesWith('settings.manage'), feature: 'promos' },
-  { key: 'kol', to: '/kol', label: 'KOL', icon: 'megaphone', description: 'KOL/influencer: kode voucher, kinerja & komisi.', defaultRoles: rolesWith('settings.manage'), feature: 'promos', inheritsFrom: 'promo' },
+  { key: 'kol', to: '/kol', label: 'KOL', icon: 'megaphone', description: 'KOL/influencer: kode voucher, kinerja & komisi.', defaultRoles: rolesWith('settings.manage'), feature: 'kol', inheritsFrom: 'promo' },
   { key: 'member', to: '/member', label: 'Member', icon: 'award', description: 'Program member: poin & pengaturan member.', defaultRoles: rolesWith('settings.manage'), feature: 'loyalty', inheritsFrom: 'promo' },
   { key: 'produk', to: '/produk', label: 'Produk', icon: 'coffee', description: 'Produk, kategori, modifier & paket.', defaultRoles: rolesWith('settings.manage') },
   { key: 'stok', to: '/stok', label: 'Stok', icon: 'box', description: 'Stok, bahan baku & produksi.', defaultRoles: rolesWith('stock.adjust') },
+  { key: 'pembelian', to: '/pembelian', label: 'Pembelian', icon: 'receipt', description: 'Pesanan ke pemasok & penerimaan barang (minimarket).', defaultRoles: rolesWith('stock.adjust'), feature: 'retailUi' },
   { key: 'shift', to: '/shift', label: 'Shift', icon: 'cashDrawer', description: 'Buka & tutup shift, hitung kas.', defaultRoles: SHIFT_ROLES },
   { key: 'absensi', to: '/absensi', label: 'Absensi', icon: 'checkCircle', description: 'Absen masuk/pulang karyawan & rekap gaji.', defaultRoles: ALL_ROLES, feature: 'attendance' },
   { key: 'pengaturan', to: '/pengaturan', label: 'Pengaturan', icon: 'settings', description: 'Pengaturan usaha, printer, pengguna, dll.', defaultRoles: rolesWith('settings.manage'), required: true },

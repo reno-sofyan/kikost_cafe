@@ -90,16 +90,29 @@ export function promoDiscountFor(promo: Promo, items: PromoItem[]): number {
           .filter((i) => promo.targetIds.includes(promo.scope === 'product' ? i.productId : (i.categoryId ?? '')))
           .reduce((s, i) => s + i.lineTotal, 0)
   if (base <= 0) return 0
-  if (promo.kind === 'bxgy') {
-    // Tiap (beli + gratis) unit yang cocok → `gratis` unit TERMURAH tak dibayar.
-    const buy = Math.max(1, Math.floor(promo.buyQty ?? 1))
-    const get = Math.max(1, Math.floor(promo.getQty ?? 1))
+  const matchingUnits = () => {
     const units: number[] = []
     for (const i of active) {
       if (promo.scope !== 'order' && !promo.targetIds.includes(promo.scope === 'product' ? i.productId : (i.categoryId ?? ''))) continue
       const qty = Math.max(0, Math.floor(i.qty ?? 1))
       for (let n = 0; n < qty; n++) units.push(i.lineTotal / qty)
     }
+    return units
+  }
+  if (promo.kind === 'bundle') {
+    // Harga paket: tiap `buyQty` unit yang cocok dibayar `value` — unit TERMAHAL dipaketkan dulu.
+    const size = Math.max(2, Math.floor(promo.buyQty ?? 2))
+    const units = matchingUnits().sort((a, b) => b - a)
+    const sets = Math.floor(units.length / size)
+    const normal = units.slice(0, sets * size).reduce((s, u) => s + u, 0)
+    const saving = Math.max(0, normal - sets * Math.max(0, promo.value))
+    return Math.max(0, Math.round(promo.maxDiscount && promo.maxDiscount > 0 ? Math.min(saving, promo.maxDiscount) : saving))
+  }
+  if (promo.kind === 'bxgy') {
+    // Tiap (beli + gratis) unit yang cocok → `gratis` unit TERMURAH tak dibayar.
+    const buy = Math.max(1, Math.floor(promo.buyQty ?? 1))
+    const get = Math.max(1, Math.floor(promo.getQty ?? 1))
+    const units = matchingUnits()
     const free = Math.floor(units.length / (buy + get)) * get
     const freeValue = units.sort((a, b) => a - b).slice(0, free).reduce((s, u) => s + u, 0)
     return Math.max(0, Math.round(promo.maxDiscount && promo.maxDiscount > 0 ? Math.min(freeValue, promo.maxDiscount) : freeValue))
@@ -159,7 +172,11 @@ export function evaluatePromos(params: {
 /** Ringkasan syarat promo untuk daftar & struk, mis. "20% • Kopi • Sen–Jum 14:00–17:00". */
 export function describePromo(promo: Promo, formatRupiah: (n: number) => string): string {
   const parts: string[] = [
-    promo.kind === 'bxgy' ? `Beli ${promo.buyQty ?? 1} gratis ${promo.getQty ?? 1}` : promo.kind === 'percent' ? `${promo.value}%` : formatRupiah(promo.value),
+    promo.kind === 'bxgy'
+      ? `Beli ${promo.buyQty ?? 1} gratis ${promo.getQty ?? 1}`
+      : promo.kind === 'bundle'
+        ? `${promo.buyQty ?? 2} item ${formatRupiah(promo.value)}`
+        : promo.kind === 'percent' ? `${promo.value}%` : formatRupiah(promo.value),
   ]
   if (promo.birthday) parts.push(promo.birthday === 'day' ? 'hari ulang tahun' : 'bulan ulang tahun')
   else if (promo.memberOnly || promo.oncePerCustomer) parts.push('khusus member')

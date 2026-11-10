@@ -477,6 +477,9 @@ export async function addOrderItem(params: {
   discountAmount?: number
   /** Menu paket: isi per 1 paket (stok dipotong per komponen). */
   comboComponents?: ComboComponent[]
+  /** Minimarket: dijual per pak/dus. */
+  sellUnit?: OrderItem['sellUnit']
+  tierApplied?: boolean
 }): Promise<OrderItem> {
   const now = getTrustedNow()
   const lineTotal = computeLineTotal({
@@ -517,6 +520,9 @@ export async function addOrderItem(params: {
     lineTotal,
     categoryId: product?.categoryId ?? null,
     ...(comboComponents?.length ? { comboComponents } : {}),
+    ...(params.sellUnit ? { sellUnit: params.sellUnit } : {}),
+    ...(params.tierApplied ? { tierApplied: true } : {}),
+    ...(product && product.costPrice > 0 ? { unitCost: product.costPrice } : {}),
     kitchenStatus: skipKitchen ? 'done' : 'new',
     skipKitchen,
     removed: false,

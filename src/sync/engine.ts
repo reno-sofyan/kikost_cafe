@@ -3,6 +3,7 @@ import { useSyncStore } from '@/state/syncStore'
 import { getDeviceId, getLastPullAt, setLastPullAt } from '@/sync/device'
 import { applyRemoteDeletions, applyRemoteEntities } from '@/sync/applyRemote'
 import { isBackendConfigured, pullSyncChanges, pushSyncBatch, type SyncPushItem } from '@/sync/client'
+import { assertTenantBinding } from '@/sync/tenantGuard'
 import type { SyncQueueEntry } from '@/types/domain'
 
 // Server menerima ≤200 item & ≤8 MiB per push. 100 item memangkas jumlah request
@@ -41,6 +42,8 @@ export async function runSyncCycle(): Promise<void> {
   const store = useSyncStore.getState()
   store.setSyncing(true)
   try {
+    // Kunci milik tenant lain → jangan dorong/tarik apa pun (data usaha tak boleh tercampur).
+    await assertTenantBinding()
     await pushPendingQueue()
     await pullRemoteChanges()
     await refreshPendingCounts()

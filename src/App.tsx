@@ -37,6 +37,12 @@ const InventoryScreen = lazy(() => import('@/features/inventory/InventoryScreen'
 const SettingsScreen = lazy(() => import('@/features/settings/SettingsScreen').then((m) => ({ default: m.SettingsScreen })))
 const TablesScreen = lazy(() => import('@/features/tables/TablesScreen').then((m) => ({ default: m.TablesScreen })))
 const ShiftScreen = lazy(() => import('@/features/shifts/ShiftScreen').then((m) => ({ default: m.ShiftScreen })))
+// Mode Minimarket: layar ritel tersendiri (kafe & kantin tetap memakai layar di atas).
+const RetailCashierScreen = lazy(() => import('@/features/retail/RetailCashierScreen').then((m) => ({ default: m.RetailCashierScreen })))
+const RetailPaymentScreen = lazy(() => import('@/features/retail/RetailPaymentScreen').then((m) => ({ default: m.RetailPaymentScreen })))
+const RetailStockScreen = lazy(() => import('@/features/retail/RetailStockScreen').then((m) => ({ default: m.RetailStockScreen })))
+const RetailProductsScreen = lazy(() => import('@/features/retail/RetailProductsScreen').then((m) => ({ default: m.RetailProductsScreen })))
+const RetailPurchasesScreen = lazy(() => import('@/features/retail/RetailPurchasesScreen').then((m) => ({ default: m.RetailPurchasesScreen })))
 
 function ScreenLoading() {
   return (
@@ -93,6 +99,15 @@ export default function App() {
     }
   }, [])
 
+  // Tema warna mengikuti jenis usaha (lihat `html[data-theme='retail']` di index.css).
+  const retail = !!settings?.onboardingCompleted && featuresForBusinessType(settings.businessType).retailUi
+  useEffect(() => {
+    const root = document.documentElement
+    if (retail) root.dataset.theme = 'retail'
+    else delete root.dataset.theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', retail ? '#1f66c1' : '#4338ca')
+  }, [retail])
+
   if (settings === undefined) {
     return (
       <div className="flex h-full items-center justify-center bg-ink-950 text-ink-300">
@@ -128,9 +143,9 @@ export default function App() {
         <RouteView>
           <AccessGuard settings={settings} role={currentUser.role}>
             <Routes>
-              <Route path="/kasir" element={<CashierScreen />} />
+              <Route path="/kasir" element={retail ? <RetailCashierScreen /> : <CashierScreen />} />
               <Route path="/meja" element={<TablesScreen />} />
-              <Route path="/kasir/:orderId/bayar" element={<OrderPaymentScreen />} />
+              <Route path="/kasir/:orderId/bayar" element={retail ? <RetailPaymentScreen /> : <OrderPaymentScreen />} />
               <Route path="/dapur" element={<KitchenDisplayScreen />} />
               <Route path="/pesanan-qr" element={<QrOrderInbox />} />
               <Route path="/cetak" element={<PrintQueueScreen />} />
@@ -143,8 +158,9 @@ export default function App() {
               <Route path="/kol" element={<KolScreen />} />
               <Route path="/member" element={<MemberScreen />} />
               <Route path="/absensi" element={<AttendanceScreen />} />
-              <Route path="/produk" element={<ProductsScreen />} />
-              <Route path="/stok" element={<InventoryScreen />} />
+              <Route path="/produk" element={retail ? <RetailProductsScreen /> : <ProductsScreen />} />
+              <Route path="/stok" element={retail ? <RetailStockScreen /> : <InventoryScreen />} />
+              <Route path="/pembelian" element={<RetailPurchasesScreen />} />
               <Route path="/shift" element={<ShiftScreen />} />
               <Route path="/pengaturan/*" element={<SettingsScreen />} />
               <Route path="*" element={<Navigate to="/" replace />} />

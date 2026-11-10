@@ -233,17 +233,19 @@ export async function buildSalesReport(range: DateRange, scope: ReportScope = 'a
     const product = productById.get(item.productId)
     // Menu paket tanpa HPP sendiri: HPP = jumlah HPP produk isinya.
     const comboCost = (item.comboComponents ?? []).reduce((s, c) => s + (productById.get(c.productId)?.costPrice ?? 0) * c.qty, 0)
-    const cost = (product?.costPrice || comboCost) * item.qty
+    // Satuan dasar (pak/dus dikali isinya); HPP snapshot saat dijual bila ada.
+    const baseQty = item.qty * (item.sellUnit?.qty || 1)
+    const cost = (item.unitCost || product?.costPrice || comboCost) * baseQty
     const existing = productSalesMap.get(item.productId)
     if (existing) {
-      existing.qtySold += item.qty
+      existing.qtySold += baseQty
       existing.revenue += item.lineTotal
       existing.costTotal += cost
     } else {
       productSalesMap.set(item.productId, {
         productId: item.productId,
-        productName: item.productName,
-        qtySold: item.qty,
+        productName: product?.name ?? item.productName,
+        qtySold: baseQty,
         revenue: item.lineTotal,
         costTotal: cost,
       })

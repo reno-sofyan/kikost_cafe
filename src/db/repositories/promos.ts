@@ -49,7 +49,7 @@ export async function savePromo(input: PromoInput, actor: Actor): Promise<Promo>
     name,
     voucherCode: code || null,
     value: input.kind === 'bxgy' ? 0 : input.value,
-    buyQty: input.kind === 'bxgy' ? Math.floor(input.buyQty ?? 1) : undefined,
+    buyQty: input.kind === 'bxgy' ? Math.floor(input.buyQty ?? 1) : input.kind === 'bundle' ? Math.max(2, Math.floor(input.buyQty ?? 2)) : undefined,
     getQty: input.kind === 'bxgy' ? Math.floor(input.getQty ?? 1) : undefined,
     memberOnly: !!input.memberOnly || !!input.oncePerCustomer || !!input.birthday,
     oncePerCustomer: !!input.oncePerCustomer,
