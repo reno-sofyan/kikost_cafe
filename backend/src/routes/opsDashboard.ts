@@ -68,6 +68,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   .badge.cafe { color: #c4b5fd; border-color: #6d28d9; background: rgba(109,40,217,.15); }
   .badge.kantin { color: #fcd34d; border-color: #b45309; background: rgba(180,83,9,.15); }
   .badge.minimarket { color: #86efac; border-color: #15803d; background: rgba(21,128,61,.15); }
+  .badge.laundry { color: #7dd3fc; border-color: #0369a1; background: rgba(3,105,161,.15); }
   .badge.lainnya { color: var(--ink-200); }
   .statline { display: flex; gap: 16px; flex-wrap: wrap; }
   .stat .k { color: var(--ink-400); font-size: .7rem; }
@@ -308,7 +309,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     return rupiah(n);
   };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const BT = { cafe_resto: ['Kafe & Resto', 'cafe'], kantin: ['Kantin', 'kantin'], minimarket: ['Minimarket', 'minimarket'], lainnya: ['Lainnya', 'lainnya'] };
+  const BT = { cafe_resto: ['Kafe & Resto', 'cafe'], kantin: ['Kantin', 'kantin'], minimarket: ['Minimarket', 'minimarket'], laundry: ['Laundry', 'laundry'], lainnya: ['Lainnya', 'lainnya'] };
   function fmtTime(ms) {
     if (!ms) return '—';
     const d = new Date(Number(ms));

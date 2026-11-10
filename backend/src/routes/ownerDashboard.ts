@@ -325,7 +325,7 @@ export const OWNER_DASHBOARD_HTML = `<!doctype html>
     return rupiah(n);
   };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const BT = { cafe_resto: 'Kafe & Resto', kantin: 'Kantin', minimarket: 'Minimarket', lainnya: 'Lainnya' };
+  const BT = { cafe_resto: 'Kafe & Resto', kantin: 'Kantin', minimarket: 'Minimarket', laundry: 'Laundry', lainnya: 'Lainnya' };
   function fmtTime(ms) {
     if (!ms) return '—';
     return new Date(Number(ms)).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
