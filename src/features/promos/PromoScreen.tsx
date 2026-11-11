@@ -4,6 +4,9 @@ import { listCategories } from '@/db/repositories/categories'
 import { listProducts } from '@/db/repositories/products'
 import { deletePromo, listKols, listPromos, promoUsageCounts, savePromo } from '@/db/repositories/promos'
 import { GiftCardTab } from '@/features/promos/GiftCardTab'
+import { MemberTab } from '@/features/promos/MemberScreen'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { formatNumber, formatRupiah, parseRupiahInput } from '@/lib/currency'
 import { describePromo, isPromoActiveAt, PROMO_DAY_LABELS } from '@/lib/promos'
 import { Modal } from '@/components/ui/Modal'
@@ -12,18 +15,23 @@ import { toast } from '@/state/toastStore'
 import { useActor } from '@/features/promos/useActor'
 import type { Kol, Promo } from '@/types/domain'
 
-type Tab = 'promo' | 'gift'
-const TAB_LABELS: Record<Tab, string> = { promo: 'Promo & Voucher', gift: 'Voucher Hadiah' }
+type Tab = 'promo' | 'gift' | 'member'
+const TAB_LABELS: Record<Tab, string> = { promo: 'Promo & Voucher', gift: 'Voucher Hadiah', member: 'Member & Poin' }
 
-/** Promo otomatis, voucher & voucher hadiah. KOL dan Member punya menu sendiri (KolScreen, MemberScreen). */
+/**
+ * Promo otomatis, voucher & voucher hadiah. KOL dan Member punya menu sendiri (KolScreen,
+ * MemberScreen); di Minimarket Member jadi tab di sini supaya sidebar ritel tetap ringkas.
+ */
 export function PromoScreen() {
   const [tab, setTab] = useState<Tab>('promo')
+  const retail = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).retailUi, []) ?? false
+  const tabs = (Object.keys(TAB_LABELS) as Tab[]).filter((t) => t !== 'member' || retail)
 
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <h1 className="mr-4 text-xl font-bold text-ink-50">Promo</h1>
-        {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
+        <h1 className="page-title mr-4 text-xl font-bold text-ink-50">Promo</h1>
+        {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`btn btn-compact !px-4 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {TAB_LABELS[t]}
           </button>
@@ -31,6 +39,7 @@ export function PromoScreen() {
       </div>
       {tab === 'promo' && <PromoTab />}
       {tab === 'gift' && <GiftCardTab />}
+      {tab === 'member' && <MemberTab />}
     </div>
   )
 }
@@ -62,7 +71,7 @@ function PromoTab() {
       </div>
 
       {promos.length === 0 ? (
-        <p className="card p-6 text-center text-ink-400">Belum ada promo. Buat promo happy hour atau voucher pertama Anda.</p>
+        <p className="card p-6 text-center text-ink-400">Belum ada promo. Buat promo otomatis (mis. diskon per kategori, beli X gratis Y, harga paket) atau voucher pertama Anda.</p>
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {promos.map((p) => {

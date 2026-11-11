@@ -17,7 +17,7 @@ export function ExpensesScreen() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-50">Pengeluaran</h1>
+        <h1 className="page-title text-xl font-bold text-ink-50">Pengeluaran</h1>
         <button className="btn-primary" onClick={() => setShowForm(true)}>
           + Catat Pengeluaran
         </button>

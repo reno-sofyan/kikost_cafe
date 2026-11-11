@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
@@ -70,12 +71,15 @@ export function PrinterSettings() {
 
   return (
     <div className="max-w-lg space-y-4">
-      <div className="flex gap-2">
-        {(['printers', 'routing'] as const).map((t) => (
+      <div className="flex flex-wrap items-center gap-2">
+        {(hasKitchen ? (['printers', 'routing'] as const) : (['printers'] as const)).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${tab === t ? 'btn-primary' : 'btn-secondary'}`}>
             {t === 'printers' ? 'Printer' : 'Routing Kategori'}
           </button>
         ))}
+        <Link to="/cetak" className="ml-auto text-sm font-medium text-brand-400 hover:underline">
+          Lihat antrean cetak →
+        </Link>
       </div>
 
       {!isNative && (
@@ -154,6 +158,7 @@ export function PrinterSettings() {
         <PrinterFormModal
           printer={editing === 'new' ? null : editing}
           allPrinters={printers}
+          hasKitchen={hasKitchen}
           onClose={() => setEditing(null)}
           onSave={async (data) => {
             await savePrinter(data, actor)
@@ -300,15 +305,18 @@ function PrinterFormModal({
   onClose,
   onSave,
   onDelete,
+  hasKitchen,
 }: {
   printer: Printer | null
   allPrinters: Printer[]
+  /** Tanpa dapur: semua printer = printer kasir, pilihan station disembunyikan. */
+  hasKitchen: boolean
   onClose: () => void
   onSave: (data: Omit<Printer, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<void>
   onDelete?: () => Promise<void>
 }) {
   const [name, setName] = useState(printer?.name ?? '')
-  const [station, setStation] = useState<PrinterStation>(printer?.station ?? 'kitchen')
+  const [station, setStation] = useState<PrinterStation>(printer?.station ?? (hasKitchen ? 'kitchen' : 'cashier'))
   const [connectionType, setConnectionType] = useState<Printer['connectionType']>(printer?.connectionType ?? (isNative ? 'network' : 'browser'))
   const [host, setHost] = useState(printer?.networkHost ?? '')
   const [port, setPort] = useState(printer?.networkPort ?? 9100)
@@ -333,7 +341,7 @@ function PrinterFormModal({
     <Modal onClose={onClose} className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-ink-900 p-6">
         <h2 className="mb-4 text-lg font-bold text-ink-50">{printer ? 'Edit Printer' : 'Printer Baru'}</h2>
         <input className="input-field mb-3" placeholder="Nama printer" value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="mb-3 block text-sm text-ink-300">
+        <label className={`mb-3 block text-sm text-ink-300 ${hasKitchen ? '' : 'hidden'}`}>
           Station
           <select className="input-field mt-1" value={station} onChange={(e) => setStation(e.target.value as PrinterStation)}>
             {PRINTER_STATIONS.map((s) => (

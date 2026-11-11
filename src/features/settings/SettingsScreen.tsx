@@ -19,6 +19,7 @@ import { SyncPanel } from '@/features/settings/SyncPanel'
 import { AuditLogPanel } from '@/features/settings/AuditLogPanel'
 import { AboutPanel } from '@/features/settings/AboutPanel'
 import { ScaleBarcodeSettings } from '@/features/settings/ScaleBarcodeSettings'
+import { ScannerSettings } from '@/features/settings/ScannerSettings'
 import { readFileAsResizedDataUrl } from '@/lib/image'
 import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
@@ -32,6 +33,7 @@ type Tab =
   | 'antrean'
   | 'qris'
   | 'printer'
+  | 'pemindai'
   | 'timbangan'
   | 'pager'
   | 'meja-qr'
@@ -51,6 +53,7 @@ const TAB_KEYS: Tab[] = [
   'antrean',
   'qris',
   'printer',
+  'pemindai',
   'timbangan',
   'pager',
   'meja-qr',
@@ -82,6 +85,7 @@ export function SettingsScreen() {
     { key: 'antrean', label: 'Antrean', visible: features.queueNumbers && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
+    { key: 'pemindai', label: 'Pemindai Barcode', visible: features.retailUi },
     { key: 'timbangan', label: 'Barcode Timbangan', visible: features.retailUi && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
     { key: 'meja-qr', label: 'Meja & QR', visible: features.qrOrdering && roleHasPermission(currentUser.role, 'qr.manage') },
@@ -116,6 +120,7 @@ export function SettingsScreen() {
         {tab === 'antrean' && <QueueSettings />}
         {tab === 'qris' && <QrisForm />}
         {tab === 'printer' && <PrinterSettings />}
+        {tab === 'pemindai' && <ScannerSettings />}
         {tab === 'timbangan' && <ScaleBarcodeSettings />}
         {tab === 'pager' && <PagerSettings />}
         {tab === 'meja-qr' && <TableQrSettings />}
@@ -236,6 +241,8 @@ function ProfileForm() {
 
 function FiscalForm() {
   const settings = useLiveQuery(() => getSettings(), [])
+  // Ulasan tamu (QR di struk) = alat layanan kafe/kantin — tak ditawarkan di minimarket.
+  const retail = !!settings && featuresForBusinessType(settings.businessType).retailUi
   const [taxPercent, setTaxPercent] = useState(0)
   const [serviceChargePercent, setServiceChargePercent] = useState(0)
   const [roundingIncrement, setRoundingIncrement] = useState(100)
@@ -322,7 +329,7 @@ function FiscalForm() {
         <span className="mb-1 block text-sm text-ink-300">Catatan Kaki Struk</span>
         <input className="input-field" value={receiptFooterNote} onChange={(e) => setReceiptFooterNote(e.target.value)} />
       </label>
-      <div className="rounded-xl border border-ink-800 p-3">
+      <div className={`rounded-xl border border-ink-800 p-3 ${retail ? 'hidden' : ''}`}>
         <label className="flex items-center gap-2 text-sm text-ink-200">
           <input type="checkbox" checked={receiptReviewQr} onChange={(e) => setReceiptReviewQr(e.target.checked)} />
           Cetak QR ulasan di struk

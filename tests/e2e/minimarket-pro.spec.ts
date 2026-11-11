@@ -172,5 +172,43 @@ test('minimarket pro: satuan dus, grosir, pengali, tahan, bayar campur, pemasok-
   await page.getByRole('button', { name: 'Barcode Timbangan' }).click()
   await expect(page.getByRole('heading', { name: 'Barcode Timbangan' })).toBeVisible()
 
+  // ---- Tampilan khusus ritel ----
+  const nav = page.getByRole('navigation')
+  await expect(nav.getByRole('link', { name: 'Cetak' })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Member' })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'KOL' })).toHaveCount(0)
+  await nav.getByRole('link', { name: 'Promo' }).click()
+  await page.getByRole('button', { name: 'Member & Poin' }).click()
+  await expect(page.getByText('Program Member Aktif')).toBeVisible()
+
+  // Printer: tanpa pilihan station dapur, tanpa routing kategori.
+  await nav.getByRole('link', { name: 'Pengaturan' }).click()
+  await page.getByRole('button', { name: 'Printer', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Routing Kategori' })).toHaveCount(0)
+  await page.getByRole('button', { name: '+ Tambah Printer' }).click()
+  await expect(page.getByText('Station', { exact: true })).toBeHidden()
+  await page.getByRole('button', { name: 'Batal' }).click()
+
+  // Bayar tunai: kembalian besar, tanpa rating tamu, Enter = transaksi baru.
+  await nav.getByRole('link', { name: 'Kasir' }).click()
+  await page.getByRole('button', { name: 'Tambah Air Mineral 600ml', exact: true }).click()
+  await expect(page.getByRole('button', { name: /^Bayar · Rp4\.000/ })).toBeEnabled()
+  await page.keyboard.press('F9')
+  await page.getByLabel('Uang diterima').fill('10000')
+  await page.getByLabel('Uang diterima').press('Enter')
+  await expect(page.getByRole('heading', { name: 'Pembayaran Berhasil' })).toBeVisible()
+  await expect(page.getByText('Kembalian')).toBeVisible()
+  await expect(page.getByText('Rp6.000', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bagaimana pengalaman Anda?')).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect(page.getByText('Belum ada produk yang ditambahkan')).toBeVisible()
+
+  // Riwayat: label Indonesia, tanpa "Salinan Internal".
+  await nav.getByRole('link', { name: 'Riwayat' }).click()
+  await page.getByText('TRX-00003').click()
+  await expect(page.getByText('Lunas', { exact: true }).last()).toBeVisible()
+  await expect(page.getByText(/^Tunai/).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Salinan Internal' })).toHaveCount(0)
+
   expect(errors).toEqual([])
 })

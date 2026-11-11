@@ -104,6 +104,8 @@ export function OnboardingWizard() {
             taxPercent,
             // Jenis usaha bisa diganti setelah mengisi service charge — jangan simpan nilai yang isiannya tersembunyi.
             serviceChargePercent: featuresForBusinessType(businessType).serviceCharge ? serviceChargePercent : 0,
+            // Standar ritel: kasir menghitung laci dulu sebelum melihat kas seharusnya (bisa dimatikan di Pajak & Struk).
+            ...(featuresForBusinessType(businessType).retailUi ? { blindClose: true, receiptFooterNote: 'Terima kasih telah berbelanja' } : {}),
             roundingIncrement,
             transactionPrefix: transactionPrefix.trim().toUpperCase() || 'TRX',
             qrisImageDataUrl,

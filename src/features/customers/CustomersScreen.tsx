@@ -55,7 +55,7 @@ export function CustomersScreen() {
     <div className="flex h-full">
       <div className="flex w-96 flex-none flex-col border-r border-ink-800">
         <div className="flex-none border-b border-ink-800 p-4">
-          <h1 className="mb-3 text-xl font-bold text-ink-50">Pelanggan</h1>
+          <h1 className="page-title mb-3 text-xl font-bold text-ink-50">Pelanggan</h1>
           <input className="input-field mb-2" placeholder="Cari nama/telepon" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="input-field mb-2" aria-label="Saring pelanggan" value={segment} onChange={(e) => setSegment(e.target.value as Segment)}>
             {(Object.keys(SEGMENT_LABELS) as Segment[]).map((s) => (

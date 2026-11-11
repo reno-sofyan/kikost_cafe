@@ -9,6 +9,7 @@ import { createPurchase, listPurchases } from '@/db/repositories/purchasing'
 import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
 import { AdjustStockModal } from '@/features/retail/AdjustStockModal'
 import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { ReceivePurchaseModal } from '@/features/retail/RetailPurchasesScreen'
 import { PillTabs, RETAIL_CARD, StockStatusBadge } from '@/features/retail/retailUi'
 import { compactRupiah, packBreakdown, stockStatus } from '@/features/retail/retailHelpers'
@@ -97,6 +98,9 @@ function StockList({ products, userId, canEdit }: { products: Product[]; userId:
     return expiryOf(p).expiredQty > 0
   })
 
+  // Pemindai USB: langsung buka Sesuaikan Stok untuk barang yang dipindai.
+  useBarcodeScanner((code) => void openByCode(code), { enabled: canEdit })
+
   async function openByCode(code: string) {
     const p = await findProductByCode(code)
     if (p?.trackOwnStock) {
@@ -132,6 +136,7 @@ function StockList({ products, userId, canEdit }: { products: Product[]; userId:
           <input
             className="input-field !rounded-xl !pl-11"
             placeholder="Cari produk atau scan barcode..."
+            data-scan-input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {

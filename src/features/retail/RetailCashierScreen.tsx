@@ -26,6 +26,7 @@ import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { OrderPerks } from '@/features/pos/OrderPerks'
 import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { ProductThumb } from '@/features/retail/retailUi'
 import { stockTone } from '@/features/retail/retailHelpers'
 import type { DiscountType, OrderItem, Product, SellUnit } from '@/types/domain'
@@ -54,6 +55,8 @@ export function RetailCashierScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
   const activeOrderId = usePosStore((s) => s.activeOrderId)
   const setActiveOrderId = usePosStore((s) => s.setActiveOrderId)
+  const pendingScan = usePosStore((s) => s.pendingScan)
+  const setPendingScan = usePosStore((s) => s.setPendingScan)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
   const [search, setSearch] = useState('')
@@ -135,6 +138,21 @@ export function RetailCashierScreen() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Pemindai USB (mode keyboard): kode masuk walau fokus tak di kolom cari. Pengali yang
+  // sedang diketik di kolom cari ("12*") tetap berlaku untuk pindaian berikutnya.
+  const scanRef = useRef<(code: string) => void>(() => {})
+  scanRef.current = (code: string) => {
+    const pending = /^\s*\d+(?:[.,]\d+)?\s*[*xX×]\s*$/.test(search) ? search.trim() : ''
+    void handleCode(pending + code)
+  }
+  useBarcodeScanner((code) => scanRef.current(code), { enabled: !!openShift })
+  // Pindaian dari layar sukses bayar (pelanggan berikutnya) diproses di sini.
+  useEffect(() => {
+    if (!pendingScan || !openShift) return
+    setPendingScan(null)
+    scanRef.current(pendingScan)
+  }, [pendingScan, openShift, setPendingScan])
 
   if (!openShift) {
     return (
@@ -301,6 +319,7 @@ export function RetailCashierScreen() {
               className="input-field !rounded-xl !pl-11"
               placeholder="Cari produk / scan barcode (12* = 12 pcs)"
               aria-label="Cari produk atau scan barcode"
+              data-scan-input
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}

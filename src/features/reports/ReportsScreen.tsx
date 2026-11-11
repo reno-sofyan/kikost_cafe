@@ -224,8 +224,14 @@ export function ReportsScreen() {
         {rangeLabel} · dibandingkan dengan {comparison.label}
       </p>
       <p className="mb-5 mt-1 text-xs text-ink-400">
-        Dasar akrual: omzet dicatat pada tanggal pesanan. Tagihan tertunda yang belum dibayar ikut omzet sebagai piutang; pesanan terbuka biasa belum
-        dihitung. Uang dari pesanan tanggal lain tampil di &ldquo;Pelunasan Piutang&rdquo;. Kas laci tetap per shift, menurut waktu bayar.
+        {features.payLater ? (
+          <>
+            Dasar akrual: omzet dicatat pada tanggal pesanan. Tagihan tertunda yang belum dibayar ikut omzet sebagai piutang; pesanan terbuka biasa belum
+            dihitung. Uang dari pesanan tanggal lain tampil di &ldquo;Pelunasan Piutang&rdquo;. Kas laci tetap per shift, menurut waktu bayar.
+          </>
+        ) : (
+          <>Omzet dihitung dari transaksi lunas pada tanggal transaksi. Transaksi yang masih ditahan/terbuka belum dihitung. Kas laci per shift.</>
+        )}
       </p>
 
       {!report ? (
@@ -238,7 +244,7 @@ export function ReportsScreen() {
               value={formatRupiah(report.revenue)}
               current={report.revenue}
               previous={previous?.revenue}
-              hint={isOnline ? 'Total harga pesanan di aplikasi, sebelum komisi' : 'Penjualan menurut tanggal pesanan, termasuk pajak & service charge'}
+              hint={isOnline ? 'Total harga pesanan di aplikasi, sebelum komisi' : features.serviceCharge ? 'Penjualan menurut tanggal pesanan, termasuk pajak & service charge' : 'Penjualan menurut tanggal transaksi, termasuk pajak'}
             />
             <KpiCard label="Transaksi" value={formatNumber(report.transactionCount)} current={report.transactionCount} previous={previous?.transactionCount} hint={`${formatNumber(report.itemsSold)} item terjual`} />
             <KpiCard label="Rata-rata per Transaksi" value={formatRupiah(Math.round(report.averageTransaction))} current={report.averageTransaction} previous={previous?.averageTransaction} />

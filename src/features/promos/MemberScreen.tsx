@@ -18,7 +18,7 @@ export function MemberScreen() {
   )
 }
 
-function MemberTab() {
+export function MemberTab() {
   const actor = useActor()
   const settings = useLiveQuery(() => getSettings(), [])
   const [draft, setDraft] = useState<LoyaltySettings | null>(null)

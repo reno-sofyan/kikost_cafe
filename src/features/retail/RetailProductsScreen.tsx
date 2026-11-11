@@ -8,6 +8,7 @@ import { CategoryManager } from '@/features/products/CategoryManager'
 import { ProductsScreen } from '@/features/products/ProductsScreen'
 import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
 import { PriceLabelModal } from '@/features/retail/PriceLabelModal'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { PillTabs, RETAIL_CARD } from '@/features/retail/retailUi'
 import { initialsOf } from '@/features/retail/retailHelpers'
 import { Icon } from '@/components/ui/Icon'
@@ -48,6 +49,9 @@ export function RetailProductsScreen() {
     ) ?? []
   const total = useLiveQuery(() => searchProducts('', 'all').then((r) => r.length), []) ?? 0
   const now = Date.now()
+
+  // Pemindai USB: buka produk (atau buat baru) walau fokus tak di kolom cari.
+  useBarcodeScanner((code) => void openByCode(code), { enabled: !classic })
 
   if (classic) {
     return (
@@ -106,6 +110,7 @@ export function RetailProductsScreen() {
           <input
             className="input-field !rounded-xl !pl-11"
             placeholder="Cari produk atau scan barcode..."
+            data-scan-input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {

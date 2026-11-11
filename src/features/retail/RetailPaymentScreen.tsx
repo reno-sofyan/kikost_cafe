@@ -14,6 +14,7 @@ import { PaymentSuccessScreen } from '@/features/payments/PaymentSuccessScreen'
 import { QrisPaymentModal } from '@/features/payments/QrisPaymentModal'
 import { MidtransQrisModal } from '@/features/payments/MidtransQrisModal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { formatNumber, formatRupiah, parseRupiahInput } from '@/lib/currency'
 import { discountLinesOf } from '@/lib/promos'
 import { publishCustomerDisplay } from '@/lib/customerDisplay'
@@ -138,6 +139,13 @@ export function RetailPaymentScreen() {
     const qris: PaymentInput = { method: 'qris', amount, ...extra }
     void settle(method === 'split' ? [{ method: 'cash', amount: splitCash, receivedAmount: splitCash }, qris] : [qris])
   }
+
+  // Pemindai di layar bayar: karakternya jangan sampai jadi "uang diterima" (13 digit!)
+  // dan Enter-nya jangan menyelesaikan pembayaran. Barang ditambah lewat Kasir.
+  useBarcodeScanner((_code, { target }) => {
+    if (target instanceof HTMLInputElement && (target.id === 'cash-received' || target.id === 'split-cash')) setCashText('')
+    setError('Barcode terbaca di layar pembayaran — tekan Kembali untuk menambah barang ke keranjang.')
+  }, { enabled: !completed && order?.lifecycleStatus !== 'COMPLETED' })
 
   // F9 = selesaikan pembayaran dari mana saja di layar ini.
   const submitRef = useRef<() => void>(() => {})

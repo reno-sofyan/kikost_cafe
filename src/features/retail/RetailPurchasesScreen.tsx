@@ -6,6 +6,7 @@ import { DebtPanel, PayDebtModal, ReturnsPanel, SuppliersPanel } from '@/feature
 import { purchaseBalance, purchasePaid, supplierDebts } from '@/lib/retailAnalysis'
 import { findProductByCode } from '@/db/repositories/retail'
 import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { PillTabs, RETAIL_CARD } from '@/features/retail/retailUi'
 import { packBreakdown } from '@/features/retail/retailHelpers'
 import { Icon } from '@/components/ui/Icon'
@@ -160,6 +161,9 @@ function PurchaseFormModal({ userId, onClose }: { userId: string; onClose: () =>
     setPick('')
   }
 
+  // Pemindai USB di dalam dialog pembelian: barang masuk daftar walau fokus di kolom lain.
+  useBarcodeScanner((code) => void addByCode(code), { inModal: true })
+
   async function addByCode(code: string) {
     const p = await findProductByCode(code)
     if (p?.trackOwnStock) add(p)
@@ -214,6 +218,7 @@ function PurchaseFormModal({ userId, onClose }: { userId: string; onClose: () =>
           <input
             className="input-field !pl-11"
             placeholder="Tambah produk: cari nama atau scan barcode..."
+            data-scan-input
             value={pick}
             onChange={(e) => setPick(e.target.value)}
             onKeyDown={(e) => {

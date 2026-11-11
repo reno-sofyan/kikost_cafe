@@ -4,6 +4,7 @@ import { db } from '@/db/schema'
 import { createSupplierReturn, listPurchases, listSuppliers, recordPurchasePayment, saveSupplier } from '@/db/repositories/purchasing'
 import { findProductByCode } from '@/db/repositories/retail'
 import { RETAIL_CARD } from '@/features/retail/retailUi'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { formatDateTime, jakartaDateKey } from '@/lib/datetime'
@@ -366,6 +367,15 @@ function SupplierReturnModal({ onClose }: { onClose: () => void }) {
   const now = Date.now()
 
   const matches = pick.trim() ? products.filter((p) => p.name.toLowerCase().includes(pick.trim().toLowerCase()) || (p.barcode ?? '') === pick.trim()).slice(0, 6) : []
+  useBarcodeScanner(
+    (code) =>
+      void findProductByCode(code).then((p) => {
+        if (p && p.stockQty > 0) add(p)
+        else toast.error('Produk tidak ditemukan / stok kosong')
+      }),
+    { inModal: true },
+  )
+
   function add(p: Product) {
     if (!lines.some((l) => l.product.id === p.id)) {
       // Default: batch yang sudah/hampir exp lebih dulu.
@@ -427,6 +437,7 @@ function SupplierReturnModal({ onClose }: { onClose: () => void }) {
         <input
           className="input-field"
           placeholder="Tambah produk: cari nama atau scan barcode..."
+          data-scan-input
           value={pick}
           onChange={(e) => setPick(e.target.value)}
           onKeyDown={(e) => {

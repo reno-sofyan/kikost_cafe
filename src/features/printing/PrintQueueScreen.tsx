@@ -1,5 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
+import { getSettings } from '@/db/repositories/settings'
+import { featuresForBusinessType } from '@/lib/businessType'
 import { listPrintJobs, processPrintQueue, retryPrintJob } from '@/db/repositories/printQueue'
 import { enqueueReceiptForOrder } from '@/db/repositories/receiptDispatch'
 import { useSessionStore } from '@/state/sessionStore'
@@ -30,17 +32,20 @@ export function PrintQueueScreen() {
   const jobs = useLiveQuery(() => listPrintJobs(150), []) ?? []
   const printers = useLiveQuery(() => db.printers.filter((p) => p.active).toArray(), []) ?? []
   const stationsWithPrinter = new Set(printers.map((p) => p.station))
+  // Usaha tanpa dapur (minimarket, laundry) hanya butuh printer kasir.
+  const hasKitchen = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).kitchen, []) ?? false
+  const stations = hasKitchen ? (['cashier', 'kitchen', 'bar'] as const) : (['cashier'] as const)
 
   const actor = { userId: currentUser.id, userName: currentUser.name }
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-none flex-wrap items-center gap-3 border-b border-ink-800 px-6 py-4">
-        <h1 className="mr-2 text-xl font-bold text-ink-50">Antrean Cetak</h1>
+        <h1 className="page-title mr-2 text-xl font-bold text-ink-50">Antrean Cetak</h1>
         <button className="btn-secondary !min-h-[2.75rem] !px-4 !py-2 text-sm" onClick={() => void processPrintQueue()}>
           Proses Sekarang
         </button>
-        {(['cashier', 'kitchen', 'bar'] as const).map((s) =>
+        {stations.map((s) =>
           stationsWithPrinter.has(s) ? null : (
             <span key={s} className="rounded-full bg-yellow-900/30 px-3 py-1 text-xs text-yellow-400">
               Printer {STATION_LABEL[s]} belum diset

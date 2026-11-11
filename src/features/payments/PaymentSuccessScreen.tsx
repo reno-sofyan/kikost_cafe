@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
@@ -17,12 +17,14 @@ import { Icon } from '@/components/ui/Icon'
 import { GuestRating } from '@/features/payments/GuestRating'
 import { SendReceiptModal } from '@/features/payments/SendReceiptModal'
 import { publishCustomerDisplay } from '@/lib/customerDisplay'
+import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import type { Order, PrintJob } from '@/types/domain'
 import type { ReceiptData } from '@/features/printing/receiptData'
 
 export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   const navigate = useNavigate()
   const setActiveOrderId = usePosStore((s) => s.setActiveOrderId)
+  const setPendingScan = usePosStore((s) => s.setPendingScan)
   const [order, setOrder] = useState<Order | null>(null)
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [showPreview, setShowPreview] = useState(false)
@@ -32,10 +34,16 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
   const [proTools, setProTools] = useState(false)
   const [sendingReceipt, setSendingReceipt] = useState(false)
   const [hasKitchen, setHasKitchen] = useState(false)
+  const [retail, setRetail] = useState(false)
   const [kitchenBusy, setKitchenBusy] = useState(false)
   const currentUser = useSessionStore((s) => s.currentUser)
   // Struk otomatis (lihat enqueueReceiptForOrder) — undefined = memuat, null = tak ada printer kasir.
   const receiptJob = useLiveQuery(async () => (await db.printJobs.get(`rc_${orderId}`)) ?? null, [orderId])
+  // Kembalian tunai — angka yang paling dicari kasir ritel setelah bayar.
+  const change = useLiveQuery(
+    async () => (await db.payments.where('orderId').equals(orderId).toArray()).reduce((s, p) => s + Math.max(0, p.changeAmount ?? 0), 0),
+    [orderId],
+  )
 
   useEffect(() => {
     void (async () => {
@@ -46,8 +54,11 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
       setReceipt(data)
 
       const settings = await getSettings()
-      setShowQueue(featuresForBusinessType(settings.businessType).queueNumbers)
-      setShowRating(featuresForBusinessType(settings.businessType).promos)
+      const features = featuresForBusinessType(settings.businessType)
+      setShowQueue(features.queueNumbers)
+      // Rating tamu = alat layanan kafe; kasir ritel langsung lanjut ke pelanggan berikutnya.
+      setShowRating(features.promos && !features.retailUi)
+      setRetail(features.retailUi)
       setProTools(featuresForBusinessType(settings.businessType).proTools)
       setHasKitchen(featuresForBusinessType(settings.businessType).kitchen)
       if (settings.printerConfig.autoPrintOnPayment && !autoPrinted) {
@@ -72,6 +83,33 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
     setActiveOrderId(null)
     navigate('/kasir')
   }
+
+  // Ritel: memindai barang pelanggan berikutnya langsung membuka transaksi baru berisi barang itu.
+  useBarcodeScanner(
+    (code) => {
+      setPendingScan(code)
+      handleNewTransaction()
+    },
+    { enabled: retail },
+  )
+
+  // Ritel: Enter/F9 = transaksi baru (pemindai di kolom cari langsung siap lagi).
+  const newTxRef = useRef(handleNewTransaction)
+  newTxRef.current = () => {
+    // Pratinjau struk / kirim WA sedang terbuka — Enter milik dialog itu.
+    if (!showPreview && !sendingReceipt) handleNewTransaction()
+  }
+  useEffect(() => {
+    if (!retail) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === 'F9') {
+        e.preventDefault()
+        newTxRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [retail])
 
   /**
    * Kirim item yang belum ke dapur/bar; bila semua sudah terkirim, cetak ulang tiketnya.
@@ -128,6 +166,12 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
         )}
         <p className="mt-6 text-ink-400">Transaksi {order.orderNumber}</p>
         <p className="mt-2 text-3xl font-bold text-success-500">{formatRupiah(order.grandTotal)}</p>
+        {retail && !!change && change > 0 && (
+          <div className="mt-5 w-full rounded-2xl bg-brand-600 px-6 py-4 text-white">
+            <p className="text-sm opacity-90">Kembalian</p>
+            <p className="text-[2.4rem] font-bold leading-tight">{formatRupiah(change)}</p>
+          </div>
+        )}
 
         {showRating && currentUser && (
           <div className="mt-4">
@@ -159,10 +203,14 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
             </button>
           )}
           <button
-            className="btn min-h-touch border-2 border-brand-600 bg-ink-900 px-5 text-base text-brand-400 hover:bg-brand-600/5"
+            className={
+              retail
+                ? 'btn-primary min-h-[3.5rem] text-base'
+                : 'btn min-h-touch border-2 border-brand-600 bg-ink-900 px-5 text-base text-brand-400 hover:bg-brand-600/5'
+            }
             onClick={handleNewTransaction}
           >
-            Transaksi Baru
+            Transaksi Baru{retail ? ' (Enter)' : ''}
           </button>
         </div>
       </div>

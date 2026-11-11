@@ -489,7 +489,9 @@ export async function addOrderItem(params: {
     discountAmount: params.discountAmount ?? 0,
   })
   const product = await db.products.get(params.productId)
-  const skipKitchen = (await stationForCategory(product?.categoryId ?? null)) === 'direct'
+  // Usaha tanpa dapur (minimarket, laundry): barang langsung diserahkan, tak pernah antre di dapur.
+  const skipKitchen =
+    !featuresForBusinessType((await getSettings()).businessType).kitchen || (await stationForCategory(product?.categoryId ?? null)) === 'direct'
   const hppOrder = (await db.orders.get(params.orderId))?.hppPricing ? true : false
   // Menu paket: snapshot isinya dari master produk. Isi paket juga dicatat sebagai
   // baris "Isi paket" supaya ikut tercetak di tiket dapur & struk tanpa kode khusus.

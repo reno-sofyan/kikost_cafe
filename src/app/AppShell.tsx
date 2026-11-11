@@ -19,7 +19,7 @@ import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
-import { RETAIL_NAV_ORDER, retailPageHeading } from '@/features/retail/retailNav'
+import { RETAIL_NAV_HIDDEN, RETAIL_NAV_ORDER, retailPageHeading } from '@/features/retail/retailNav'
 import { ShiftReminder } from '@/features/shifts/ShiftReminder'
 import { formatTime, startOfJakartaDay } from '@/lib/datetime'
 import { listLateKitchenOrders } from '@/db/repositories/serviceInsights'
@@ -110,9 +110,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const businessFeatures = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const retail = businessFeatures.retailUi
   const navItems = visibleNavItems(resolveNavItems(settings, businessFeatures), currentUser.role)
-  // Minimarket: menu inti ritel di atas (Kasir, Stok, Pembelian, Laporan, Produk), sisanya menyusul.
+  // Minimarket: urutan ritel, ikon barang (bukan cangkir), menu pendukung disembunyikan.
   const visibleItems = retail
-    ? [...navItems].sort((a, b) => retailNavRank(a.key) - retailNavRank(b.key))
+    ? navItems
+        .filter((i) => !RETAIL_NAV_HIDDEN.includes(i.key))
+        .map((i) => (i.key === 'produk' ? { ...i, icon: 'barcode' as const } : i.key === 'promo' ? { ...i, label: 'Promo' } : i))
+        .sort((a, b) => retailNavRank(a.key) - retailNavRank(b.key))
     : navItems
 
   const pageTitle = visibleItems.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`))?.label ?? NAV_ITEM_DEFS.find((d) => pathname.startsWith(d.to))?.label ?? ''

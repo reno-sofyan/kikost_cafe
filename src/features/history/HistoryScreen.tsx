@@ -40,7 +40,7 @@ export function HistoryScreen() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-none flex-wrap items-center gap-2 border-b border-ink-800 px-6 py-4">
-        <h1 className="mr-4 text-xl font-bold text-ink-50">Riwayat Transaksi</h1>
+        <h1 className="page-title mr-4 text-xl font-bold text-ink-50">Riwayat Transaksi</h1>
         <input
           className="input-field max-w-xs"
           placeholder="Cari nomor transaksi/kasir..."

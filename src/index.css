@@ -109,6 +109,11 @@
   .btn-compact {
     @apply !min-h-[2.75rem] !py-2;
   }
+
+  /* Minimarket: header ritel sudah menampilkan judul halaman — judul ganda di dalam halaman bersama disembunyikan. */
+  html[data-theme='retail'] .page-title {
+    display: none;
+  }
 }
 
 ::-webkit-scrollbar {

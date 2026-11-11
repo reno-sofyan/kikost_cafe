@@ -36,6 +36,7 @@ import { isOnlineOrder, onlineChannelLabel } from '@/lib/onlineOrders'
 import { discountLinesOf } from '@/lib/promos'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
+import { PAYMENT_METHOD_LABELS } from '@/lib/paymentLabels'
 import type { Bill, Order, OrderItem, PaymentMethod, User } from '@/types/domain'
 
 interface PaymentLine extends PaymentInput {
@@ -43,15 +44,7 @@ interface PaymentLine extends PaymentInput {
   methodLabel: string
 }
 
-const METHOD_LABELS: Record<PaymentMethod, string> = {
-  cash: 'Tunai',
-  qris: 'QRIS',
-  transfer: 'Transfer',
-  card: 'Kartu',
-  platform: 'Aplikasi Online',
-  deposit: 'Saldo Member',
-  giftcard: 'Voucher Hadiah',
-}
+const METHOD_LABELS = PAYMENT_METHOD_LABELS
 
 const DEFAULT_METHODS: PaymentMethod[] = ['cash', 'qris', 'transfer', 'card']
 const NO_METHODS: PaymentMethod[] = []

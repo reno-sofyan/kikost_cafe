@@ -17,6 +17,7 @@ import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
 import { getSettings } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
+import { BILL_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '@/lib/paymentLabels'
 import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
@@ -45,6 +46,8 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
   const ownerPinCancel = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).ownerPinCancel, []) ?? false
   const proTools = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).proTools, []) ?? false
   const [sendingReceipt, setSendingReceipt] = useState(false)
+  // "Salinan Internal" = salinan pesanan untuk dapur/bar — tak relevan bagi usaha tanpa dapur.
+  const hasKitchen = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).kitchen, []) ?? false
   const cashierControls = useLiveQuery(async () => featuresForBusinessType((await getSettings()).businessType).cashierControls, []) ?? false
   const [reason, setReason] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
@@ -221,7 +224,7 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
                   }`}
                 >
                   {bills.length > 1 ? `${b.label}: ` : ''}
-                  {b.paymentStatus}
+                  {BILL_STATUS_LABELS[b.paymentStatus] ?? b.paymentStatus}
                   {b.paymentStatus === 'PARTIALLY_PAID' ? ` (${formatRupiah(b.amountPaid)}/${formatRupiah(b.grandTotal)})` : ''}
                 </span>
               ))}
@@ -232,7 +235,10 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             <div className="card mb-4 p-4">
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between text-sm">
-                  <span className="text-ink-300">{p.method}</span>
+                  <span className="text-ink-300">
+                    {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                    {p.amount < 0 ? ' (pengembalian)' : p.changeAmount ? ` · kembali ${formatRupiah(p.changeAmount)}` : ''}
+                  </span>
                   <span className={p.amount < 0 ? 'text-accent-400' : 'text-ink-100'}>{formatRupiah(p.amount)}</span>
                 </div>
               ))}
@@ -310,9 +316,11 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             <button className="btn-primary flex-1" onClick={() => void openPrintPreview()}>
               Struk Pelanggan
             </button>
-            <button className="btn-secondary flex-1" disabled={internalBusy} onClick={() => void handlePrintInternal()}>
-              {internalBusy ? 'Mencetak...' : 'Salinan Internal'}
-            </button>
+            {hasKitchen && (
+              <button className="btn-secondary flex-1" disabled={internalBusy} onClick={() => void handlePrintInternal()}>
+                {internalBusy ? 'Mencetak...' : 'Salinan Internal'}
+              </button>
+            )}
           </div>
           {proTools && (order.status === 'paid' || order.status === 'completed') && (
             <button className="btn-secondary" onClick={() => setSendingReceipt(true)}>

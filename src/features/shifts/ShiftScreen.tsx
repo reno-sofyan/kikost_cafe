@@ -51,7 +51,7 @@ export function ShiftScreen() {
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <h1 className="mb-6 text-xl font-bold text-ink-50">Shift Kasir</h1>
+      <h1 className="page-title mb-6 text-xl font-bold text-ink-50">Shift Kasir</h1>
 
       {!openShiftData ? (
         <div className="card mx-auto max-w-sm p-6 text-center">

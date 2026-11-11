@@ -31,7 +31,8 @@ export function Modal({ onClose, children, className = 'w-full max-w-sm rounded-
     align === 'end' ? 'justify-end' : align === 'bottom' ? 'items-end justify-center sm:items-center' : 'items-center justify-center'
 
   return (
-    <div className={`fixed inset-0 z-50 flex bg-black/60 ${alignClass}`} onClick={closeOnBackdrop ? onClose : undefined}>
+    // `data-modal`: penanda dialog terbuka (pemindai barcode halaman di belakangnya diam).
+    <div data-modal className={`fixed inset-0 z-50 flex bg-black/60 ${alignClass}`} onClick={closeOnBackdrop ? onClose : undefined}>
       <div className={className} onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
