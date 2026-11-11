@@ -25,7 +25,8 @@ import { Modal } from '@/components/ui/Modal'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { OrderPerks } from '@/features/pos/OrderPerks'
-import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { ScannerModal } from '@/features/retail/ScannerModal'
+import { ScanButton } from '@/features/retail/ScanButton'
 import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { ProductThumb } from '@/features/retail/retailUi'
 import { stockTone } from '@/features/retail/retailHelpers'
@@ -328,9 +329,7 @@ export function RetailCashierScreen() {
               }}
             />
           </div>
-          <button className="btn-primary flex-none !rounded-xl !px-5" onClick={() => setScanning(true)}>
-            <Icon name="barcode" size={18} /> Scan
-          </button>
+          <ScanButton className="!px-5" onClick={() => setScanning(true)} />
         </div>
         <div className="mt-1.5 hidden flex-none gap-3 text-[0.7rem] text-ink-300 lg:flex" aria-label="Shortcut keyboard">
           {SHORTCUTS.map(([key, label]) => (
@@ -511,7 +510,7 @@ export function RetailCashierScreen() {
       </div>
 
       {scanning && (
-        <BarcodeScanModal
+        <ScannerModal
           onClose={() => setScanning(false)}
           onDetected={(code) => {
             setScanning(false)

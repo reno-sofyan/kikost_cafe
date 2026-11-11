@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanRetailPricing, ean13CheckDigit, isValidEan13, parseQtyMultiplier, parseScaleBarcode, samePlu, scaleQty, tierUnitPrice } from '@/lib/retailPricing'
+import { barcodeVariants, cleanRetailPricing, ean13CheckDigit, sameBarcode, isValidEan13, parseQtyMultiplier, parseScaleBarcode, samePlu, scaleQty, tierUnitPrice } from '@/lib/retailPricing'
 import { barRuns, CODE128_PATTERNS, encodeBarcode, encodeCode128, encodeEan13 } from '@/lib/barcodeEncode'
 import { abcClassify, addDaysToKey, purchaseBalance, stockCoverDays, supplierDebts, weightedAverageCost } from '@/lib/retailAnalysis'
 import { promoDiscountFor } from '@/lib/promos'
@@ -179,5 +179,19 @@ describe('promo harga paket', () => {
     expect(promoDiscountFor(promo, [item('p1', 3, 6000)])).toBe(2000)
     expect(promoDiscountFor(promo, [item('p1', 2, 4000)])).toBe(0)
     expect(promoDiscountFor(promo, [item('p3', 4, 6000)])).toBe(0)
+  })
+})
+
+describe('UPC-A 12 digit ≡ EAN-13 berawalan 0', () => {
+  it('barcode Indofood dari pemindai (12 digit) cocok dengan data 13 digit', () => {
+    expect(barcodeVariants('089686010015')).toEqual(['089686010015', '0089686010015'])
+    expect(barcodeVariants('0089686010015')).toEqual(['0089686010015', '089686010015'])
+    expect(sameBarcode('089686010015', '0089686010015')).toBe(true)
+    expect(sameBarcode('089686010016', '0089686010015')).toBe(false)
+    expect(barcodeVariants('8990000000109')).toEqual(['8990000000109'])
+    expect(sameBarcode('MM-500', 'mm-500')).toBe(true)
+  })
+  it('label: UPC-A dicetak sebagai EAN-13 berawalan 0', () => {
+    expect(encodeEan13('089686010015')).toEqual(encodeEan13('0089686010015'))
   })
 })

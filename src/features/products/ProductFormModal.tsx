@@ -16,7 +16,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { normalizeProductTags, PRODUCT_TAGS } from '@/lib/productTags'
 import { RetailPricingFields } from '@/features/retail/RetailPricingFields'
-import { cleanRetailPricing } from '@/lib/retailPricing'
+import { cleanRetailPricing, sameBarcode } from '@/lib/retailPricing'
 import type { OnlinePlatform, Product, RecipeItem, SellUnit, TierPrice, UnitOfMeasure } from '@/types/domain'
 
 const PRICED_PLATFORMS: OnlinePlatform[] = ['gofood', 'grabfood', 'shopeefood']
@@ -109,7 +109,8 @@ export function ProductFormModal({ initial, initialBarcode, onClose }: { initial
       return
     }
     if (normalizedBarcode) {
-      const barcodeTaken = allProducts.some((p) => p.id !== initial?.id && (p.barcode ?? '').toLowerCase() === normalizedBarcode)
+      // UPC-A 12 digit dan EAN-13 berawalan 0 dianggap barcode yang sama.
+      const barcodeTaken = allProducts.some((p) => p.id !== initial?.id && sameBarcode(p.barcode, normalizedBarcode))
       if (barcodeTaken) {
         setError('Barcode sudah digunakan produk lain')
         return
@@ -127,9 +128,9 @@ export function ProductFormModal({ initial, initialBarcode, onClose }: { initial
       const codes = retailPricing.sellUnits.map((u) => u.barcode?.toLowerCase()).filter((c): c is string => !!c)
       const taken = codes.find(
         (c) =>
-          c === normalizedBarcode ||
-          codes.indexOf(c) !== codes.lastIndexOf(c) ||
-          allProducts.some((p) => (p.barcode ?? '').toLowerCase() === c || (p.id !== initial?.id && (p.sellUnits ?? []).some((u) => u.barcode?.toLowerCase() === c))),
+          sameBarcode(c, normalizedBarcode) ||
+          codes.filter((x) => sameBarcode(x, c)).length > 1 ||
+          allProducts.some((p) => sameBarcode(p.barcode, c) || (p.id !== initial?.id && (p.sellUnits ?? []).some((u) => sameBarcode(u.barcode, c)))),
       )
       if (taken) {
         setError(`Barcode satuan ${taken} sudah dipakai`)

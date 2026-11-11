@@ -73,6 +73,13 @@ describe('kasir ritel: satuan jual, grosir, timbangan', () => {
     expect((await db.products.get('mie'))!.stockQty).toBe(100)
   })
 
+  it('pemindai mengirim UPC-A 12 digit, produk tercatat EAN-13 (atau sebaliknya)', async () => {
+    await db.products.add(product({ id: 'indomie', name: 'Indomie Goreng', sku: 'IDM', barcode: '0089686010015', sellUnits: [], tierPrices: [] }))
+    expect((await resolveScanCode('089686010015'))?.product.id).toBe('indomie')
+    await db.products.update('indomie', { barcode: '089686010015' })
+    expect((await resolveScanCode('0089686010015'))?.product.id).toBe('indomie')
+  })
+
   it('harga grosir naik-turun mengikuti qty baris', async () => {
     const order = await newOrder()
     const item = await addOrderItem({ orderId: order.id, productId: 'mie', productName: 'Mie Goreng', unitPrice: 3500, qty: 1, modifiers: [], notes: '' })

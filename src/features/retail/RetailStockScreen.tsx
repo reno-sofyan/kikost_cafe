@@ -8,7 +8,8 @@ import { buildShoppingList, findProductByCode } from '@/db/repositories/retail'
 import { createPurchase, listPurchases } from '@/db/repositories/purchasing'
 import { StockOpnamePanel } from '@/features/inventory/StockOpnamePanel'
 import { AdjustStockModal } from '@/features/retail/AdjustStockModal'
-import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { ScannerModal } from '@/features/retail/ScannerModal'
+import { ScanButton } from '@/features/retail/ScanButton'
 import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { ReceivePurchaseModal } from '@/features/retail/RetailPurchasesScreen'
 import { PillTabs, RETAIL_CARD, StockStatusBadge } from '@/features/retail/retailUi'
@@ -144,9 +145,7 @@ function StockList({ products, userId, canEdit }: { products: Product[]; userId:
             }}
           />
         </div>
-        <button className="btn-primary !min-h-[3rem] !rounded-xl !px-4 text-sm" onClick={() => setScanning(true)}>
-          <Icon name="barcode" size={16} /> Scan
-        </button>
+        <ScanButton className="!min-h-[3rem] !px-4 text-sm" onClick={() => setScanning(true)} />
         <PillTabs<Filter>
           value={filter}
           onChange={setFilter}
@@ -251,7 +250,7 @@ function StockList({ products, userId, canEdit }: { products: Product[]; userId:
         />
       )}
       {scanning && (
-        <BarcodeScanModal
+        <ScannerModal
           title="Scan untuk sesuaikan stok"
           onClose={() => setScanning(false)}
           onDetected={(code) => {

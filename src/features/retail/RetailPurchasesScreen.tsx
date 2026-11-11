@@ -5,7 +5,8 @@ import { createPurchase, listPurchases, listSuppliers, receivePurchase } from '@
 import { DebtPanel, PayDebtModal, ReturnsPanel, SuppliersPanel } from '@/features/retail/RetailSuppliersPanels'
 import { purchaseBalance, purchasePaid, supplierDebts } from '@/lib/retailAnalysis'
 import { findProductByCode } from '@/db/repositories/retail'
-import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { ScannerModal } from '@/features/retail/ScannerModal'
+import { ScanButton } from '@/features/retail/ScanButton'
 import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { PillTabs, RETAIL_CARD } from '@/features/retail/retailUi'
 import { packBreakdown } from '@/features/retail/retailHelpers'
@@ -162,7 +163,8 @@ function PurchaseFormModal({ userId, onClose }: { userId: string; onClose: () =>
   }
 
   // Pemindai USB di dalam dialog pembelian: barang masuk daftar walau fokus di kolom lain.
-  useBarcodeScanner((code) => void addByCode(code), { inModal: true })
+  // Dimatikan selama panel Scan terbuka — panel itu yang meneruskan kodenya (tak dobel).
+  useBarcodeScanner((code) => void addByCode(code), { inModal: true, enabled: !scanning })
 
   async function addByCode(code: string) {
     const p = await findProductByCode(code)
@@ -242,9 +244,7 @@ function PurchaseFormModal({ userId, onClose }: { userId: string; onClose: () =>
             </div>
           )}
         </div>
-        <button className="btn-primary flex-none !rounded-xl" onClick={() => setScanning(true)}>
-          <Icon name="barcode" size={16} /> Scan
-        </button>
+        <ScanButton onClick={() => setScanning(true)} />
       </div>
 
       <table className="mb-3 w-full text-sm">
@@ -333,7 +333,7 @@ function PurchaseFormModal({ userId, onClose }: { userId: string; onClose: () =>
       </div>
 
       {scanning && (
-        <BarcodeScanModal
+        <ScannerModal
           onClose={() => setScanning(false)}
           onDetected={(code) => {
             setScanning(false)

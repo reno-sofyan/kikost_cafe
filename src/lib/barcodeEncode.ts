@@ -13,7 +13,8 @@ const EAN_PARITY = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 
 
 /** Modul EAN-13 (95 modul, tanpa zona sepi). `code` 12 digit (cek dihitung) atau 13 digit valid. */
 export function encodeEan13(code: string): boolean[] {
-  const digits = code.length === 12 && /^\d{12}$/.test(code) ? code + ean13CheckDigit(code) : code
+  // 12 digit: UPC-A lengkap (cek valid) dicetak sebagai EAN-13 berawalan 0; selain itu 12 digit pertama EAN-13.
+  const digits = /^\d{12}$/.test(code) ? (isValidEan13(`0${code}`) ? `0${code}` : code + ean13CheckDigit(code)) : code
   if (!isValidEan13(digits)) throw new Error('Bukan EAN-13 yang valid')
   const parity = EAN_PARITY[Number(digits[0])]
   let bits = '101'

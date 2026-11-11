@@ -2,7 +2,7 @@ import { db } from '@/db/schema'
 import { enqueueSync } from '@/sync/outbox'
 import { getTrustedNow } from '@/lib/clockGuard'
 import { computeLineTotal } from '@/lib/orderTotals'
-import { parseScaleBarcode, samePlu, scaleQty, sellUnitByBarcode, tierUnitPrice } from '@/lib/retailPricing'
+import { barcodeVariants, parseScaleBarcode, samePlu, sameBarcode, scaleQty, sellUnitByBarcode, tierUnitPrice } from '@/lib/retailPricing'
 import { getSettings } from '@/db/repositories/settings'
 import { recalcOrderTotals } from '@/db/repositories/orders'
 import type { Order, OrderItem, Product, SellUnit } from '@/types/domain'
@@ -11,9 +11,10 @@ import type { Order, OrderItem, Product, SellUnit } from '@/types/domain'
 export async function findProductByCode(code: string): Promise<Product | undefined> {
   const wanted = code.trim().toLowerCase()
   if (!wanted) return undefined
-  const byBarcode = await db.products.where('barcode').equals(code.trim()).filter((p) => !p.archived).first()
+  // Cepat lewat indeks (termasuk bentuk UPC-A ↔ EAN-13), lalu pencarian tak peka huruf.
+  const byBarcode = await db.products.where('barcode').anyOf(barcodeVariants(code)).filter((p) => !p.archived).first()
   if (byBarcode) return byBarcode
-  return db.products.filter((p) => !p.archived && (p.barcode?.toLowerCase() === wanted || p.sku.toLowerCase() === wanted)).first()
+  return db.products.filter((p) => !p.archived && (sameBarcode(p.barcode, wanted) || p.sku.toLowerCase() === wanted)).first()
 }
 
 export interface ScanMatch {

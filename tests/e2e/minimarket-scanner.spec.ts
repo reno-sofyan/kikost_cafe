@@ -42,6 +42,16 @@ test('pemindai USB: kasir, pengali, layar bayar, transaksi berikutnya, halaman u
   await expect(cartLine(page, 'Teh Botol 350ml').getByText('3', { exact: true })).toBeVisible()
   await expect(search).toHaveValue('')
 
+  // Tombol Scan = menunggu ALAT pemindai (bukan kamera); kode masuk, panel tertutup.
+  await page.getByRole('button', { name: /^Scan/ }).click()
+  const panel = page.locator('[data-modal]')
+  await expect(panel.getByText('Siap memindai')).toBeVisible()
+  await expect(panel.getByText(/Pemindai bekerja/)).toBeVisible()
+  await scan(page, '8990000000017') // Keripik Kentang
+  await expect(panel).toHaveCount(0)
+  await expect(cartLine(page, 'Keripik Kentang 68g')).toBeVisible()
+  await expect(page.getByLabel('Pemindai tersambung')).toBeVisible()
+
   // Barcode tak terdaftar: pesan jelas, keranjang tak berubah.
   await page.getByRole('button', { name: 'Semua', exact: true }).click()
   await scan(page, '1234567890')

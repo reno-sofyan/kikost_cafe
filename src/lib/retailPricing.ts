@@ -31,8 +31,7 @@ export function validSellUnits(units: SellUnit[] | undefined): SellUnit[] {
 
 /** Satuan jual yang barcode-nya persis `code`. */
 export function sellUnitByBarcode(product: Pick<Product, 'sellUnits'>, code: string): SellUnit | undefined {
-  const wanted = code.trim()
-  return validSellUnits(product.sellUnits).find((u) => u.barcode?.trim() === wanted)
+  return validSellUnits(product.sellUnits).find((u) => sameBarcode(u.barcode, code))
 }
 
 /** "Dus (40)" — label satuan jual di keranjang & struk. */
@@ -51,6 +50,25 @@ export function ean13CheckDigit(first12: string): number {
 
 export function isValidEan13(code: string): boolean {
   return /^\d{13}$/.test(code) && ean13CheckDigit(code.slice(0, 12)) === Number(code[12])
+}
+
+/**
+ * Bentuk lain barcode yang sama: UPC-A 12 digit = EAN-13 berawalan 0. Banyak pemindai
+ * mengirim barcode berawalan 0 (mis. produk Indofood `089686…`) sebagai 12 digit,
+ * sedangkan data produk bisa mencatatnya 13 digit — keduanya harus cocok.
+ */
+export function barcodeVariants(code: string): string[] {
+  const c = code.trim()
+  if (/^\d{12}$/.test(c) && isValidEan13(`0${c}`)) return [c, `0${c}`]
+  if (/^0\d{12}$/.test(c) && isValidEan13(c)) return [c, c.slice(1)]
+  return [c]
+}
+
+/** Dua barcode menunjuk barang yang sama (UPC-A ≡ EAN-13 berawalan 0; tak peka huruf). */
+export function sameBarcode(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a?.trim() || !b?.trim()) return false
+  const wanted = new Set(barcodeVariants(a.toLowerCase()))
+  return barcodeVariants(b.toLowerCase()).some((v) => wanted.has(v))
 }
 
 export const DEFAULT_SCALE_BARCODE: ScaleBarcodeConfig = { enabled: false, prefix: '2', flagLength: 2, pluLength: 5, valueKind: 'weight' }

@@ -6,7 +6,8 @@ import { findProductByCode } from '@/db/repositories/retail'
 import { ProductFormModal } from '@/features/products/ProductFormModal'
 import { CategoryManager } from '@/features/products/CategoryManager'
 import { ProductsScreen } from '@/features/products/ProductsScreen'
-import { BarcodeScanModal } from '@/features/retail/BarcodeScanModal'
+import { ScannerModal } from '@/features/retail/ScannerModal'
+import { ScanButton } from '@/features/retail/ScanButton'
 import { PriceLabelModal } from '@/features/retail/PriceLabelModal'
 import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { PillTabs, RETAIL_CARD } from '@/features/retail/retailUi'
@@ -118,9 +119,7 @@ export function RetailProductsScreen() {
             }}
           />
         </div>
-        <button className="btn-primary !min-h-[3rem] flex-none !rounded-xl !px-4 text-sm" onClick={() => setScanning(true)}>
-          <Icon name="barcode" size={16} /> Scan
-        </button>
+        <ScanButton className="!min-h-[3rem] !px-4 text-sm" onClick={() => setScanning(true)} />
         <button className="btn-secondary !min-h-[3rem] flex-none !rounded-xl !px-4 text-sm" onClick={() => setShowLabels(true)}>
           <Icon name="printer" size={16} /> Label harga
         </button>
@@ -245,7 +244,7 @@ export function RetailProductsScreen() {
         </Modal>
       )}
       {scanning && (
-        <BarcodeScanModal
+        <ScannerModal
           onClose={() => setScanning(false)}
           onDetected={(code) => {
             setScanning(false)
