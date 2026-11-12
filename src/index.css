@@ -159,6 +159,26 @@
     animation: kione-pop-in var(--kione-motion-indicator, 220ms) var(--kione-ease-out, ease-out) both;
   }
 
+  /* ---- Chip pilihan (meja, pelayan, tipe pesanan, jenis tagihan) ---- */
+  .kione-chip {
+    @apply inline-flex min-h-[2.75rem] select-none items-center justify-center gap-1.5 rounded-xl border border-ink-600 bg-ink-900 px-3.5 text-sm font-semibold text-ink-100 hover:bg-ink-800;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform var(--kione-motion-press, 100ms) var(--kione-ease-out, ease-out);
+  }
+  .kione-chip:active {
+    transform: scale(0.97);
+  }
+  .kione-chip:focus-visible {
+    @apply outline-none ring-2 ring-brand-500/60 ring-offset-1 ring-offset-ink-900;
+  }
+  /* Di dalam segmen ber-latar (tipe pesanan, jenis tagihan): tanpa garis. */
+  .kione-chip--flat {
+    @apply border-transparent bg-transparent text-ink-200 hover:bg-ink-700;
+  }
+  .kione-chip--on {
+    @apply border-brand-600 bg-brand-600 text-white shadow-sm hover:bg-brand-700;
+  }
+
   /* ---- Keypad PIN (src/components/ui/PinPad.tsx) ---- */
   .kione-key {
     @apply relative flex h-16 select-none items-center justify-center overflow-hidden rounded-2xl border border-ink-600 bg-ink-800 text-[1.75rem] font-bold text-ink-50 shadow-sm;
@@ -189,8 +209,10 @@
   .kione-key--util {
     @apply bg-ink-900 text-ink-200;
   }
-  /* Tombol kirim PIN saat belum lengkap: tetap terbaca (bukan pudar), berisi petunjuk. */
-  .pin-submit:disabled:not([data-busy]) {
+  /* Tombol utama yang nonaktif karena data belum lengkap: tetap terbaca (bukan pudar);
+     alasannya ditampilkan di dekatnya (layar PIN, Pesanan Baru). */
+  .pin-submit:disabled:not([data-busy]),
+  .kbtn--readable:disabled:not([data-busy]) {
     @apply bg-ink-700 text-ink-200 opacity-100 shadow-none;
   }
   .kione-pin-dot {
@@ -441,6 +463,22 @@
 .kione-modal__panel--up {
   animation: kione-sheet-up var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
 }
+.kione-modal__panel--pop {
+  animation: kione-modal-pop 200ms var(--kione-ease-out, ease-out) both;
+}
+.kione-modal--closing .kione-modal__panel--pop {
+  animation: kione-fade-out var(--kione-motion-sheet-out, 180ms) var(--kione-ease-in, ease-in) both;
+}
+@keyframes kione-modal-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 .kione-modal__panel--side {
   animation: kione-sheet-side var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
 }
@@ -551,8 +589,12 @@
   }
   /* Fade sederhana saja: tanpa geser & tanpa skala (layar: lihat routeKeyframes). */
   .kione-modal__panel--up,
-  .kione-modal__panel--side {
+  .kione-modal__panel--side,
+  .kione-modal__panel--pop {
     animation-name: kione-fade-in;
+  }
+  .kione-chip:active {
+    transform: none;
   }
   .kione-modal--closing .kione-modal__panel--up,
   .kione-modal--closing .kione-modal__panel--side {

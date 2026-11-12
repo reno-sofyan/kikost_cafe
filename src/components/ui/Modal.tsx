@@ -12,6 +12,8 @@ interface ModalProps {
   align?: 'center' | 'end' | 'bottom'
   /** Set false untuk dialog yang wajib dijawab lewat tombol (tak bisa ditutup asal tap). */
   closeOnBackdrop?: boolean
+  /** Animasi masuk panel: `sheet` = naik dari bawah (bawaan), `pop` = pudar + membesar singkat. */
+  motion?: 'sheet' | 'pop'
 }
 
 /**
@@ -21,7 +23,7 @@ interface ModalProps {
  * ditutup lewat jalur itu. Saat menutup, lapisan tak menangkap ketukan lagi, jadi kasir
  * bisa langsung menekan tombol di belakangnya.
  */
-export function Modal({ onClose, children, className = 'w-full max-w-sm rounded-2xl bg-ink-900 p-6', align = 'center', closeOnBackdrop = true }: ModalProps) {
+export function Modal({ onClose, children, className = 'w-full max-w-sm rounded-2xl bg-ink-900 p-6', align = 'center', closeOnBackdrop = true, motion = 'sheet' }: ModalProps) {
   const [closing, setClosing] = useState(false)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -49,7 +51,7 @@ export function Modal({ onClose, children, className = 'w-full max-w-sm rounded-
 
   const alignClass =
     align === 'end' ? 'justify-end' : align === 'bottom' ? 'items-end justify-center sm:items-center' : 'items-center justify-center'
-  const panelMotion = align === 'end' ? 'kione-modal__panel--side' : 'kione-modal__panel--up'
+  const panelMotion = align === 'end' ? 'kione-modal__panel--side' : motion === 'pop' ? 'kione-modal__panel--pop' : 'kione-modal__panel--up'
 
   return (
     // `data-modal`: penanda dialog terbuka (pemindai barcode halaman di belakangnya diam).
