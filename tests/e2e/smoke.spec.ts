@@ -20,6 +20,10 @@ test('onboarding menampilkan langkah wajib', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Selamat Datang' })).toBeVisible()
   await page.getByRole('button', { name: 'Lanjut' }).click()
   await expect(page.getByRole('heading', { name: 'Profil Usaha' })).toBeVisible()
+  // Nama Usaha wajib: tanpa itu wizard tetap di langkah ini dengan pesan di kolomnya.
+  await page.getByRole('button', { name: 'Lanjut' }).click()
+  await expect(page.getByText(/Nama usaha wajib diisi/)).toBeVisible()
+  await page.getByLabel('Nama Usaha', { exact: true }).fill('Usaha Smoke')
   await page.getByRole('button', { name: 'Lanjut' }).click()
   await expect(page.getByRole('heading', { name: /Pajak/ })).toBeVisible()
 })

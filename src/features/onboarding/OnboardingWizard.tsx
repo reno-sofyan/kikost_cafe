@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { updateSettings } from '@/db/repositories/settings'
 import { createUser } from '@/db/repositories/users'
 import { recordAuditLog } from '@/db/repositories/auditLog'
@@ -9,13 +9,23 @@ import { useSessionStore } from '@/state/sessionStore'
 import { isValidPinFormat } from '@/lib/pinHash'
 import { readFileAsResizedDataUrl } from '@/lib/image'
 import { Icon } from '@/components/ui/Icon'
-import { PRODUCT_LOGO, PRODUCT_MARK, PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/brand'
+import { Button } from '@/components/ui/Button'
+import { EASING, MOTION, prefersReducedMotion, routeKeyframes } from '@/lib/motion'
+import {
+  clearOnboardingDraft,
+  loadOnboardingDraft,
+  saveOnboardingDraft,
+  STEP_META,
+  STEP_ORDER,
+  stepAriaLabel,
+  stepStatus,
+  TOTAL_MINUTES,
+  WORK_STEPS,
+  type OnboardingStep as Step,
+} from '@/features/onboarding/onboardingSteps'
+import { PRODUCT_MARK, PRODUCT_NAME } from '@/lib/brand'
 import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
 import type { BusinessType, PrinterConnectionType, ReceiptPaperSize } from '@/types/domain'
-
-type Step = 'welcome' | 'profile' | 'fiscal' | 'qris' | 'printer' | 'admin' | 'finishing'
-
-const STEP_ORDER: Step[] = ['welcome', 'profile', 'fiscal', 'qris', 'printer', 'admin', 'finishing']
 
 /** Jangan biarkan layar "Menyiapkan aplikasi..." nyangkut selamanya kalau salah satu
  * langkah gagal/hang (mis. WebView tablet tertentu bermasalah dengan WebCrypto). */
@@ -27,69 +37,156 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string)
 }
 
 export function OnboardingWizard() {
-  const [step, setStep] = useState<Step>('welcome')
+  // Lanjutkan dari draf bila wizard pernah dihentikan/dimuat ulang (lihat onboardingSteps).
+  const [draft] = useState(loadOnboardingDraft)
+  const [step, setStep] = useState<Step>(draft?.step ?? 'welcome')
   const [error, setError] = useState<string | null>(null)
+  /** Error per kolom — tampil tepat di bawah kolom yang salah. */
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({})
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const login = useSessionStore((s) => s.login)
 
-  const [businessType, setBusinessType] = useState<BusinessType>('lainnya')
-  const [withSampleCatalog, setWithSampleCatalog] = useState(true)
-  const [withKantinCategories, setWithKantinCategories] = useState(true)
-  const [businessName, setBusinessName] = useState('')
-  const [address, setAddress] = useState('')
-  const [phone, setPhone] = useState('')
-  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+  const [businessType, setBusinessType] = useState<BusinessType>(draft?.businessType ?? 'lainnya')
+  const [withSampleCatalog, setWithSampleCatalog] = useState(draft?.withSampleCatalog ?? true)
+  const [withKantinCategories, setWithKantinCategories] = useState(draft?.withKantinCategories ?? true)
+  const [businessName, setBusinessName] = useState(draft?.businessName ?? '')
+  const [address, setAddress] = useState(draft?.address ?? '')
+  const [phone, setPhone] = useState(draft?.phone ?? '')
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(draft?.logoDataUrl ?? null)
 
-  const [taxPercent, setTaxPercent] = useState(0)
-  const [serviceChargePercent, setServiceChargePercent] = useState(0)
-  const [roundingIncrement, setRoundingIncrement] = useState(100)
-  const [transactionPrefix, setTransactionPrefix] = useState('TRX')
+  const [taxPercent, setTaxPercent] = useState(draft?.taxPercent ?? 0)
+  const [serviceChargePercent, setServiceChargePercent] = useState(draft?.serviceChargePercent ?? 0)
+  const [roundingIncrement, setRoundingIncrement] = useState(draft?.roundingIncrement ?? 100)
+  const [transactionPrefix, setTransactionPrefix] = useState(draft?.transactionPrefix ?? 'TRX')
 
-  const [qrisImageDataUrl, setQrisImageDataUrl] = useState<string | null>(null)
-  const [qrisMerchantName, setQrisMerchantName] = useState('')
-  const [receiptPaperSize, setReceiptPaperSize] = useState<ReceiptPaperSize>('58mm')
+  const [qrisImageDataUrl, setQrisImageDataUrl] = useState<string | null>(draft?.qrisImageDataUrl ?? null)
+  const [qrisMerchantName, setQrisMerchantName] = useState(draft?.qrisMerchantName ?? '')
+  const [receiptPaperSize, setReceiptPaperSize] = useState<ReceiptPaperSize>(draft?.receiptPaperSize ?? '58mm')
 
-  const [printerType, setPrinterType] = useState<PrinterConnectionType>('browser')
-  const [networkHost, setNetworkHost] = useState('')
-  const [networkPort, setNetworkPort] = useState(9100)
+  const [printerType, setPrinterType] = useState<PrinterConnectionType>(draft?.printerType ?? 'browser')
+  const [networkHost, setNetworkHost] = useState(draft?.networkHost ?? '')
+  const [networkPort, setNetworkPort] = useState(draft?.networkPort ?? 9100)
 
-  const [adminName, setAdminName] = useState('')
+  const [adminName, setAdminName] = useState(draft?.adminName ?? '')
   const [adminPin, setAdminPin] = useState('')
   const [adminPinConfirm, setAdminPinConfirm] = useState('')
 
   const stepIndex = STEP_ORDER.indexOf(step)
 
+  /** Simpan isian (tanpa PIN) setiap pindah langkah — aman bila aplikasi ditutup/dimuat ulang. */
+  function persist(nextStep: Step) {
+    const ok = saveOnboardingDraft({
+      step: nextStep,
+      businessType,
+      withSampleCatalog,
+      withKantinCategories,
+      businessName,
+      address,
+      phone,
+      logoDataUrl,
+      taxPercent,
+      serviceChargePercent,
+      roundingIncrement,
+      transactionPrefix,
+      qrisImageDataUrl,
+      qrisMerchantName,
+      receiptPaperSize,
+      printerType,
+      networkHost,
+      networkPort,
+      adminName,
+    })
+    if (ok) setSavedAt(Date.now())
+  }
+
   function goNext() {
     setError(null)
+    // Cek kolom wajib langkah ini sebelum lanjut (aturan sama dengan pengecekan akhir).
+    if (step === 'profile' && !businessName.trim()) return setFieldErrors({ businessName: BUSINESS_NAME_REQUIRED })
+    setFieldErrors({})
     const idx = STEP_ORDER.indexOf(step)
-    if (idx < STEP_ORDER.length - 1) setStep(STEP_ORDER[idx + 1]!)
+    if (idx < STEP_ORDER.length - 1) {
+      const next = STEP_ORDER[idx + 1]!
+      persist(next)
+      setStep(next)
+    }
   }
   function goBack() {
     setError(null)
+    setFieldErrors({})
     const idx = STEP_ORDER.indexOf(step)
     if (idx > 0) setStep(STEP_ORDER[idx - 1]!)
   }
+  /** Stepper: boleh kembali ke langkah yang sudah selesai (tak bisa melompat ke depan). */
+  function goTo(target: Step) {
+    if (stepStatus(target, step) !== 'done' || target === 'finishing') return
+    setError(null)
+    setStep(target)
+  }
+
+  // Transisi antar langkah: maju dari kanan, mundur dari kiri (pola layar lain, src/lib/motion.ts).
+  const contentRef = useRef<HTMLDivElement>(null)
+  const prevIndex = useRef(stepIndex)
+  useLayoutEffect(() => {
+    const from = prevIndex.current
+    prevIndex.current = stepIndex
+    const el = contentRef.current
+    if (from === stepIndex || !el || typeof el.animate !== 'function') return
+    el.animate(routeKeyframes(stepIndex > from ? 'forward' : 'back', prefersReducedMotion()), { duration: MOTION.route, easing: EASING.out })
+  }, [stepIndex])
+
+  // "Progres tersimpan" tampil sebentar setelah tiap langkah.
+  useEffect(() => {
+    if (savedAt == null) return
+    const t = setTimeout(() => setSavedAt(null), 2500)
+    return () => clearTimeout(t)
+  }, [savedAt])
+
+  // Enter = lanjut, Esc = kembali — kecuali sedang di kolom yang memakai tombol itu sendiri.
+  const keyActions = useRef({ goNext, goBack, finish: () => void handleFinish(), step })
+  keyActions.current = { goNext, goBack, finish: () => void handleFinish(), step }
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null
+      const tag = t?.tagName
+      const a = keyActions.current
+      if (a.step === 'finishing' || e.defaultPrevented) return
+      if (e.key === 'Enter' && tag !== 'TEXTAREA' && tag !== 'BUTTON' && tag !== 'SELECT' && tag !== 'A') {
+        e.preventDefault()
+        if (a.step === 'admin') a.finish()
+        else a.goNext()
+      } else if (e.key === 'Escape' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && a.step !== 'welcome') {
+        e.preventDefault()
+        a.goBack()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   async function handleFinish() {
+    setError(null)
     if (!businessName.trim()) {
-      setError('Nama usaha wajib diisi — nama ini muncul di struk dan halaman pesanan pelanggan')
+      setFieldErrors({ businessName: BUSINESS_NAME_REQUIRED })
       setStep('profile')
       return
     }
     if (!adminName.trim()) {
-      setError('Nama administrator wajib diisi')
+      setFieldErrors({ adminName: 'Nama administrator wajib diisi' })
       setStep('admin')
       return
     }
     if (!isValidPinFormat(adminPin)) {
-      setError('PIN harus terdiri dari 4-8 digit angka')
+      setFieldErrors({ adminPin: 'PIN harus terdiri dari 4-8 digit angka' })
       setStep('admin')
       return
     }
     if (adminPin !== adminPinConfirm) {
-      setError('Konfirmasi PIN tidak cocok')
+      setFieldErrors({ adminPinConfirm: 'Konfirmasi PIN tidak cocok' })
       setStep('admin')
       return
     }
+    setFieldErrors({})
 
     setStep('finishing')
     try {
@@ -136,6 +233,7 @@ export function OnboardingWizard() {
           if (withSampleCatalog) await seedInitialCatalog(businessType)
           else if (businessType === 'kantin' && withKantinCategories) await createKantinStarterCategories()
           if (withSampleCatalog || (businessType === 'kantin' && withKantinCategories)) await rememberSampleCatalog()
+          clearOnboardingDraft()
           login(admin)
         })(),
         20_000,
@@ -148,48 +246,59 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-ink-950 text-ink-50">
-      <div className="flex-none border-b border-ink-700 bg-ink-900 px-6 py-4">
-        <div className="mx-auto flex max-w-xl items-center gap-3">
+    <div className="kione-auth-bg flex h-full flex-col text-ink-50">
+      <header className="flex-none border-b border-ink-700 bg-ink-900/90 px-6 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3">
           <img src={PRODUCT_MARK} alt="" className="h-7 w-7 rounded-lg" />
           <h1 className="text-base font-bold">Pengaturan Awal · {PRODUCT_NAME}</h1>
-          <span className="ml-auto text-xs font-medium text-ink-400">
-            Langkah {stepIndex + 1} / {STEP_ORDER.length}
+          <span className={`ml-3 flex items-center gap-1 text-xs font-medium text-success-500 transition-opacity ${savedAt ? 'opacity-100' : 'opacity-0'}`} role="status">
+            {savedAt ? (
+              <>
+                <Icon name="checkCircle" size={14} /> Progres tersimpan
+              </>
+            ) : null}
+          </span>
+          <span className="ml-auto text-sm font-semibold text-ink-200">
+            Langkah {stepIndex + 1} dari {STEP_ORDER.length}
           </span>
         </div>
-        <div className="mx-auto mt-3 flex max-w-xl gap-1">
-          {STEP_ORDER.map((s, i) => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= stepIndex ? 'bg-brand-600' : 'bg-ink-700'}`} />
-          ))}
-        </div>
-      </div>
+        <Stepper current={step} onSelect={goTo} />
+      </header>
 
       <div className="flex-1 overflow-y-auto px-6 py-8">
-        <div className="mx-auto max-w-xl">
+        <div ref={contentRef} className={`mx-auto ${step === 'welcome' ? 'max-w-4xl' : 'max-w-xl'}`}>
           {error && (
             <div className="mb-4 rounded-xl border border-red-300/50 bg-red-900 px-4 py-3 text-sm font-medium text-red-500">{error}</div>
           )}
 
           {step === 'welcome' && (
-            <div className="flex flex-col items-center gap-5 pt-8 text-center">
-              <img src={PRODUCT_LOGO} alt={PRODUCT_NAME} className="h-14 w-auto" />
+            <div className="grid items-center gap-8 pt-4 md:grid-cols-2">
               <div>
-                <h2 className="text-2xl font-bold">Selamat Datang</h2>
-                <p className="mx-auto mt-2 max-w-sm text-ink-300">
-                  {PRODUCT_TAGLINE}. Lengkapi konfigurasi berikut untuk menyiapkan aplikasi dengan identitas usaha Anda
-                  — cukup sekali, dan semuanya masih bisa diubah nanti lewat menu Pengaturan.
+                <h2 className="text-3xl font-bold leading-tight">Selamat Datang di {PRODUCT_NAME}</h2>
+                <p className="mt-3 text-ink-200">
+                  Isi identitas usaha, pajak, pembayaran, printer, dan akun administrator. Semuanya masih bisa diubah nanti di Pengaturan.
                 </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <span className="badge bg-brand-600/15 text-brand-400">
+                    <Icon name="clock" size={14} /> ± {TOTAL_MINUTES} menit
+                  </span>
+                  <span className="badge bg-success-600/15 text-success-500">
+                    <Icon name="checkCircle" size={14} /> Progres tersimpan otomatis
+                  </span>
+                </div>
               </div>
-              <ul className="mt-2 w-full max-w-sm space-y-2 text-left text-sm text-ink-200">
-                {['Nama, alamat & logo usaha Anda', 'Pajak, biaya layanan & format struk', 'QRIS & printer', 'Akun administrator'].map((t) => (
-                  <li key={t} className="flex items-center gap-2.5 rounded-xl border border-ink-700 bg-ink-900 px-3.5 py-2.5">
-                    <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-brand-600/15 text-brand-600">
-                      <Icon name="check" size={13} />
+              <ol className="card divide-y divide-ink-700 overflow-hidden" aria-label="Langkah yang akan dikerjakan">
+                {WORK_STEPS.map((s, i) => (
+                  <li key={s} className="flex items-center gap-3 px-4 py-3">
+                    <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full border-2 border-brand-500 text-sm font-bold text-brand-400">{i + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-ink-50">{STEP_META[s].label}</span>
+                      <span className="block text-xs text-ink-300">{STEP_META[s].hint}</span>
                     </span>
-                    {t}
+                    <span className="flex-none text-xs font-medium text-ink-300">± {STEP_META[s].minutes} menit</span>
                   </li>
                 ))}
-              </ul>
+              </ol>
             </div>
           )}
 
@@ -223,7 +332,7 @@ export function OnboardingWizard() {
                   ))}
                 </div>
                 <p className="mt-1.5 text-xs text-ink-500">
-                  Menentukan menu mana yang ditampilkan (Meja, Dapur, Pesanan QR, Pager). Bisa diubah lagi nanti di Pengaturan.
+                  Menentukan menu & fitur yang dipakai (Meja, Dapur, Pesanan QR, Pager, dll.). <b>Tidak bisa diubah</b> setelah pengaturan awal selesai — pilih dengan teliti.
                 </p>
               </div>
               <label className="flex items-start gap-2 text-sm text-ink-200">
@@ -246,7 +355,7 @@ export function OnboardingWizard() {
                   </span>
                 </label>
               )}
-              <Field label="Nama Usaha">
+              <Field label="Nama Usaha" error={fieldErrors.businessName}>
                 <input
                   className="input-field"
                   value={businessName}
@@ -374,10 +483,10 @@ export function OnboardingWizard() {
           {step === 'admin' && (
             <div className="space-y-4">
               <h2 className="text-xl font-bold">Akun Administrator</h2>
-              <Field label="Nama Administrator">
+              <Field label="Nama Administrator" error={fieldErrors.adminName}>
                 <input className="input-field" value={adminName} onChange={(e) => setAdminName(e.target.value)} />
               </Field>
-              <Field label="PIN (4-8 digit)">
+              <Field label="PIN (4-8 digit)" error={fieldErrors.adminPin}>
                 <input
                   type="password"
                   inputMode="numeric"
@@ -386,7 +495,7 @@ export function OnboardingWizard() {
                   onChange={(e) => setAdminPin(e.target.value.replace(/\D/g, ''))}
                 />
               </Field>
-              <Field label="Konfirmasi PIN">
+              <Field label="Konfirmasi PIN" error={fieldErrors.adminPinConfirm}>
                 <input
                   type="password"
                   inputMode="numeric"
@@ -409,30 +518,87 @@ export function OnboardingWizard() {
       </div>
 
       {step !== 'finishing' && (
-        <div className="flex flex-none items-center justify-between border-t border-ink-700 bg-ink-900 px-6 py-4">
-          <button onClick={goBack} disabled={step === 'welcome'} className="btn-ghost">
-            Kembali
-          </button>
-          {step === 'admin' ? (
-            <button onClick={() => void handleFinish()} className="btn-primary">
-              Selesai &amp; Mulai
-            </button>
-          ) : (
-            <button onClick={goNext} className="btn-primary">
-              Lanjut
-            </button>
-          )}
-        </div>
+        <footer className="flex flex-none items-center justify-between border-t border-ink-700 bg-ink-900 px-6 py-4">
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3">
+            {/* Langkah pertama: Kembali disembunyikan (tak ada langkah sebelumnya); ruang tetap dijaga. */}
+            {step === 'welcome' ? (
+              <span className="hidden text-xs text-ink-300 sm:block">Tekan Enter untuk lanjut</span>
+            ) : (
+              <Button variant="secondary" size="lg" leftIcon={<Icon name="arrowLeft" size={18} />} onClick={goBack}>
+                Kembali
+              </Button>
+            )}
+            {step === 'admin' ? (
+              <Button size="lg" className="ml-auto min-w-[12rem]" onClick={() => handleFinish()}>
+                Selesai &amp; Mulai
+              </Button>
+            ) : (
+              <Button size="lg" className="ml-auto min-w-[12rem]" rightIcon={<Icon name="chevronRight" size={18} />} onClick={goNext}>
+                Lanjut
+              </Button>
+            )}
+          </div>
+        </footer>
       )}
     </div>
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/** Stepper bernama: selesai (centang, bisa diklik untuk kembali), aktif, dan belum. */
+export interface StepperProps {
+  current: Step
+  onSelect: (step: Step) => void
+}
+
+export function Stepper({ current, onSelect }: StepperProps) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-ink-300">{label}</span>
-      {children}
-    </label>
+    <ol className="mx-auto mt-3 flex max-w-5xl gap-1.5" aria-label="Langkah pengaturan awal">
+      {STEP_ORDER.map((s, i) => {
+        const status = stepStatus(s, current)
+        return (
+          <li key={s} className="min-w-0 flex-1">
+            <button
+              type="button"
+              aria-label={stepAriaLabel(s, current)}
+              aria-current={status === 'active' ? 'step' : undefined}
+              disabled={status !== 'done' || s === 'finishing'}
+              onClick={() => onSelect(s)}
+              className="group flex w-full flex-col gap-1.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default"
+            >
+              <span className={`h-1.5 w-full rounded-full ${status === 'todo' ? 'bg-ink-600' : 'bg-brand-600'} ${status === 'active' ? 'ring-2 ring-brand-500/30' : ''}`} />
+              <span
+                className={`flex items-center gap-1 truncate text-[0.7rem] font-semibold ${
+                  status === 'active' ? 'text-brand-400' : status === 'done' ? 'text-ink-200 group-hover:text-ink-50' : 'text-ink-300'
+                }`}
+              >
+                {status === 'done' ? <Icon name="check" size={12} className="flex-none" /> : <span className="flex-none tabular-nums">{i + 1}.</span>}
+                <span className="truncate">{STEP_META[s].label}</span>
+              </span>
+            </button>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+type FieldKey = 'businessName' | 'adminName' | 'adminPin' | 'adminPinConfirm'
+const BUSINESS_NAME_REQUIRED = 'Nama usaha wajib diisi — nama ini muncul di struk dan halaman pesanan pelanggan'
+
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+  return (
+    // Pesan error di LUAR <label>: nama kolom untuk pembaca layar tetap sama.
+    <div className={error ? 'kione-field--error' : undefined}>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-medium text-ink-300">{label}</span>
+        {children}
+      </label>
+      {error && (
+        <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-sm font-medium text-red-600">
+          <Icon name="alertTriangle" size={15} className="mt-0.5 flex-none" />
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
