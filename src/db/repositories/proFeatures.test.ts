@@ -10,7 +10,7 @@ import { getCustomerLoyalty } from './loyalty'
 import { bulkSetOnlinePrices } from './products'
 import { sendOrderToKitchen } from './kitchenDispatch'
 import { addToWaitlist, listReservations, seatReservation } from './reservations'
-import { buildAttendanceReport, clockAttendanceManual, listClockedIn, MAX_SESSION_MS, pairAttendance, PHONE_CHAIN_DEVICE_ID, WrongPinError } from './attendance'
+import { buildAttendanceReport, clearLocalAttendance, clockAttendanceManual, listClockedIn, MAX_SESSION_MS, pairAttendance, PHONE_CHAIN_DEVICE_ID, WrongPinError } from './attendance'
 import { buildFeedbackReport, getOrderFeedback, recordOrderFeedback } from './feedback'
 import { buildDepositReport, findGiftCard, listGiftCards, sellGiftCard } from './deposits'
 import { buildAccountingExport, ACCOUNTS } from './accounting'
@@ -246,6 +246,26 @@ describe('Absensi karyawan', () => {
     const logs = await db.auditLogs.where('entityType').equals('attendance').toArray()
     expect(logs.map((l) => l.action).sort()).toEqual(['attendance.manual_in', 'attendance.manual_out'])
     expect(logs[0].details).toMatch(/disetujui Rina .*Alasan: HP/)
+  })
+
+  it('Mode Developer: hapus data absensi di tablet — hanya absen, log lain & pengguna tetap, antrean sync ikut dibersihkan', async () => {
+    const dewi = await createUser({ name: 'Dewi', role: 'kasir', pin: '246810' })
+    const admin = await createUser({ name: 'Rina', role: 'administrator', pin: '135790' })
+    await clockAttendanceManual({ staff: { id: dewi.id, name: dewi.name }, approverId: admin.id, approverPin: '135790', reason: 'HP mati baterai' })
+    await db.auditLogs.add({ id: 'hp1', userId: dewi.id, userName: 'Dewi', action: 'attendance.in', entityType: 'attendance', entityId: dewi.id, details: '', createdAt: Date.now(), deviceId: PHONE_CHAIN_DEVICE_ID, deviceSeq: 1, prevHash: null, hash: 'x' })
+    const otherLogs = await db.auditLogs.filter((e) => e.entityType !== 'attendance').count()
+    expect(await db.syncQueue.where('entity').equals('auditLogs').count()).toBeGreaterThan(0)
+
+    expect(await clearLocalAttendance({ userId: admin.id, userName: admin.name })).toBe(2)
+    expect((await listClockedIn()).size).toBe(0)
+    expect((await buildAttendanceReport(ALL_TIME())).summary).toEqual([])
+    const remaining = await db.auditLogs.toArray()
+    expect(remaining.filter((e) => e.action.startsWith('attendance.') && e.entityType === 'attendance')).toEqual([])
+    expect(remaining.filter((e) => e.entityType !== 'attendance')).toHaveLength(otherLogs + 1)
+    expect(remaining.find((e) => e.action === 'attendance.reset_local')?.details).toMatch(/2 catatan absen dihapus/)
+    const queued = await db.syncQueue.where('entity').equals('auditLogs').toArray()
+    expect(queued.some((q) => ['hp1', ...remaining.map((e) => e.id)].includes(q.entityId) === false)).toBe(false)
+    expect(await db.users.count()).toBe(2)
   })
 })
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
-import { clockAttendanceManual, formatWorkMinutes, MANUAL_REASON_MIN } from '@/db/repositories/attendance'
+import { clearLocalAttendance, clockAttendanceManual, formatWorkMinutes, MANUAL_REASON_MIN } from '@/db/repositories/attendance'
 import { updateSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { attendancePageBase, attendanceQrCode } from '@/lib/attendanceQr'
@@ -10,6 +10,8 @@ import { ROLE_LABELS, roleHasPermission } from '@/lib/permissions'
 import { getAttendanceQrSecret, isBackendConfigured, uploadAttendanceRoster } from '@/sync/client'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from '@/state/toastStore'
+import { notify } from '@/lib/notify'
+import { useDeveloperUnlocked } from '@/state/developerStore'
 import type { AppSettings, User } from '@/types/domain'
 
 type Actor = { userId: string; userName: string }
@@ -237,6 +239,45 @@ export function PhoneAttendanceSettings({ settings, actor }: { settings: AppSett
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** Mode Developer: kosongkan semua absen di tablet ini (mis. sisa uji coba). */
+export function DeveloperAttendanceReset({ actor }: { actor: Actor }) {
+  const unlocked = useDeveloperUnlocked()
+  const [busy, setBusy] = useState(false)
+  if (!unlocked) return null
+
+  async function reset() {
+    const ok = await notify.confirm({
+      title: 'Hapus semua data absensi di tablet ini?',
+      description:
+        'Semua absen masuk/pulang (HP, manual, PIN lama) dihapus dari tablet ini, jadi rekap jam kerja & gaji ikut kosong. Pengguna, jadwal, dan transaksi tidak tersentuh. Data di server tidak ikut terhapus. Tindakan ini tidak dapat dibatalkan.',
+      confirmLabel: 'Hapus Data Absensi',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      const n = await clearLocalAttendance(actor)
+      notify.success(n > 0 ? `${n} catatan absen dihapus dari tablet ini.` : 'Tidak ada data absensi di tablet ini.')
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : 'Gagal menghapus data absensi.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card mt-8 flex flex-wrap items-center gap-3 border border-red-500/40 p-4">
+      <div className="mr-auto">
+        <p className="font-medium text-ink-50">Hapus data absensi di tablet ini</p>
+        <p className="text-xs text-ink-400">Mode Developer · untuk membuang absen uji coba. Penghapusan tercatat di Log Aktivitas.</p>
+      </div>
+      <button className="btn-secondary btn-compact !px-4 text-sm text-red-400" disabled={busy} onClick={() => void reset()}>
+        {busy ? 'Menghapus…' : 'Hapus Data Absensi'}
+      </button>
     </div>
   )
 }

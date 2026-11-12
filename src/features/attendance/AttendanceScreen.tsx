@@ -4,7 +4,7 @@ import { ATTENDANCE_SOURCE_LABELS, attendanceReportToCsv, buildAttendanceReport,
 import { listActiveUsers } from '@/db/repositories/users'
 import { getSettings } from '@/db/repositories/settings'
 import { PayrollSection, StaffSetupSection } from '@/features/attendance/StaffPayrollPanel'
-import { AttendanceQrModal, ManualAttendanceModal, PhoneAttendanceSettings, useAttendanceRosterSync } from '@/features/attendance/PhoneAttendance'
+import { AttendanceQrModal, DeveloperAttendanceReset, ManualAttendanceModal, PhoneAttendanceSettings, useAttendanceRosterSync } from '@/features/attendance/PhoneAttendance'
 import { buildRosterCompliance, lateMinutesFor, rosterFor, shiftOn } from '@/lib/roster'
 import { durationSince, formatDateTime, formatTime, jakartaDateKey, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { formatNumber } from '@/lib/currency'
@@ -210,6 +210,7 @@ export function AttendanceScreen() {
       {canSeeReport && canManageStaff && report && <PayrollSection report={report} settings={settings} periodKey={periodKey} periodLabel={PERIOD_LABELS[period]} actor={actor} />}
       {canManageStaff && <PhoneAttendanceSettings settings={settings} actor={actor} />}
       {canManageStaff && <StaffSetupSection users={sorted} settings={settings} actor={actor} />}
+      <DeveloperAttendanceReset actor={actor} />
 
       {showQr && <AttendanceQrModal settings={settings} onClose={() => setShowQr(false)} />}
       {showManual && <ManualAttendanceModal users={sorted} clockedIn={clockedIn} onClose={() => setShowManual(false)} />}

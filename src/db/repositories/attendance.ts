@@ -15,7 +15,7 @@ import type { AuditLogEntry } from '@/types/domain'
  * Rekap jam kerja dihitung dari pasangan masuk–pulang.
  *
  * Sumber absen:
- *  - `phone`  — jalur utama: HP terdaftar + QR dinamis tablet + selfie, dicatat SERVER
+ *  - `phone`  — jalur utama: HP karyawan + QR dinamis tablet + PIN + selfie, dicatat SERVER
  *               (`attendance.in/out`, deviceId {@link PHONE_CHAIN_DEVICE_ID}). Lihat
  *               backend/src/lib/staffAttendance.ts.
  *  - `manual` — pengecualian (HP mati/tanpa internet): dicatat di tablet dengan PIN
@@ -211,4 +211,30 @@ export function attendanceReportToCsv(report: AttendanceReport, formatDateTime: 
     lines.push([s.userName, formatDateTime(s.clockIn), s.clockOut ? formatDateTime(s.clockOut) : '', s.minutes, via, s.missingOut ? 'Tanpa absen pulang' : s.clockOut ? '' : 'Masih bekerja'].map(cell).join(','))
   }
   return lines.join('\n')
+}
+
+/**
+ * Mode Developer: menghapus SEMUA absen (HP, manual, PIN lama) dari tablet ini, mis. data
+ * uji coba. Pengguna, jadwal, transaksi & log lain tak tersentuh; absen yang belum
+ * terkirim ikut dibuang dari antrean sync. Penghapusan sendiri dicatat di Log Aktivitas,
+ * dan pemeriksaan keutuhan log akan menandai celah rantainya — memang disengaja.
+ * Data absen di server tidak ikut terhapus (lihat deploy/scripts/reset-attendance.sql).
+ */
+export async function clearLocalAttendance(actor: { userId: string; userName: string }): Promise<number> {
+  const actions = [ACTION_IN, ACTION_OUT, ACTION_MANUAL_IN, ACTION_MANUAL_OUT]
+  const removed = await db.transaction('rw', db.auditLogs, db.syncQueue, async () => {
+    const ids = (await db.auditLogs.where('action').anyOf(actions).filter((e) => e.entityType === 'attendance').primaryKeys()) as string[]
+    await db.auditLogs.bulkDelete(ids)
+    const idSet = new Set(ids)
+    await db.syncQueue.filter((q) => q.entity === 'auditLogs' && idSet.has(q.entityId)).delete()
+    return ids.length
+  })
+  await recordAuditLog({
+    ...actor,
+    action: 'attendance.reset_local',
+    entityType: 'settings',
+    entityId: 'attendance',
+    details: `Mode Developer: ${removed} catatan absen dihapus dari tablet ini.`,
+  })
+  return removed
 }
