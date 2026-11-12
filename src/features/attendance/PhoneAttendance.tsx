@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 import { clockAttendanceManual, formatWorkMinutes, MANUAL_REASON_MIN } from '@/db/repositories/attendance'
 import { updateSettings } from '@/db/repositories/settings'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { attendancePageBase, attendanceQrCode } from '@/lib/attendanceQr'
 import { getTrustedNow } from '@/lib/clockGuard'
-import { formatDateTime, formatTime } from '@/lib/datetime'
+import { formatTime } from '@/lib/datetime'
 import { ROLE_LABELS, roleHasPermission } from '@/lib/permissions'
-import { createStaffPhoneEnrollment, getAttendanceQrSecret, isBackendConfigured, listStaffPhones, revokeStaffPhone, type StaffPhone } from '@/sync/client'
+import { getAttendanceQrSecret, isBackendConfigured, uploadAttendanceRoster } from '@/sync/client'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from '@/state/toastStore'
 import type { AppSettings, User } from '@/types/domain'
@@ -17,19 +17,39 @@ type Actor = { userId: string; userName: string }
 /** Rahasia QR disimpan lokal supaya QR tetap tampil saat tablet sedang offline. */
 const SECRET_CACHE_KEY = 'kione.attendanceQrSecret'
 
-function readCachedSecret(): { secret: string; periodMs: number } | null {
+type QrConfig = { secret: string; ref: string; periodMs: number }
+
+function readCachedSecret(): QrConfig | null {
   try {
     const raw = localStorage.getItem(SECRET_CACHE_KEY)
-    return raw ? (JSON.parse(raw) as { secret: string; periodMs: number }) : null
+    const c = raw ? (JSON.parse(raw) as Partial<QrConfig>) : null
+    // Cache lama (sebelum QR memuat penanda usaha) diabaikan — QR-nya tak dikenali server.
+    return c?.secret && c.ref && c.periodMs ? (c as QrConfig) : null
   } catch {
     return null
   }
 }
 
 /**
+ * Mengirim daftar karyawan aktif (nama + hash PIN) ke server tiap kali berubah, supaya
+ * karyawan bisa memilih namanya & memasukkan PIN di HP. Diam saja bila tablet belum
+ * tersambung atau sedang offline — dicoba lagi saat layar Absensi dibuka berikutnya.
+ */
+export function useAttendanceRosterSync(users: User[]) {
+  const payload = useMemo(
+    () => JSON.stringify(users.filter((u) => u.active && u.pinHash && u.pinSalt).map((u) => ({ userId: u.id, userName: u.name, pinHash: u.pinHash, pinSalt: u.pinSalt }))),
+    [users],
+  )
+  useEffect(() => {
+    if (!isBackendConfigured()) return
+    uploadAttendanceRoster(JSON.parse(payload) as Parameters<typeof uploadAttendanceRoster>[0]).catch(() => undefined)
+  }, [payload])
+}
+
+/**
  * QR absensi layar penuh di tablet kasir. Kode berganti tiap periode (20 detik) —
- * karyawan memindainya dengan kamera HP terdaftar. Foto QR yang dikirim ke orang lain
- * sudah basi sebelum sempat dipakai.
+ * karyawan memindainya dengan kamera HP-nya, memilih nama, lalu memasukkan PIN. Foto QR
+ * yang dikirim ke orang lain sudah basi sebelum sempat dipakai.
  */
 export function AttendanceQrModal({ settings, onClose }: { settings: AppSettings | undefined; onClose: () => void }) {
   const [config, setConfig] = useState(readCachedSecret)
@@ -64,7 +84,7 @@ export function AttendanceQrModal({ settings, onClose }: { settings: AppSettings
     if (!config || slot == null || !base) return
     let cancelled = false
     void attendanceQrCode(config.secret, slot)
-      .then((code) => QRCode.toDataURL(`${base}#c=${slot}.${code}`, { width: 560, margin: 2, errorCorrectionLevel: 'M' }))
+      .then((code) => QRCode.toDataURL(`${base}#c=${config.ref}.${slot}.${code}`, { width: 560, margin: 2, errorCorrectionLevel: 'M' }))
       .then((url) => !cancelled && setImage(url))
     return () => {
       cancelled = true
@@ -75,7 +95,7 @@ export function AttendanceQrModal({ settings, onClose }: { settings: AppSettings
   return (
     <Modal onClose={onClose} className="w-full max-w-lg rounded-2xl bg-ink-900 p-6 text-center">
       <h2 className="text-xl font-bold text-ink-50">QR Absensi</h2>
-      <p className="mt-1 text-sm text-ink-300">Pindai dengan kamera HP yang sudah terdaftar, lalu ikuti petunjuk selfie.</p>
+      <p className="mt-1 text-sm text-ink-300">Pindai dengan kamera HP, pilih nama, masukkan PIN, lalu selfie.</p>
       {error || !base ? (
         <p className="my-10 text-sm text-red-400">{error ?? 'Alamat publik belum diatur (Pengaturan → Sinkronisasi atau URL QR meja).'}</p>
       ) : (
@@ -188,23 +208,9 @@ export function ManualAttendanceModal({ users, clockedIn, onClose }: { users: Us
   )
 }
 
-/** Pengaturan admin: selfie wajib/opsional, daftarkan & cabut HP karyawan. */
-export function PhoneAttendanceSettings({ users, settings, actor }: { users: User[]; settings: AppSettings | undefined; actor: Actor }) {
-  const [phones, setPhones] = useState<StaffPhone[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [enrolling, setEnrolling] = useState<User | null>(null)
+/** Pengaturan admin: selfie wajib/opsional. Karyawan absen dari HP mana pun dengan PIN-nya. */
+export function PhoneAttendanceSettings({ settings, actor }: { settings: AppSettings | undefined; actor: Actor }) {
   const selfieMode = settings?.attendancePhoneSelfie ?? 'required'
-
-  const reload = useCallback(() => {
-    if (!isBackendConfigured()) return setLoadError('Tablet belum tersambung ke server sinkronisasi — absen lewat HP butuh server.')
-    listStaffPhones()
-      .then((p) => {
-        setPhones(p)
-        setLoadError(null)
-      })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : 'Gagal memuat HP terdaftar.'))
-  }, [])
-  useEffect(reload, [reload])
 
   async function setSelfie(mode: 'required' | 'optional') {
     await updateSettings({ attendancePhoneSelfie: mode })
@@ -212,26 +218,18 @@ export function PhoneAttendanceSettings({ users, settings, actor }: { users: Use
     toast.success(mode === 'required' ? 'Selfie sekarang wajib saat absen.' : 'Selfie sekarang opsional saat absen.')
   }
 
-  async function revoke(phone: StaffPhone) {
-    try {
-      await revokeStaffPhone(phone.id)
-      await recordAuditLog({ ...actor, action: 'attendance.phone_revoke', entityType: 'attendance', entityId: phone.userId, details: `HP absensi ${phone.userName} (${phone.label}) dicabut.` })
-      toast.success(`HP ${phone.userName} dicabut.`)
-      reload()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gagal mencabut HP.')
-    }
-  }
-
-  const byUser = new Map((phones ?? []).map((p) => [p.userId, p]))
   return (
     <div className="mt-8">
       <h2 className="mb-1 font-semibold text-ink-100">Absen lewat HP</h2>
-      <p className="mb-3 text-sm text-ink-400">Tiap karyawan absen dari HP-nya sendiri: pindai QR Absensi di tablet ini, lalu selfie. Satu HP per karyawan.</p>
-      <div className="card mb-3 flex flex-wrap items-center gap-3 p-4">
+      <p className="mb-3 text-sm text-ink-400">
+        Karyawan memindai QR Absensi di tablet ini dengan HP apa saja, memilih namanya, memasukkan PIN-nya sendiri, lalu selfie. Tidak perlu mendaftarkan HP. PIN salah 5 kali
+        mengunci nama itu 15 menit.
+      </p>
+      {!isBackendConfigured() && <p className="card mb-3 p-4 text-sm text-yellow-400">Tablet belum tersambung ke server sinkronisasi — absen lewat HP butuh server.</p>}
+      <div className="card flex flex-wrap items-center gap-3 p-4">
         <div className="mr-auto">
           <p className="font-medium text-ink-50">Selfie saat absen</p>
-          <p className="text-xs text-ink-400">Wajib = absen ditolak tanpa foto wajah. Disarankan tetap wajib untuk mencegah titip absen.</p>
+          <p className="text-xs text-ink-400">Wajib = absen ditolak tanpa foto wajah. Disarankan tetap wajib supaya PIN tidak bisa dititipkan ke teman.</p>
         </div>
         {(['required', 'optional'] as const).map((m) => (
           <button key={m} className={`btn btn-compact !px-4 text-sm ${selfieMode === m ? 'btn-primary' : 'btn-secondary'}`} aria-pressed={selfieMode === m} onClick={() => void setSelfie(m)}>
@@ -239,103 +237,6 @@ export function PhoneAttendanceSettings({ users, settings, actor }: { users: Use
           </button>
         ))}
       </div>
-      {loadError ? (
-        <p className="card p-4 text-sm text-yellow-400">{loadError}</p>
-      ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-ink-800 text-left text-ink-300">
-              <tr>
-                <th className="px-4 py-2">Karyawan</th>
-                <th className="px-4 py-2">HP terdaftar</th>
-                <th className="px-4 py-2">Terakhir dipakai</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => {
-                const p = byUser.get(u.id)
-                return (
-                  <tr key={u.id} className="border-t border-ink-800">
-                    <td className="px-4 py-2 text-ink-50">{u.name}</td>
-                    <td className={`px-4 py-2 ${p ? 'text-ink-100' : 'text-ink-500'}`}>{phones == null ? '…' : p ? `${p.label} · sejak ${formatDateTime(p.createdAt)}` : 'Belum ada'}</td>
-                    <td className="px-4 py-2 text-ink-300">{p?.lastUsedAt ? formatDateTime(p.lastUsedAt) : '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right">
-                      <button className="btn-secondary btn-compact !px-3 text-sm" onClick={() => setEnrolling(u)}>
-                        {p ? 'Ganti HP' : 'Daftarkan HP'}
-                      </button>
-                      {p && (
-                        <button className="btn-ghost btn-compact ml-2 !px-3 text-sm text-red-400" onClick={() => void revoke(p)}>
-                          Cabut
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {enrolling && (
-        <EnrollPhoneModal
-          user={enrolling}
-          settings={settings}
-          actor={actor}
-          onClose={() => {
-            setEnrolling(null)
-            reload()
-          }}
-        />
-      )}
     </div>
-  )
-}
-
-function EnrollPhoneModal({ user, settings, actor: actorProp, onClose }: { user: User; settings: AppSettings | undefined; actor: Actor; onClose: () => void }) {
-  // Dibekukan saat modal dibuka: tiap render induk membuat objek actor baru, dan efek
-  // di bawah tak boleh berjalan ulang (setiap jalan = satu tautan pendaftaran baru).
-  const [actor] = useState(actorProp)
-  const [image, setImage] = useState<string | null>(null)
-  const [expiresAt, setExpiresAt] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const base = attendancePageBase(settings)
-
-  useEffect(() => {
-    if (!base) return setError('Alamat publik belum diatur (Pengaturan → Sinkronisasi atau URL QR meja).')
-    let cancelled = false
-    void (async () => {
-      try {
-        const { token, expiresAt } = await createStaffPhoneEnrollment({ userId: user.id, userName: user.name, createdBy: actor.userName })
-        await recordAuditLog({ ...actor, action: 'attendance.phone_enroll', entityType: 'attendance', entityId: user.id, details: `Tautan pendaftaran HP absensi dibuat untuk ${user.name}.` })
-        const url = await QRCode.toDataURL(`${base}#d=${token}`, { width: 520, margin: 2, errorCorrectionLevel: 'M' })
-        if (cancelled) return
-        setImage(url)
-        setExpiresAt(expiresAt)
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Gagal membuat tautan pendaftaran.')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [base, user, actor])
-
-  return (
-    <Modal onClose={onClose} className="w-full max-w-md rounded-2xl bg-ink-900 p-6 text-center">
-      <h2 className="text-lg font-bold text-ink-50">Daftarkan HP · {user.name}</h2>
-      <p className="mt-1 text-sm text-ink-300">
-        Minta <b>{user.name}</b> memindai QR ini dengan kamera HP-nya sendiri, lalu ketuk “Daftarkan HP Ini”. HP lama (bila ada) otomatis tidak berlaku.
-      </p>
-      {error ? (
-        <p className="my-8 text-sm text-red-400">{error}</p>
-      ) : (
-        <div className="mx-auto mt-4 aspect-square w-full max-w-[18rem] rounded-2xl bg-white p-2">{image && <img src={image} alt="QR pendaftaran HP" className="h-full w-full" />}</div>
-      )}
-      {expiresAt && <p className="mt-2 text-xs text-ink-400">Sekali pakai · berlaku sampai {formatTime(expiresAt)}</p>}
-      <button className="btn-secondary mt-5 w-full" onClick={onClose}>
-        Selesai
-      </button>
-    </Modal>
   )
 }

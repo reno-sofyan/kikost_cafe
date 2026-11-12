@@ -852,7 +852,7 @@ export const OWNER_DASHBOARD_HTML = `<!doctype html>
     const kp = '<div class="ckpis">' +
       kpi('Absen tercatat', d.rows.length, d.label) +
       kpi('Absen manual', manual, manual ? 'disetujui Admin/Pemilik — periksa alasannya' : 'semua lewat HP', manual > 0) +
-      kpi('HP terdaftar', d.phones.length, noSelfie ? noSelfie + ' absen tanpa selfie' : 'satu HP per karyawan', noSelfie > 0) + '</div>';
+      kpi('Karyawan absen', new Set(d.rows.map((r) => r.userName)).size, noSelfie ? noSelfie + ' absen tanpa selfie' : 'lewat HP: QR + PIN + selfie', noSelfie > 0) + '</div>';
     const head = '<div class="toolbar"><span class="muted">Absen masuk & pulang · terbaru di atas</span>' + seg + '</div>';
     const rows = d.rows.length ? '<div class="card list">' + d.rows.map((r) => {
       const src = ATT_SOURCE[r.source] || ATT_SOURCE.pin;
@@ -868,14 +868,7 @@ export const OWNER_DASHBOARD_HTML = `<!doctype html>
         (r.hasSelfie ? '<div id="sf-' + esc(r.id) + '"><button class="linkbtn" onclick="showSelfie(\\'' + esc(r.id) + '\\')">Lihat selfie</button></div>' : '') +
         '</div></div>';
     }).join('') + '</div>' : '<div class="card empty">Belum ada absen pada periode ini.</div>';
-    const phones = '<div class="sect">HP terdaftar (' + d.phones.length + ')</div>' + (d.phones.length
-      ? '<div class="card list">' + d.phones.map((p) =>
-          '<div class="item"><div class="main"><div class="t1">' + esc(p.userName) + '</div>' +
-          '<div class="t2">' + esc(p.label) + ' · didaftarkan ' + esc(fmtTime(p.createdAt)) + ' oleh ' + esc(p.createdBy) +
-          ' · dipakai ' + esc(ago(p.lastUsedAt)) + '</div></div>' +
-          '<button class="linkbtn" onclick="revokePhone(\\'' + esc(p.id) + '\\', \\'' + esc(p.userName).replace(/'/g, '') + '\\')">Cabut</button></div>').join('') + '</div>'
-      : '<div class="card empty">Belum ada HP terdaftar. Daftarkan dari tablet kasir: menu Absensi → Absen lewat HP.</div>');
-    document.getElementById('paneAttendance').innerHTML = kp + head + rows + phones;
+    document.getElementById('paneAttendance').innerHTML = kp + head + rows;
   }
   async function showSelfie(id) {
     const box = document.getElementById('sf-' + id);
@@ -889,15 +882,6 @@ export const OWNER_DASHBOARD_HTML = `<!doctype html>
       if (String(e.message) !== '401') box.innerHTML = '<span class="err">' + esc(e.message) + '</span>';
     }
   }
-  async function revokePhone(id, name) {
-    if (!confirm('Cabut HP absensi ' + name + '? HP itu tidak bisa dipakai absen lagi sampai didaftarkan ulang.')) return;
-    try {
-      const res = await apiRes('/attendance/phones/' + encodeURIComponent(id) + '/revoke', 'POST', {});
-      if (!res.ok) throw new Error('Gagal mencabut (HTTP ' + res.status + ').');
-      loadAttendance();
-    } catch (e) { if (String(e.message) !== '401') alert(e.message); }
-  }
-
   // ---- Tagihan Marketing (kafe): jamuan klien oleh sales, ditagihkan ke kantor ----
   const MKT_PRESETS = [['today', 'Hari ini'], ['7d', '7 hari'], ['month', 'Bulan ini'], ['lastmonth', 'Bulan lalu']];
   const MKT_STATUS = { unpaid: ['Belum dibayar kantor', 'open'], settled: ['Lunas', 'paid'], direct: ['Dibayar langsung', ''] };

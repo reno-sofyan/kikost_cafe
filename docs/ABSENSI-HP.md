@@ -6,11 +6,13 @@ ke teman dan tidak membuktikan siapa yang benar-benar datang.
 
 ## Empat lapis bukti
 
+HP **tidak perlu didaftarkan**. Karyawan boleh memakai HP apa saja.
+
 | Lapis | Mencegah | Cara kerja |
 |---|---|---|
-| **HP terdaftar** | Absen dari HP orang lain | Saat didaftarkan, browser HP membuat kunci ECDSA P-256 yang **tidak bisa disalin keluar**. Setiap absen ditandatangani dengan kunci itu, dan server hanya menyimpan kunci publiknya. Satu HP aktif per karyawan. |
-| **QR dinamis di tablet** | Absen dari rumah / kirim foto QR | QR di tablet kasir berganti tiap **20 detik** (HMAC dari rahasia per usaha). Server hanya menerima kode ±60 detik terakhir, jadi foto QR yang dikirim lewat chat cepat basi. QR tetap tampil walau tablet offline. |
-| **Selfie** | Titip absen | Foto diambil langsung dari kamera depan (bukan galeri). Admin bisa mengaturnya **Wajib** (bawaan) atau **Opsional**. |
+| **QR dinamis di tablet** | Absen dari rumah / kirim foto QR | QR di tablet kasir berganti tiap **20 detik** (HMAC dari rahasia per usaha, ditambah penanda usaha acak). Server hanya menerima kode ±60 detik terakhir, jadi foto QR yang dikirim lewat chat cepat basi. QR tetap tampil walau tablet offline. |
+| **PIN karyawan** | Absen atas nama orang lain | Karyawan memilih namanya lalu memasukkan PIN yang sama dengan PIN masuk ke aplikasi kasir. Tablet mengirim daftar karyawan aktif + **hash** PIN (PBKDF2) ke server; PIN aslinya tidak pernah dikirim. PIN salah **5 kali** mengunci nama itu **15 menit**. |
+| **Selfie** | Titip PIN ke teman | Foto diambil langsung dari kamera depan (bukan galeri). Admin bisa mengaturnya **Wajib** (bawaan) atau **Opsional**. |
 | **Waktu server** | Mengubah jam HP | Jam HP tidak dipakai sama sekali. |
 
 Lokasi GPS ikut dicatat bila karyawan mengizinkan. Lokasi hanya catatan untuk Pemilik, bukan
@@ -18,14 +20,13 @@ syarat absen, karena GPS bisa dipalsukan.
 
 ## Alur
 
-**Mendaftarkan HP (sekali, oleh Admin/Pemilik):** tablet → **Absensi** → *Absen lewat HP* →
-**Daftarkan HP** pada nama karyawan. Karyawan memindai QR yang muncul dengan kamera HP-nya,
-lalu mengetuk **Daftarkan HP Ini**. QR ini sekali pakai dan berlaku 15 menit. Mendaftarkan HP
-baru otomatis mencabut HP lama.
-
 **Absen harian:** tablet → **Absensi** → **QR Absensi**. Karyawan memindai QR dengan kamera
-HP, membuka tautannya, lalu menekan **Ambil Selfie & Absen Masuk/Pulang**. Arah absen (masuk
-atau pulang) ditentukan otomatis dari status terakhir karyawan.
+HP, membuka tautannya, memilih namanya, memasukkan PIN, lalu menekan **Ambil Selfie & Absen
+Masuk/Pulang**. Arah absen (masuk atau pulang) ditentukan otomatis dari status terakhir karyawan.
+
+**Daftar karyawan** dikirim otomatis setiap layar Absensi di tablet dibuka (dan setiap kali
+pengguna/PIN berubah selama layar itu terbuka). Karyawan baru atau PIN baru baru berlaku di HP
+setelah layar Absensi dibuka saat tablet online. Mengganti PIN juga membuka kunci PIN salah.
 
 **Absen manual (pengecualian):** untuk HP yang mati atau tidak ada internet. Pilih karyawan,
 tulis alasan, lalu Admin/Pemilik memasukkan **PIN-nya sendiri**. Penyetuju tidak boleh
@@ -39,9 +40,8 @@ itu rekap jam kerja, jadwal, dan gaji tetap memakai logika yang sudah ada.
 ## Konsol Pemilik
 
 `/owner/kafe` → tab **Absensi** menampilkan:
-- daftar absen (HP / Manual), selfie, dan tautan lokasi;
-- jumlah absen manual dan absen tanpa selfie;
-- HP terdaftar, yang bisa **dicabut** dari jarak jauh.
+- daftar absen (HP / Manual), jenis HP, selfie, dan tautan lokasi;
+- jumlah absen manual, jumlah karyawan yang absen, dan absen tanpa selfie.
 
 ## Syarat & batasan
 
@@ -49,13 +49,16 @@ itu rekap jam kerja, jadwal, dan gaji tetap memakai logika yang sudah ada.
   untuk mengambil rahasia QR.
 - Tablet harus terhubung ke server sinkronisasi (Pengaturan → Sinkronisasi). Alamat publik
   halaman `/absen` diambil dari URL server sinkronisasi atau URL QR meja.
-- Bila data browser di HP dihapus, atau karyawan ganti browser/HP, admin perlu mendaftarkan
-  ulang HP tersebut.
+- Karena tanpa ikatan HP, siapa pun yang tahu PIN seorang karyawan **dan** berada di depan
+  tablet bisa absen atas namanya. Selfie wajib adalah penangkalnya — Pemilik sebaiknya
+  sesekali memeriksa selfie di konsol.
 - Halaman `/absen` butuh HTTPS. Kamera dan kunci kriptografi tidak tersedia di HTTP biasa.
 
 ## Deploy
 
-1. Jalankan migrasi backend `009_staff_phone_attendance` (`npm run migrate` di `backend/`).
+1. Jalankan migrasi backend `009_staff_phone_attendance` dan `012_attendance_without_phone_enrollment`
+   (otomatis saat API menyala, atau `npm run migrate` di `backend/`). QR lama dari tablet yang belum
+   diperbarui tidak dikenali lagi; tablet cukup membuka QR Absensi sekali saat online.
 2. Pasang image web terbaru: `deploy/nginx/web.conf` mengizinkan kamera dan lokasi **hanya**
    di `/absen`. Halaman lain tetap `camera=(), geolocation=()`.
 

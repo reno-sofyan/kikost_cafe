@@ -1,14 +1,15 @@
-import { createHash, createHmac, createPublicKey, randomBytes, randomUUID, timingSafeEqual, verify, type KeyObject } from 'node:crypto'
+import { createHash, createHmac, pbkdf2, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { promisify } from 'node:util'
 import type { Pool, PoolClient } from 'pg'
 import { withTransaction } from '../db/pool.js'
 
 /**
- * Absensi karyawan lewat HP sendiri (kafe). Empat lapis bukti:
- *  1. HP terdaftar — HP membuat pasangan kunci ECDSA P-256 yang tak bisa diekspor dari
- *     browser; server hanya menyimpan kunci publiknya. Pendaftaran lewat tautan sekali
- *     pakai yang dibuat admin di tablet, jadi admin yang menyetujui HP mana yang sah.
- *  2. Hadir di tempat — HP harus menyerahkan kode QR yang sedang tampil di tablet kasir.
+ * Absensi karyawan lewat HP (kafe) — tanpa mendaftarkan HP. Bukti absen:
+ *  1. Hadir di tempat — HP harus menyerahkan kode QR yang sedang tampil di tablet kasir.
  *     Kode berganti tiap {@link QR_PERIOD_MS}; foto QR yang dikirim lewat chat cepat basi.
+ *  2. PIN karyawan — karyawan memilih namanya lalu memasukkan PIN-nya sendiri. Tablet
+ *     mengirim daftar karyawan aktif + hash PIN (PBKDF2, sama dengan src/lib/pinHash.ts);
+ *     PIN salah berkali-kali mengunci nama itu sementara.
  *  3. Selfie — diambil langsung dari kamera (bukan galeri); wajib/opsional diatur admin.
  *  4. Waktu server — jam HP tidak dipakai sama sekali.
  *
@@ -21,17 +22,23 @@ export const QR_PERIOD_MS = 20_000
 /** Jendela QR yang diterima: 3 jendela ke belakang (±60 dtk, jeda memindai) dan 1 ke depan (jam tablet sedikit maju). */
 const QR_WINDOWS_BACK = 3
 const QR_WINDOWS_AHEAD = 1
-/** Waktu untuk selfie setelah QR dipindai. */
+/** Waktu untuk memilih nama, PIN, dan selfie setelah QR dipindai. */
 const CHALLENGE_TTL_MS = 3 * 60_000
-const ENROLL_TTL_MS = 15 * 60_000
 /** Sama dengan `MAX_SESSION_MS` di src/db/repositories/attendance.ts. */
 const MAX_SESSION_MS = 16 * 60 * 60 * 1000
 const MAX_SELFIE_BYTES = 400 * 1024
+/** PIN salah sebanyak ini → nama karyawan itu dikunci {@link PIN_LOCK_MS}. */
+export const MAX_PIN_ATTEMPTS = 5
+const PIN_LOCK_MS = 15 * 60_000
+/** Sama dengan `PBKDF2_ITERATIONS` di src/lib/pinHash.ts. */
+const PBKDF2_ITERATIONS = 150_000
 /** `deviceId` entri auditLogs yang ditulis server — rantai hash terpisah dari tablet. */
 export const SERVER_CHAIN_DEVICE_ID = 'server:absen-hp'
 
 const ACTIONS_IN = ['attendance.in', 'attendance.manual_in']
 const ACTIONS_ALL = ['attendance.in', 'attendance.out', 'attendance.manual_in', 'attendance.manual_out']
+
+const pbkdf2Async = promisify(pbkdf2)
 
 export class AttendanceError extends Error {
   constructor(
@@ -47,11 +54,14 @@ const sha256Hex = (data: string | Buffer): string => createHash('sha256').update
 
 // ---- Kode QR dinamis ----
 
-export async function getQrSecret(pool: Pool | PoolClient, tenantId: string): Promise<string> {
-  const fresh = randomBytes(32).toString('base64url')
-  await pool.query('INSERT INTO staff_attendance_secrets (tenant_id, secret) VALUES ($1, $2) ON CONFLICT (tenant_id) DO NOTHING', [tenantId, fresh])
-  const { rows } = await pool.query<{ secret: string }>('SELECT secret FROM staff_attendance_secrets WHERE tenant_id = $1', [tenantId])
-  return rows[0].secret
+export async function getQrSecret(pool: Pool | PoolClient, tenantId: string): Promise<{ secret: string; ref: string }> {
+  await pool.query('INSERT INTO staff_attendance_secrets (tenant_id, secret, public_ref) VALUES ($1, $2, $3) ON CONFLICT (tenant_id) DO NOTHING', [
+    tenantId,
+    randomBytes(32).toString('base64url'),
+    randomBytes(8).toString('hex').slice(0, 10),
+  ])
+  const { rows } = await pool.query<{ secret: string; public_ref: string }>('SELECT secret, public_ref FROM staff_attendance_secrets WHERE tenant_id = $1', [tenantId])
+  return { secret: rows[0].secret, ref: rows[0].public_ref }
 }
 
 /** Kode untuk satu jendela waktu. HARUS identik dengan `attendanceQrCode` di src/lib/attendanceQr.ts. */
@@ -59,140 +69,63 @@ export function qrCodeFor(secret: string, window: number): string {
   return createHmac('sha256', secret).update(`absen:${window}`).digest('base64url').slice(0, 12)
 }
 
-/** Memeriksa isi QR `<jendela>.<kode>`; mengembalikan jendelanya bila sah dan masih segar. */
-export function checkQr(secret: string, qr: string, now = Date.now()): number | null {
-  const m = /^(\d{1,15})\.([A-Za-z0-9_-]{12})$/.exec(qr)
-  if (!m) return null
-  const window = Number(m[1])
+/** Isi QR `<ref>.<jendela>.<kode>` → bagian-bagiannya, atau `null` bila bentuknya salah. */
+export function parseQr(qr: string): { ref: string; window: number; code: string } | null {
+  const m = /^([0-9a-f]{10})\.(\d{1,15})\.([A-Za-z0-9_-]{12})$/.exec(qr)
+  return m ? { ref: m[1], window: Number(m[2]), code: m[3] } : null
+}
+
+/** Memeriksa jendela + kode QR; mengembalikan jendelanya bila sah dan masih segar. */
+export function checkQr(secret: string, window: number, code: string, now = Date.now()): number | null {
   const current = Math.floor(now / QR_PERIOD_MS)
   if (window < current - QR_WINDOWS_BACK || window > current + QR_WINDOWS_AHEAD) return null
   const expected = Buffer.from(qrCodeFor(secret, window))
-  const given = Buffer.from(m[2])
+  const given = Buffer.from(code)
   return expected.length === given.length && timingSafeEqual(expected, given) ? window : null
 }
 
-// ---- Pendaftaran HP ----
+// ---- Daftar karyawan (dikirim tablet) ----
 
-export async function createEnrollment(pool: Pool, tenantId: string, input: { userId: string; userName: string; createdBy: string }): Promise<{ token: string; expiresAt: number }> {
-  const token = randomBytes(24).toString('base64url')
-  const expiresAt = Date.now() + ENROLL_TTL_MS
-  await pool.query(
-    `INSERT INTO staff_phone_enrollments (tenant_id, user_id, user_name, token_hash, created_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0))`,
-    [tenantId, input.userId, input.userName, sha256Hex(token), input.createdBy, expiresAt],
-  )
-  return { token, expiresAt }
+export interface RosterInput {
+  userId: string
+  userName: string
+  pinHash: string
+  pinSalt: string
 }
 
-/** Kunci publik ECDSA P-256 dalam bentuk JWK — hanya field yang dibutuhkan yang disimpan. */
-export function parsePublicJwk(raw: unknown): { kty: 'EC'; crv: 'P-256'; x: string; y: string } | null {
-  const j = raw as Record<string, unknown> | null
-  if (!j || j.kty !== 'EC' || j.crv !== 'P-256' || typeof j.x !== 'string' || typeof j.y !== 'string') return null
-  const jwk = { kty: 'EC' as const, crv: 'P-256' as const, x: j.x, y: j.y }
-  try {
-    createPublicKey({ key: jwk, format: 'jwk' })
-    return jwk
-  } catch {
-    return null
-  }
-}
-
-export async function completeEnrollment(
-  token: string,
-  publicKey: unknown,
-  label: string,
-): Promise<{ phoneId: string; userName: string; businessName: string }> {
-  const jwk = parsePublicJwk(publicKey)
-  if (!jwk) throw new AttendanceError('Kunci HP tidak valid.')
+/**
+ * Mengganti daftar karyawan tenant dengan kiriman tablet. Hitungan PIN salah & kunci
+ * sementara dipertahankan selama PIN-nya tidak berubah; karyawan yang tak lagi aktif dihapus.
+ */
+export async function replaceRoster(tenantId: string, staff: RosterInput[]): Promise<number> {
   return withTransaction(async (client) => {
-    const { rows } = await client.query<{ id: string; tenant_id: string; user_id: string; user_name: string; created_by: string; expired: boolean; used: boolean }>(
-      `SELECT id, tenant_id, user_id, user_name, created_by, expires_at < now() AS expired, used_at IS NOT NULL AS used
-         FROM staff_phone_enrollments WHERE token_hash = $1 FOR UPDATE`,
-      [sha256Hex(token)],
-    )
-    const e = rows[0]
-    if (!e) throw new AttendanceError('Tautan pendaftaran tidak dikenal.', 404)
-    if (e.used) throw new AttendanceError('Tautan pendaftaran sudah dipakai. Minta admin membuat yang baru.', 410)
-    if (e.expired) throw new AttendanceError('Tautan pendaftaran sudah kedaluwarsa. Minta admin membuat yang baru.', 410)
-    await client.query('UPDATE staff_phone_enrollments SET used_at = now() WHERE id = $1', [e.id])
-    // Satu HP aktif per karyawan: HP lama otomatis tak bisa dipakai lagi.
-    await client.query('UPDATE staff_phones SET revoked_at = now() WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL', [e.tenant_id, e.user_id])
-    const phone = await client.query<{ id: string }>(
-      `INSERT INTO staff_phones (tenant_id, user_id, user_name, public_key, label, created_by)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $6) RETURNING id`,
-      [e.tenant_id, e.user_id, e.user_name, JSON.stringify(jwk), label.trim().slice(0, 60) || 'HP', e.created_by],
-    )
-    return { phoneId: phone.rows[0].id, userName: e.user_name, businessName: await businessName(client, e.tenant_id) }
+    const ids = staff.map((s) => s.userId)
+    await client.query('DELETE FROM staff_attendance_roster WHERE tenant_id = $1 AND NOT (user_id = ANY($2))', [tenantId, ids])
+    for (const s of staff) {
+      await client.query(
+        `INSERT INTO staff_attendance_roster (tenant_id, user_id, user_name, pin_hash, pin_salt)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, user_id) DO UPDATE SET
+           user_name = EXCLUDED.user_name,
+           failed_attempts = CASE WHEN staff_attendance_roster.pin_hash = EXCLUDED.pin_hash THEN staff_attendance_roster.failed_attempts ELSE 0 END,
+           locked_until = CASE WHEN staff_attendance_roster.pin_hash = EXCLUDED.pin_hash THEN staff_attendance_roster.locked_until ELSE NULL END,
+           pin_hash = EXCLUDED.pin_hash,
+           pin_salt = EXCLUDED.pin_salt,
+           updated_at = now()`,
+        [tenantId, s.userId, s.userName, s.pinHash, s.pinSalt],
+      )
+    }
+    return staff.length
   })
 }
 
-export interface StaffPhoneRow {
-  id: string
-  userId: string
-  userName: string
-  label: string
-  createdBy: string
-  createdAt: number
-  lastUsedAt: number | null
-}
-
-export async function listPhones(pool: Pool, tenantId: string): Promise<StaffPhoneRow[]> {
-  const { rows } = await pool.query<{ id: string; user_id: string; user_name: string; label: string; created_by: string; created_at: Date; last_used_at: Date | null }>(
-    `SELECT id, user_id, user_name, label, created_by, created_at, last_used_at FROM staff_phones
-      WHERE tenant_id = $1 AND revoked_at IS NULL ORDER BY user_name`,
-    [tenantId],
-  )
-  return rows.map((r) => ({
-    id: r.id,
-    userId: r.user_id,
-    userName: r.user_name,
-    label: r.label,
-    createdBy: r.created_by,
-    createdAt: r.created_at.getTime(),
-    lastUsedAt: r.last_used_at?.getTime() ?? null,
-  }))
-}
-
-export async function revokePhone(pool: Pool, tenantId: string, id: string): Promise<boolean> {
-  const { rowCount } = await pool.query('UPDATE staff_phones SET revoked_at = now() WHERE tenant_id = $1 AND id::text = $2 AND revoked_at IS NULL', [tenantId, id])
-  return (rowCount ?? 0) > 0
+async function pinMatches(pin: string, saltHex: string, expectedHex: string): Promise<boolean> {
+  if (!/^[0-9a-f]+$/i.test(saltHex) || !/^[0-9a-f]{64}$/i.test(expectedHex)) return false
+  const derived = await pbkdf2Async(pin, Buffer.from(saltHex, 'hex'), PBKDF2_ITERATIONS, 32, 'sha256')
+  return timingSafeEqual(derived, Buffer.from(expectedHex, 'hex'))
 }
 
 // ---- Absen ----
-
-interface PhoneRow {
-  id: string
-  tenant_id: string
-  user_id: string
-  user_name: string
-  public_key: { kty: 'EC'; crv: 'P-256'; x: string; y: string }
-  label: string
-}
-
-async function activePhone(client: Pool | PoolClient, phoneId: string): Promise<PhoneRow> {
-  if (!/^[0-9a-f-]{36}$/i.test(phoneId)) throw new AttendanceError('HP belum terdaftar.', 401)
-  const { rows } = await client.query<PhoneRow>('SELECT id, tenant_id, user_id, user_name, public_key, label FROM staff_phones WHERE id = $1 AND revoked_at IS NULL', [phoneId])
-  if (!rows[0]) throw new AttendanceError('HP ini tidak terdaftar atau sudah dicabut admin. Minta admin mendaftarkan ulang.', 401)
-  return rows[0]
-}
-
-/** Tanda tangan ECDSA P-256/SHA-256 dari WebCrypto (format r||s, 64 byte). */
-function signatureValid(publicKey: PhoneRow['public_key'], message: string, signatureB64: string): boolean {
-  let key: KeyObject
-  try {
-    key = createPublicKey({ key: publicKey, format: 'jwk' })
-  } catch {
-    return false
-  }
-  const sig = Buffer.from(signatureB64, 'base64url')
-  if (sig.length !== 64) return false
-  return verify('sha256', Buffer.from(message, 'utf8'), { key, dsaEncoding: 'ieee-p1363' }, sig)
-}
-
-/** Pesan yang ditandatangani HP. HARUS identik dengan src/features/absen/absenCrypto.ts. */
-export const challengeMessage = (phoneId: string, qr: string) => `kione-absen/challenge\n${phoneId}\n${qr}`
-export const punchMessage = (challengeId: string, selfieSha256: string, location: string) => `kione-absen/punch\n${challengeId}\n${selfieSha256}\n${location}`
-export const locationText = (loc: PunchLocation | null) => (loc ? `${loc.latitude.toFixed(6)},${loc.longitude.toFixed(6)},${Math.round(loc.accuracy)}` : '-')
 
 async function businessName(client: Pool | PoolClient, tenantId: string): Promise<string> {
   const { rows } = await client.query<{ name: string | null }>(
@@ -224,40 +157,90 @@ async function clockedInSince(client: Pool | PoolClient, tenantId: string, userI
   return last && ACTIONS_IN.includes(last.action) ? Number(last.at) : null
 }
 
-export interface ChallengeResult {
+export interface StartResult {
   challengeId: string
-  type: 'in' | 'out'
-  userName: string
   businessName: string
   selfieRequired: boolean
-  clockedInSince: number | null
+  staff: { userId: string; userName: string }[]
   expiresAt: number
 }
 
-/** Langkah 1: HP menyerahkan QR yang baru dipindai → tantangan untuk selfie. */
-export async function startPunch(pool: Pool, input: { phoneId: string; qr: string; signature: string }): Promise<ChallengeResult> {
-  const phone = await activePhone(pool, input.phoneId)
-  if (!signatureValid(phone.public_key, challengeMessage(phone.id, input.qr), input.signature)) {
-    throw new AttendanceError('Tanda tangan HP tidak cocok. Daftarkan ulang HP ini.', 401)
-  }
-  const window = checkQr(await getQrSecret(pool, phone.tenant_id), input.qr)
-  if (window == null) throw new AttendanceError('QR sudah kedaluwarsa. Pindai lagi QR yang sedang tampil di tablet kasir.', 409)
-  const now = Date.now()
-  const expiresAt = now + CHALLENGE_TTL_MS
+/** Langkah 1: HP menyerahkan QR yang baru dipindai → sesi absen + daftar nama karyawan. */
+export async function startPunch(pool: Pool, qr: string): Promise<StartResult> {
+  const parsed = parseQr(qr)
+  if (!parsed) throw new AttendanceError('Isi QR tidak valid. Pindai QR absensi di tablet kasir.')
+  const { rows: tenants } = await pool.query<{ tenant_id: string; secret: string }>('SELECT tenant_id, secret FROM staff_attendance_secrets WHERE public_ref = $1', [parsed.ref])
+  const tenant = tenants[0]
+  const window = tenant ? checkQr(tenant.secret, parsed.window, parsed.code) : null
+  if (!tenant || window == null) throw new AttendanceError('QR sudah kedaluwarsa. Pindai lagi QR yang sedang tampil di tablet kasir.', 409)
+
+  const { rows: staff } = await pool.query<{ user_id: string; user_name: string }>('SELECT user_id, user_name FROM staff_attendance_roster WHERE tenant_id = $1 ORDER BY user_name', [tenant.tenant_id])
+  if (staff.length === 0) throw new AttendanceError('Daftar karyawan belum dikirim dari tablet. Minta admin membuka menu Absensi di tablet kasir saat online.', 409)
+  const expiresAt = Date.now() + CHALLENGE_TTL_MS
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO staff_punch_challenges (tenant_id, phone_id, qr_window, expires_at) VALUES ($1, $2, $3, to_timestamp($4 / 1000.0)) RETURNING id`,
-    [phone.tenant_id, phone.id, window, expiresAt],
+    'INSERT INTO staff_punch_challenges (tenant_id, qr_window, expires_at) VALUES ($1, $2, to_timestamp($3 / 1000.0)) RETURNING id',
+    [tenant.tenant_id, window, expiresAt],
   )
-  const since = await clockedInSince(pool, phone.tenant_id, phone.user_id, now)
   return {
     challengeId: rows[0].id,
-    type: since != null ? 'out' : 'in',
-    userName: phone.user_name,
-    businessName: await businessName(pool, phone.tenant_id),
-    selfieRequired: await selfieRequired(pool, phone.tenant_id),
-    clockedInSince: since,
+    businessName: await businessName(pool, tenant.tenant_id),
+    selfieRequired: await selfieRequired(pool, tenant.tenant_id),
+    staff: staff.map((s) => ({ userId: s.user_id, userName: s.user_name })),
     expiresAt,
   }
+}
+
+export interface IdentifyResult {
+  type: 'in' | 'out'
+  userName: string
+  clockedInSince: number | null
+}
+
+const CHALLENGE_ID_RE = /^[0-9a-f-]{36}$/i
+
+/** Langkah 2: karyawan memilih namanya + PIN → sesi absen terikat ke karyawan itu. */
+export async function identifyStaff(input: { challengeId: string; userId: string; pin: string }): Promise<IdentifyResult> {
+  if (!CHALLENGE_ID_RE.test(input.challengeId)) throw new AttendanceError('Sesi absen tidak dikenal. Pindai QR lagi.', 404)
+  // PIN salah dikembalikan (bukan dilempar) dari transaksi supaya hitungan percobaannya ikut tersimpan.
+  const result = await withTransaction(async (client): Promise<IdentifyResult | AttendanceError> => {
+    const ch = (
+      await client.query<{ tenant_id: string; expired: boolean; used: boolean }>(
+        'SELECT tenant_id, expires_at < now() AS expired, used_at IS NOT NULL AS used FROM staff_punch_challenges WHERE id = $1 FOR UPDATE',
+        [input.challengeId],
+      )
+    ).rows[0]
+    if (!ch) throw new AttendanceError('Sesi absen tidak dikenal. Pindai QR lagi.', 404)
+    if (ch.used) throw new AttendanceError('Sesi absen ini sudah dipakai. Pindai QR lagi.', 409)
+    if (ch.expired) throw new AttendanceError('Waktu absen habis. Pindai QR lagi.', 409)
+
+    const staff = (
+      await client.query<{ user_name: string; pin_hash: string; pin_salt: string; failed_attempts: number; locked: boolean; locked_min: number | null }>(
+        `SELECT user_name, pin_hash, pin_salt, failed_attempts, locked_until > now() AS locked,
+                CEIL(EXTRACT(EPOCH FROM (locked_until - now())) / 60)::int AS locked_min
+           FROM staff_attendance_roster WHERE tenant_id = $1 AND user_id = $2 FOR UPDATE`,
+        [ch.tenant_id, input.userId],
+      )
+    ).rows[0]
+    if (!staff) throw new AttendanceError('Nama karyawan tidak ditemukan. Pindai QR lagi.', 404)
+    if (staff.locked) throw new AttendanceError(`PIN salah terlalu sering. Coba lagi ${staff.locked_min ?? 15} menit lagi atau minta absen manual ke admin.`, 429)
+
+    if (!(await pinMatches(input.pin, staff.pin_salt, staff.pin_hash))) {
+      const attempts = staff.failed_attempts + 1
+      const lock = attempts >= MAX_PIN_ATTEMPTS
+      await client.query(
+        `UPDATE staff_attendance_roster SET failed_attempts = $3, locked_until = CASE WHEN $4 THEN now() + ($5 || ' milliseconds')::interval ELSE locked_until END
+          WHERE tenant_id = $1 AND user_id = $2`,
+        [ch.tenant_id, input.userId, lock ? 0 : attempts, lock, String(PIN_LOCK_MS)],
+      )
+      return new AttendanceError(lock ? 'PIN salah terlalu sering. Nama ini dikunci 15 menit.' : `PIN salah. Sisa ${MAX_PIN_ATTEMPTS - attempts} kali percobaan.`, lock ? 429 : 401)
+    }
+    await client.query('UPDATE staff_attendance_roster SET failed_attempts = 0, locked_until = NULL WHERE tenant_id = $1 AND user_id = $2', [ch.tenant_id, input.userId])
+    await client.query('UPDATE staff_punch_challenges SET user_id = $2, user_name = $3 WHERE id = $1', [input.challengeId, input.userId, staff.user_name])
+    const since = await clockedInSince(client, ch.tenant_id, input.userId, Date.now())
+    return { type: since != null ? 'out' : 'in', userName: staff.user_name, clockedInSince: since }
+  })
+  if (result instanceof AttendanceError) throw result
+  return result
 }
 
 export interface PunchLocation {
@@ -310,54 +293,63 @@ function formatMinutes(minutes: number): string {
   return h > 0 ? `${h} jam ${m} mnt` : `${m} mnt`
 }
 
-/** Langkah 2: selfie (+ lokasi bila diizinkan) dengan tanda tangan HP → absen tercatat. */
+/** Label singkat HP dari user-agent untuk catatan absen, mis. "Android · Chrome". */
+export function deviceLabel(ua: string | null): string {
+  const s = ua ?? ''
+  const os = /iPhone|iPad/.test(s) ? 'iPhone' : /Android/.test(s) ? 'Android' : 'HP'
+  const browser = /SamsungBrowser/.test(s) ? 'Samsung Internet' : /CriOS|Chrome/.test(s) ? 'Chrome' : /Firefox|FxiOS/.test(s) ? 'Firefox' : /Safari/.test(s) ? 'Safari' : 'Browser'
+  return `${os} · ${browser}`
+}
+
+/** Langkah 3: selfie (+ lokasi bila diizinkan) → absen tercatat. */
 export async function completePunch(input: {
-  phoneId: string
   challengeId: string
   selfieBase64: string | null
   location: PunchLocation | null
-  signature: string
   ip: string | null
   userAgent: string | null
 }): Promise<PunchResult> {
   const selfie = input.selfieBase64 ? Buffer.from(input.selfieBase64, 'base64') : null
   if (selfie && (selfie.length > MAX_SELFIE_BYTES || selfie[0] !== 0xff || selfie[1] !== 0xd8)) throw new AttendanceError('Foto selfie tidak valid.')
-  if (!/^[0-9a-f-]{36}$/i.test(input.challengeId)) throw new AttendanceError('Sesi absen tidak dikenal. Pindai QR lagi.', 404)
+  if (!CHALLENGE_ID_RE.test(input.challengeId)) throw new AttendanceError('Sesi absen tidak dikenal. Pindai QR lagi.', 404)
 
   return withTransaction(async (client) => {
-    const phone = await activePhone(client, input.phoneId)
-    const message = punchMessage(input.challengeId, selfie ? sha256Hex(selfie) : '-', locationText(input.location))
-    if (!signatureValid(phone.public_key, message, input.signature)) throw new AttendanceError('Tanda tangan HP tidak cocok. Daftarkan ulang HP ini.', 401)
-
-    const ch = await client.query<{ expired: boolean; used: boolean }>(
-      'SELECT expires_at < now() AS expired, used_at IS NOT NULL AS used FROM staff_punch_challenges WHERE id = $1 AND phone_id = $2 FOR UPDATE',
-      [input.challengeId, phone.id],
-    )
-    if (!ch.rows[0]) throw new AttendanceError('Sesi absen tidak dikenal. Pindai QR lagi.', 404)
-    if (ch.rows[0].used) throw new AttendanceError('Sesi absen ini sudah dipakai. Pindai QR lagi.', 409)
-    if (ch.rows[0].expired) throw new AttendanceError('Waktu selfie habis. Pindai QR lagi.', 409)
-    if (!selfie && (await selfieRequired(client, phone.tenant_id))) throw new AttendanceError('Selfie wajib untuk absen.')
+    const ch = (
+      await client.query<{ tenant_id: string; user_id: string | null; user_name: string | null; expired: boolean; used: boolean }>(
+        'SELECT tenant_id, user_id, user_name, expires_at < now() AS expired, used_at IS NOT NULL AS used FROM staff_punch_challenges WHERE id = $1 FOR UPDATE',
+        [input.challengeId],
+      )
+    ).rows[0]
+    if (!ch) throw new AttendanceError('Sesi absen tidak dikenal. Pindai QR lagi.', 404)
+    if (ch.used) throw new AttendanceError('Sesi absen ini sudah dipakai. Pindai QR lagi.', 409)
+    if (ch.expired) throw new AttendanceError('Waktu selfie habis. Pindai QR lagi.', 409)
+    if (!ch.user_id || !ch.user_name) throw new AttendanceError('Pilih nama dan masukkan PIN dulu.', 401)
+    if (!selfie && (await selfieRequired(client, ch.tenant_id))) throw new AttendanceError('Selfie wajib untuk absen.')
     await client.query('UPDATE staff_punch_challenges SET used_at = now() WHERE id = $1', [input.challengeId])
+    const tenantId = ch.tenant_id
+    const userId = ch.user_id
+    const userName = ch.user_name
 
     // Kunci ujung rantai tenant ini → absen serentak tetap berurutan & arah masuk/pulang konsisten.
-    await client.query('INSERT INTO staff_attendance_chain (tenant_id, seq, hash) VALUES ($1, 0, $2) ON CONFLICT (tenant_id) DO NOTHING', [phone.tenant_id, ''])
-    const head = (await client.query<{ seq: string; hash: string }>('SELECT seq, hash FROM staff_attendance_chain WHERE tenant_id = $1 FOR UPDATE', [phone.tenant_id])).rows[0]
+    await client.query('INSERT INTO staff_attendance_chain (tenant_id, seq, hash) VALUES ($1, 0, $2) ON CONFLICT (tenant_id) DO NOTHING', [tenantId, ''])
+    const head = (await client.query<{ seq: string; hash: string }>('SELECT seq, hash FROM staff_attendance_chain WHERE tenant_id = $1 FOR UPDATE', [tenantId])).rows[0]
 
     const at = Date.now()
-    const since = await clockedInSince(client, phone.tenant_id, phone.user_id, at)
+    const since = await clockedInSince(client, tenantId, userId, at)
     const type: 'in' | 'out' = since != null ? 'out' : 'in'
     const minutes = since != null ? Math.round((at - since) / 60000) : 0
-    const via = `lewat HP (${phone.label}${selfie ? ', selfie' : ', tanpa selfie'}${input.location ? '' : ', tanpa lokasi'})`
+    const label = deviceLabel(input.userAgent)
+    const via = `lewat HP (${label}, PIN${selfie ? ', selfie' : ', tanpa selfie'}${input.location ? '' : ', tanpa lokasi'})`
     const id = randomUUID()
     const seq = Number(head.seq) + 1
     const entryBase = {
       id,
-      userId: phone.user_id,
-      userName: phone.user_name,
+      userId,
+      userName,
       action: type === 'in' ? 'attendance.in' : 'attendance.out',
       entityType: 'attendance',
-      entityId: phone.user_id,
-      details: type === 'in' ? `${phone.user_name} absen masuk ${via}.` : `${phone.user_name} absen pulang setelah ${formatMinutes(minutes)} ${via}.`,
+      entityId: userId,
+      details: type === 'in' ? `${userName} absen masuk ${via}.` : `${userName} absen pulang setelah ${formatMinutes(minutes)} ${via}.`,
       createdAt: at,
       deviceId: SERVER_CHAIN_DEVICE_ID,
       deviceSeq: seq,
@@ -366,18 +358,17 @@ export async function completePunch(input: {
     const entry = { ...entryBase, hash: auditEntryHash(entryBase) }
 
     await client.query(
-      `INSERT INTO staff_attendance_punches (id, tenant_id, user_id, user_name, phone_id, type, created_at, selfie, latitude, longitude, accuracy_m, ip, user_agent)
+      `INSERT INTO staff_attendance_punches (id, tenant_id, user_id, user_name, device_label, type, created_at, selfie, latitude, longitude, accuracy_m, ip, user_agent)
        VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0), $8, $9, $10, $11, $12, $13)`,
-      [id, phone.tenant_id, phone.user_id, phone.user_name, phone.id, type, at, selfie, input.location?.latitude ?? null, input.location?.longitude ?? null, input.location?.accuracy ?? null, input.ip, input.userAgent?.slice(0, 300) ?? null],
+      [id, tenantId, userId, userName, label, type, at, selfie, input.location?.latitude ?? null, input.location?.longitude ?? null, input.location?.accuracy ?? null, input.ip, input.userAgent?.slice(0, 300) ?? null],
     )
     await client.query(
       `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at, server_seq, updated_at)
        VALUES ($1, 'auditLogs', $2, $3::jsonb, $4, nextval('sync_server_seq'), now())`,
-      [phone.tenant_id, id, JSON.stringify(entry), at],
+      [tenantId, id, JSON.stringify(entry), at],
     )
-    await client.query('UPDATE staff_attendance_chain SET seq = $2, hash = $3 WHERE tenant_id = $1', [phone.tenant_id, seq, entry.hash])
-    await client.query('UPDATE staff_phones SET last_used_at = now() WHERE id = $1', [phone.id])
-    return { type, at, userName: phone.user_name, minutes }
+    await client.query('UPDATE staff_attendance_chain SET seq = $2, hash = $3 WHERE tenant_id = $1', [tenantId, seq, entry.hash])
+    return { type, at, userName, minutes }
   })
 }
 
@@ -387,7 +378,7 @@ export interface AttendanceLogRow {
   id: string
   userName: string
   type: 'in' | 'out'
-  /** 'phone' = HP terdaftar; 'manual' = dicatat admin di tablet (pengecualian); 'pin' = absen PIN lama. */
+  /** 'phone' = lewat HP; 'manual' = dicatat admin di tablet (pengecualian); 'pin' = absen PIN lama di tablet. */
   source: 'phone' | 'manual' | 'pin'
   createdAt: number
   details: string
@@ -399,9 +390,9 @@ export interface AttendanceLogRow {
 /** Semua absen dalam rentang — dari HP (lengkap dengan selfie/lokasi) maupun dari tablet. */
 export async function loadAttendanceLog(pool: Pool, tenantId: string, sinceMs: number, untilMs: number): Promise<{ rows: AttendanceLogRow[] }> {
   const [punches, logs] = await Promise.all([
-    pool.query<{ id: string; type: 'in' | 'out'; label: string; has_selfie: boolean; latitude: number | null; longitude: number | null; accuracy_m: number | null }>(
-      `SELECT p.id, p.type, ph.label, p.selfie IS NOT NULL AS has_selfie, p.latitude, p.longitude, p.accuracy_m
-         FROM staff_attendance_punches p JOIN staff_phones ph ON ph.id = p.phone_id
+    pool.query<{ id: string; label: string | null; has_selfie: boolean; latitude: number | null; longitude: number | null; accuracy_m: number | null }>(
+      `SELECT p.id, COALESCE(p.device_label, ph.label) AS label, p.selfie IS NOT NULL AS has_selfie, p.latitude, p.longitude, p.accuracy_m
+         FROM staff_attendance_punches p LEFT JOIN staff_phones ph ON ph.id = p.phone_id
         WHERE p.tenant_id = $1 AND p.created_at >= to_timestamp($2 / 1000.0) AND p.created_at <= to_timestamp($3 / 1000.0)`,
       [tenantId, sinceMs, untilMs],
     ),

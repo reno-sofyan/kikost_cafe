@@ -253,31 +253,13 @@ export async function consumeServerOwnerCode(code: string): Promise<ServerOwnerC
 
 // ---- Absensi karyawan lewat HP (lihat backend/src/routes/staffAttendance.ts) ----
 
-export interface StaffPhone {
-  id: string
-  userId: string
-  userName: string
-  label: string
-  createdBy: string
-  createdAt: number
-  lastUsedAt: number | null
-}
-
-export function getAttendanceQrSecret(): Promise<{ secret: string; periodMs: number }> {
+export function getAttendanceQrSecret(): Promise<{ secret: string; ref: string; periodMs: number }> {
   return midtransCall('/api/sync/attendance/qr-secret', { method: 'GET' }, 'Gagal menyiapkan QR absensi')
 }
 
-/** Tautan pendaftaran HP sekali pakai (berlaku 15 menit) untuk satu karyawan. */
-export function createStaffPhoneEnrollment(params: { userId: string; userName: string; createdBy: string }): Promise<{ token: string; expiresAt: number }> {
-  return midtransCall('/api/sync/attendance/enroll', { method: 'POST', body: JSON.stringify(params) }, 'Gagal membuat tautan pendaftaran')
-}
-
-export async function listStaffPhones(): Promise<StaffPhone[]> {
-  return (await midtransCall<{ phones: StaffPhone[] }>('/api/sync/attendance/phones', { method: 'GET' }, 'Gagal memuat HP terdaftar')).phones
-}
-
-export async function revokeStaffPhone(id: string): Promise<void> {
-  await midtransCall(`/api/sync/attendance/phones/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: '{}' }, 'Gagal mencabut HP')
+/** Daftar karyawan aktif + hash PIN — HP karyawan memilih nama & memasukkan PIN saat absen. */
+export async function uploadAttendanceRoster(staff: { userId: string; userName: string; pinHash: string; pinSalt: string }[]): Promise<void> {
+  await midtransCall('/api/sync/attendance/roster', { method: 'POST', body: JSON.stringify({ staff }) }, 'Gagal mengirim daftar karyawan')
 }
 
 // ---- Token Mode Developer dari konsol /ops (lihat backend/src/routes/developerCode.ts) ----

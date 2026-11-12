@@ -4,7 +4,7 @@ import { ATTENDANCE_SOURCE_LABELS, attendanceReportToCsv, buildAttendanceReport,
 import { listActiveUsers } from '@/db/repositories/users'
 import { getSettings } from '@/db/repositories/settings'
 import { PayrollSection, StaffSetupSection } from '@/features/attendance/StaffPayrollPanel'
-import { AttendanceQrModal, ManualAttendanceModal, PhoneAttendanceSettings } from '@/features/attendance/PhoneAttendance'
+import { AttendanceQrModal, ManualAttendanceModal, PhoneAttendanceSettings, useAttendanceRosterSync } from '@/features/attendance/PhoneAttendance'
 import { buildRosterCompliance, lateMinutesFor, rosterFor, shiftOn } from '@/lib/roster'
 import { durationSince, formatDateTime, formatTime, jakartaDateKey, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { formatNumber } from '@/lib/currency'
@@ -18,14 +18,15 @@ const NO_USERS: User[] = []
 const PERIOD_LABELS: Record<Period, string> = { today: 'Hari Ini', week: '7 Hari', month: 'Bulan Ini', lastMonth: 'Bulan Lalu' }
 
 /**
- * Absensi. Jalur utama: karyawan absen dari HP terdaftar dengan memindai QR Absensi di
- * tablet ini + selfie (lihat PhoneAttendance.tsx). Absen manual hanya pengecualian,
+ * Absensi. Jalur utama: karyawan absen dari HP-nya dengan memindai QR Absensi di
+ * tablet ini + PIN + selfie (lihat PhoneAttendance.tsx). Absen manual hanya pengecualian,
  * disetujui Admin/Pemilik. Pengelola melihat rekap jam kerja & gaji.
  */
 export function AttendanceScreen() {
   const currentUser = useSessionStore((s) => s.currentUser)!
   const users = useLiveQuery(() => listActiveUsers(), []) ?? NO_USERS
   const clockedIn = useLiveQuery(() => listClockedIn(), [])
+  useAttendanceRosterSync(users)
   const [showQr, setShowQr] = useState(false)
   const [showManual, setShowManual] = useState(false)
   const [period, setPeriod] = useState<Period>('today')
@@ -65,7 +66,7 @@ export function AttendanceScreen() {
       <div className="mb-4 flex flex-wrap items-start gap-3">
         <div className="mr-auto">
           <h1 className="mb-1 text-xl font-bold text-ink-50">Absensi</h1>
-          <p className="text-sm text-ink-300">Absen dari HP masing-masing: ketuk “QR Absensi”, pindai dengan kamera HP terdaftar, lalu selfie.</p>
+          <p className="text-sm text-ink-300">Absen dari HP masing-masing: ketuk “QR Absensi”, pindai dengan kamera HP, pilih nama, masukkan PIN, lalu selfie.</p>
         </div>
         <button className="btn-secondary btn-compact !px-4 text-sm" onClick={() => setShowManual(true)}>
           Absen Manual
@@ -207,7 +208,7 @@ export function AttendanceScreen() {
       )}
 
       {canSeeReport && canManageStaff && report && <PayrollSection report={report} settings={settings} periodKey={periodKey} periodLabel={PERIOD_LABELS[period]} actor={actor} />}
-      {canManageStaff && <PhoneAttendanceSettings users={sorted} settings={settings} actor={actor} />}
+      {canManageStaff && <PhoneAttendanceSettings settings={settings} actor={actor} />}
       {canManageStaff && <StaffSetupSection users={sorted} settings={settings} actor={actor} />}
 
       {showQr && <AttendanceQrModal settings={settings} onClose={() => setShowQr(false)} />}

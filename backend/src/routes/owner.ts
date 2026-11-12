@@ -16,7 +16,7 @@ import {
   ownerConsolePath,
   type OwnerConsoleArea,
 } from '../lib/ownerConsole.js'
-import { listPhones, loadAttendanceLog, loadSelfie, revokePhone } from '../lib/staffAttendance.js'
+import { loadAttendanceLog, loadSelfie } from '../lib/staffAttendance.js'
 import { generateOwnerCode, getOwnerCodeStatus, revokeOwnerCode } from '../lib/ownerCancelCodes.js'
 import { loadCancellationReport, loadSalesReport, loadTenantDetail, loadTenantOverview, num, parseWibRange } from '../lib/tenantReports.js'
 import { buildAnyTenantExport } from '../lib/tenantDataExport.js'
@@ -156,16 +156,14 @@ export async function registerOwnerRoutes(app: FastifyInstance, opts: { area: Ow
       return { label: range.label, ...result }
     })
 
-    // Absensi karyawan: semua absen (HP + manual di tablet), selfie, dan HP terdaftar.
+    // Absensi karyawan: semua absen (HP + manual di tablet), selfie, dan lokasi.
     app.get<{ Querystring: { from?: string; to?: string } }>('/api/attendance', async (request, reply) => {
       const range = parseWibRange(request.query.from, request.query.to)
       if ('error' in range) {
         reply.code(400)
         return { error: range.error }
       }
-      const pool = getPool()
-      const [log, phones] = await Promise.all([loadAttendanceLog(pool, request.ownerTenantId, range.sinceMs, range.untilMs), listPhones(pool, request.ownerTenantId)])
-      return { label: range.label, ...log, phones }
+      return { label: range.label, ...(await loadAttendanceLog(getPool(), request.ownerTenantId, range.sinceMs, range.untilMs)) }
     })
 
     app.get<{ Params: { id: string } }>('/api/attendance/:id/selfie', async (request, reply) => {
@@ -177,15 +175,6 @@ export async function registerOwnerRoutes(app: FastifyInstance, opts: { area: Ow
       reply.header('content-type', 'image/jpeg')
       reply.header('cache-control', 'private, max-age=3600')
       return reply.send(selfie)
-    })
-
-    app.post<{ Params: { id: string } }>('/api/attendance/phones/:id/revoke', async (request, reply) => {
-      if (!(await revokePhone(getPool(), request.ownerTenantId, request.params.id))) {
-        reply.code(404)
-        return { error: 'HP tidak ditemukan' }
-      }
-      request.log.info({ tenantId: request.ownerTenantId, phoneId: request.params.id }, 'owner: HP absensi dicabut')
-      return { ok: true }
     })
   }
 

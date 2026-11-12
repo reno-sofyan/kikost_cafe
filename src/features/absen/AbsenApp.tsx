@@ -1,34 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/Icon'
-import {
-  challengeMessage,
-  generatePhoneKey,
-  loadIdentity,
-  locationText,
-  phoneLabel,
-  punchMessage,
-  saveIdentity,
-  sha256Hex,
-  signMessage,
-  type PhoneIdentity,
-  type PunchLocation,
-} from '@/features/absen/absenCrypto'
 
 /**
- * Halaman absen karyawan di HP sendiri: `/absen`. Publik, tanpa login/Dexie/sync.
- *  - `/absen#d=<token>` — tautan pendaftaran dari tablet (admin) → HP ini didaftarkan.
- *  - `/absen#c=<qr>`    — QR absensi yang dipindai dari tablet kasir → selfie → absen.
- * Fragmen URL langsung dihapus agar tak terpakai ulang saat halaman dimuat lagi.
+ * Halaman absen karyawan di HP: `/absen`. Publik, tanpa login/Dexie/sync, dan HP tidak
+ * perlu didaftarkan. `/absen#c=<qr>` = QR absensi yang dipindai dari tablet kasir →
+ * pilih nama → PIN → selfie → absen. Fragmen URL langsung dihapus agar tak terpakai
+ * ulang saat halaman dimuat lagi.
  */
 
-interface Challenge {
+interface Session {
   challengeId: string
-  type: 'in' | 'out'
-  userName: string
   businessName: string
   selfieRequired: boolean
-  clockedInSince: number | null
+  staff: { userId: string; userName: string }[]
   expiresAt: number
+}
+
+interface Identified {
+  type: 'in' | 'out'
+  userName: string
+  clockedInSince: number | null
 }
 
 interface PunchDone {
@@ -38,14 +29,19 @@ interface PunchDone {
   minutes: number
 }
 
+interface PunchLocation {
+  latitude: number
+  longitude: number
+  accuracy: number
+}
+
 type Screen =
   | { kind: 'loading' }
-  | { kind: 'idle'; identity: PhoneIdentity | null }
-  | { kind: 'enroll'; token: string; existing: PhoneIdentity | null }
-  | { kind: 'enrolled'; identity: PhoneIdentity }
-  | { kind: 'punch'; identity: PhoneIdentity; challenge: Challenge }
-  | { kind: 'done'; result: PunchDone; identity: PhoneIdentity }
-  | { kind: 'error'; message: string; identity: PhoneIdentity | null }
+  | { kind: 'idle' }
+  | { kind: 'pick'; session: Session }
+  | { kind: 'punch'; session: Session; who: Identified }
+  | { kind: 'done'; result: PunchDone; businessName: string }
+  | { kind: 'error'; message: string }
 
 const fmtTime = (ms: number) => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(ms)
 const fmtDate = (ms: number) => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long' }).format(ms)
@@ -70,45 +66,53 @@ function getLocation(): Promise<PunchLocation | null> {
   })
 }
 
+/** Sisa detik sesi absen, diperbarui tiap detik. */
+function useSecondsLeft(expiresAt: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  return Math.max(0, Math.round((expiresAt - now) / 1000))
+}
+
+function Countdown({ secondsLeft }: { secondsLeft: number }) {
+  return (
+    <p className={`mt-2 text-center text-xs ${secondsLeft < 30 ? 'text-red-600' : 'text-ink-400'}`}>
+      {secondsLeft === 0 ? 'Waktu habis — pindai QR di tablet lagi.' : `Sisa waktu ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`}
+    </p>
+  )
+}
+
 export function AbsenApp() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' })
   // Dibaca saat render pertama, sebelum efek di bawah menghapus fragmen dari bilah alamat
   // (efek bisa berjalan dua kali di StrictMode; fragmen sudah kosong di jalan kedua).
-  const [params] = useState(() => new URLSearchParams(window.location.hash.slice(1)))
+  const [qr] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('c'))
 
   useEffect(() => {
     if (window.location.hash) history.replaceState(null, '', window.location.pathname)
+    if (!qr) return setScreen({ kind: 'idle' })
     let cancelled = false
-    const show = (s: Screen) => !cancelled && setScreen(s)
-    void (async () => {
-      const identity = await loadIdentity()
-      const enrollToken = params.get('d')
-      const qr = params.get('c')
-      if (enrollToken) return show({ kind: 'enroll', token: enrollToken, existing: identity })
-      if (!qr) return show({ kind: 'idle', identity })
-      if (!identity) return show({ kind: 'error', identity: null, message: 'HP ini belum terdaftar untuk absensi. Minta admin mendaftarkan HP Anda dari tablet kasir (menu Absensi).' })
-      try {
-        const challenge = await postJson<Challenge>('/api/absen/challenge', { phoneId: identity.phoneId, qr, signature: await signMessage(identity.privateKey, challengeMessage(identity.phoneId, qr)) })
-        show({ kind: 'punch', identity, challenge })
-      } catch (e) {
-        show({ kind: 'error', identity, message: e instanceof Error ? e.message : 'Gagal memulai absen.' })
-      }
-    })()
+    postJson<Session>('/api/absen/start', { qr })
+      .then((session) => !cancelled && setScreen({ kind: 'pick', session }))
+      .catch((e) => !cancelled && setScreen({ kind: 'error', message: e instanceof Error ? e.message : 'Gagal memulai absen.' }))
     return () => {
       cancelled = true
     }
-  }, [params])
+  }, [qr])
 
   // Memindai QR berikutnya sering membuka tab /absen yang sama — hanya fragmen yang
   // berubah, tanpa muat ulang. Muat ulang supaya QR baru diproses dari awal.
   useEffect(() => {
     const onHash = () => {
-      if (/[#&](c|d)=/.test(window.location.hash)) window.location.reload()
+      if (/[#&]c=/.test(window.location.hash)) window.location.reload()
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
+  const business = screen.kind === 'pick' || screen.kind === 'punch' ? screen.session.businessName : screen.kind === 'done' ? screen.businessName : null
   return (
     <div className="min-h-full bg-white text-ink-50">
       <div className="mx-auto max-w-md px-4 pb-12 pt-6">
@@ -118,23 +122,19 @@ export function AbsenApp() {
           </span>
           <div>
             <p className="text-base font-bold leading-tight">Absensi Karyawan</p>
-            <p className="text-xs text-ink-400">{screenBusiness(screen) || 'Kione POS'}</p>
+            <p className="text-xs text-ink-400">{business || 'Kione POS'}</p>
           </div>
         </header>
         {screen.kind === 'loading' && <p className="mt-24 text-center text-ink-400">Memuat…</p>}
-        {screen.kind === 'idle' && <Idle identity={screen.identity} />}
-        {screen.kind === 'enroll' && <Enroll token={screen.token} existing={screen.existing} onDone={(identity) => setScreen({ kind: 'enrolled', identity })} />}
-        {screen.kind === 'enrolled' && (
-          <section className="card p-5 text-center">
-            <Icon name="check" size={36} className="mx-auto text-success-600" />
-            <h1 className="mt-2 text-lg font-bold">HP terdaftar</h1>
-            <p className="mt-1 text-sm text-ink-300">
-              HP ini sekarang dipakai absensi <b className="text-ink-50">{screen.identity.userName}</b>.
-            </p>
+        {screen.kind === 'idle' && (
+          <section className="card p-5">
             <HowTo />
           </section>
         )}
-        {screen.kind === 'punch' && <Punch identity={screen.identity} challenge={screen.challenge} onDone={(result) => setScreen({ kind: 'done', result, identity: screen.identity })} />}
+        {screen.kind === 'pick' && <PickStaff session={screen.session} onDone={(who) => setScreen({ kind: 'punch', session: screen.session, who })} />}
+        {screen.kind === 'punch' && (
+          <Punch session={screen.session} who={screen.who} onDone={(result) => setScreen({ kind: 'done', result, businessName: screen.session.businessName })} />
+        )}
         {screen.kind === 'done' && (
           <section className="card p-6 text-center">
             <span className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${screen.result.type === 'in' ? 'bg-success-600' : 'bg-brand-600'} text-white`}>
@@ -161,12 +161,6 @@ export function AbsenApp() {
   )
 }
 
-function screenBusiness(screen: Screen): string | null {
-  if (screen.kind === 'punch') return screen.challenge.businessName
-  if ('identity' in screen && screen.identity) return screen.identity.businessName
-  return null
-}
-
 function HowTo() {
   return (
     <p className="mt-4 rounded-xl bg-ink-950 p-3 text-left text-sm text-ink-300">
@@ -176,63 +170,86 @@ function HowTo() {
   )
 }
 
-function Idle({ identity }: { identity: PhoneIdentity | null }) {
-  return (
-    <section className="card p-5">
-      {identity ? (
-        <p className="text-sm text-ink-300">
-          HP ini terdaftar untuk absensi <b className="text-ink-50">{identity.userName}</b>.
-        </p>
-      ) : (
-        <p className="text-sm text-ink-300">HP ini belum terdaftar. Minta admin mendaftarkan HP Anda dari tablet kasir (menu Absensi → Absen lewat HP).</p>
-      )}
-      <HowTo />
-    </section>
-  )
-}
-
-function Enroll({ token, existing, onDone }: { token: string; existing: PhoneIdentity | null; onDone: (identity: PhoneIdentity) => void }) {
+/** Langkah 1: pilih nama sendiri, lalu masukkan PIN (sama dengan PIN masuk ke aplikasi kasir). */
+function PickStaff({ session, onDone }: { session: Session; onDone: (who: Identified) => void }) {
+  const [userId, setUserId] = useState<string | null>(session.staff.length === 1 ? session.staff[0].userId : null)
+  const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const secondsLeft = useSecondsLeft(session.expiresAt)
+  const pinRef = useRef<HTMLInputElement>(null)
+  const selected = session.staff.find((s) => s.userId === userId)
 
-  async function enroll() {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!userId) return
     setBusy(true)
     setError(null)
     try {
-      if (!window.isSecureContext || !crypto.subtle) throw new Error('Browser ini tidak mendukung absensi aman. Buka lewat Chrome atau Safari terbaru.')
-      const { privateKey, publicJwk } = await generatePhoneKey()
-      const res = await postJson<{ phoneId: string; userName: string; businessName: string }>('/api/absen/enroll', { token, publicKey: publicJwk, label: phoneLabel() })
-      const identity: PhoneIdentity = { phoneId: res.phoneId, userName: res.userName, businessName: res.businessName, privateKey }
-      await saveIdentity(identity)
-      onDone(identity)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Pendaftaran gagal.')
+      onDone(await postJson<Identified>('/api/absen/identify', { challengeId: session.challengeId, userId, pin }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'PIN tidak bisa diperiksa.')
+      setPin('')
+      pinRef.current?.focus()
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <section className="card p-5">
-      <h1 className="text-lg font-bold">Daftarkan HP ini untuk absensi</h1>
-      <p className="mt-2 text-sm text-ink-300">
-        Setelah terdaftar, absen hanya bisa dilakukan dari HP & browser ini. Pakai HP milik Anda sendiri — jangan daftarkan HP orang lain.
-      </p>
-      {existing && <p className="mt-2 text-sm text-yellow-700">HP ini sebelumnya terdaftar untuk {existing.userName}. Pendaftaran baru akan menggantikannya.</p>}
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-      <button className="btn-primary mt-4 w-full" disabled={busy} onClick={() => void enroll()}>
-        {busy ? 'Mendaftarkan…' : 'Daftarkan HP Ini'}
+    <form onSubmit={(e) => void submit(e)}>
+      <h1 className="text-xl font-bold">Siapa Anda?</h1>
+      <p className="mb-3 text-sm text-ink-400">Pilih nama Anda, lalu masukkan PIN yang biasa dipakai masuk ke aplikasi kasir.</p>
+      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Nama karyawan">
+        {session.staff.map((s) => (
+          <button
+            key={s.userId}
+            type="button"
+            aria-pressed={s.userId === userId}
+            onClick={() => {
+              setUserId(s.userId)
+              setError(null)
+              setTimeout(() => pinRef.current?.focus(), 0)
+            }}
+            className={`min-h-[3rem] truncate rounded-xl border px-3 text-left text-sm font-semibold ${
+              s.userId === userId ? 'border-brand-600 bg-brand-600 text-white' : 'border-ink-700 bg-white text-ink-100'
+            }`}
+          >
+            {s.userName}
+          </button>
+        ))}
+      </div>
+      {selected && (
+        <label className="mt-4 block">
+          <span className="mb-1 block text-sm text-ink-300">PIN {selected.userName}</span>
+          <input
+            ref={pinRef}
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            className="input-field text-center text-2xl tracking-[0.5em]"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            aria-label="PIN"
+          />
+        </label>
+      )}
+      {error && <p className="mt-2 text-center text-sm text-red-600">{error}</p>}
+      <button type="submit" className="btn-primary mt-4 w-full !min-h-[3.25rem] text-base" disabled={busy || !selected || pin.length < 4 || secondsLeft === 0}>
+        {busy ? 'Memeriksa…' : 'Lanjut'}
       </button>
-    </section>
+      <Countdown secondsLeft={secondsLeft} />
+    </form>
   )
 }
 
-function Punch({ identity, challenge, onDone }: { identity: PhoneIdentity; challenge: Challenge; onDone: (r: PunchDone) => void }) {
+/** Langkah 2: selfie dari kamera depan (+ lokasi bila diizinkan) → absen tercatat. */
+function Punch({ session, who, onDone }: { session: Session; who: Identified; onDone: (r: PunchDone) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [camera, setCamera] = useState<'starting' | 'on' | 'failed'>('starting')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [now, setNow] = useState(() => Date.now())
+  const secondsLeft = useSecondsLeft(session.expiresAt)
   const location = useRef<Promise<PunchLocation | null>>(Promise.resolve(null))
 
   useEffect(() => {
@@ -252,19 +269,16 @@ function Punch({ identity, challenge, onDone }: { identity: PhoneIdentity; chall
         if (!cancelled) setCamera('failed')
       }
     })()
-    const t = setInterval(() => setNow(Date.now()), 1000)
     return () => {
       cancelled = true
-      clearInterval(t)
       stream?.getTracks().forEach((tr) => tr.stop())
     }
   }, [])
 
-  const secondsLeft = Math.max(0, Math.round((challenge.expiresAt - now) / 1000))
   const expired = secondsLeft === 0
 
-  /** Foto langsung dari video kamera (bukan galeri), diperkecil ke JPEG ±40 KB. */
-  function captureSelfie(): Promise<Uint8Array<ArrayBuffer>> {
+  /** Foto langsung dari video kamera (bukan galeri), diperkecil ke JPEG ±40 KB → base64. */
+  function captureSelfie(): Promise<string> {
     const video = videoRef.current!
     const width = 480
     const height = Math.round((video.videoHeight / video.videoWidth) * width) || 640
@@ -272,9 +286,11 @@ function Punch({ identity, challenge, onDone }: { identity: PhoneIdentity; chall
     canvas.width = width
     canvas.height = height
     canvas.getContext('2d')!.drawImage(video, 0, 0, width, height)
-    return new Promise((resolve, reject) =>
-      canvas.toBlob((blob) => (blob ? void blob.arrayBuffer().then((b) => resolve(new Uint8Array(b))) : reject(new Error('Gagal mengambil foto.'))), 'image/jpeg', 0.72),
-    )
+    return new Promise((resolve, reject) => {
+      const url = canvas.toDataURL('image/jpeg', 0.72)
+      if (url.startsWith('data:image/jpeg;base64,')) resolve(url.slice('data:image/jpeg;base64,'.length))
+      else reject(new Error('Gagal mengambil foto.'))
+    })
   }
 
   async function submit(withSelfie: boolean) {
@@ -282,10 +298,7 @@ function Punch({ identity, challenge, onDone }: { identity: PhoneIdentity; chall
     setError(null)
     try {
       const selfie = withSelfie ? await captureSelfie() : null
-      const loc = await location.current
-      const selfieB64 = selfie ? btoa(Array.from(selfie, (b) => String.fromCharCode(b)).join('')) : null
-      const signature = await signMessage(identity.privateKey, punchMessage(challenge.challengeId, selfie ? await sha256Hex(selfie) : '-', locationText(loc)))
-      onDone(await postJson<PunchDone>('/api/absen/punch', { phoneId: identity.phoneId, challengeId: challenge.challengeId, selfie: selfieB64, location: loc, signature }))
+      onDone(await postJson<PunchDone>('/api/absen/punch', { challengeId: session.challengeId, selfie, location: await location.current }))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Absen gagal.')
     } finally {
@@ -293,14 +306,14 @@ function Punch({ identity, challenge, onDone }: { identity: PhoneIdentity; chall
     }
   }
 
-  const label = challenge.type === 'in' ? 'Absen Masuk' : 'Absen Pulang'
+  const label = who.type === 'in' ? 'Absen Masuk' : 'Absen Pulang'
   return (
     <section>
       <div className="mb-3">
         <h1 className="text-xl font-bold">
-          {label} · {challenge.userName}
+          {label} · {who.userName}
         </h1>
-        {challenge.clockedInSince != null && <p className="text-sm text-ink-400">Masuk sejak {fmtTime(challenge.clockedInSince)} WIB</p>}
+        {who.clockedInSince != null && <p className="text-sm text-ink-400">Masuk sejak {fmtTime(who.clockedInSince)} WIB</p>}
       </div>
       <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-black">
         <video ref={videoRef} playsInline muted className="h-full w-full -scale-x-100 object-cover" />
@@ -310,19 +323,17 @@ function Punch({ identity, challenge, onDone }: { identity: PhoneIdentity; chall
           </p>
         )}
       </div>
-      <p className={`mt-2 text-center text-xs ${secondsLeft < 30 ? 'text-red-600' : 'text-ink-400'}`}>
-        {expired ? 'Waktu habis — pindai QR di tablet lagi.' : `Sisa waktu ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`}
-      </p>
+      <Countdown secondsLeft={secondsLeft} />
       {error && <p className="mt-2 text-center text-sm text-red-600">{error}</p>}
       <button className="btn-primary mt-3 w-full !min-h-[3.25rem] text-base" disabled={busy || expired || camera !== 'on'} onClick={() => void submit(true)}>
         {busy ? 'Mengirim…' : `Ambil Selfie & ${label}`}
       </button>
-      {!challenge.selfieRequired && (
+      {!session.selfieRequired && (
         <button className="btn-ghost mt-2 w-full" disabled={busy || expired} onClick={() => void submit(false)}>
           {label} tanpa selfie
         </button>
       )}
-      <p className="mt-4 text-center text-xs text-ink-400">Waktu absen memakai jam server. Foto & lokasi hanya dilihat pengelola {challenge.businessName}.</p>
+      <p className="mt-4 text-center text-xs text-ink-400">Waktu absen memakai jam server. Foto & lokasi hanya dilihat pengelola {session.businessName}.</p>
     </section>
   )
 }
