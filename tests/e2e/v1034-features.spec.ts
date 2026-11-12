@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { completeOnboarding, idbAll, openShift, waitForOrderItems } from './helpers'
+import { completeOnboarding, idbAll, openShift, unlockDeveloperModeMocked, waitForOrderItems } from './helpers'
 
 interface OrderRow {
   id: string
@@ -42,7 +42,8 @@ test('tap produk tanpa pesanan → Pesanan Baru; nomor pager; lunas → Kasir si
   await page.getByRole('button', { name: 'Printer', exact: true }).click()
   await expect(page.getByText('Cetak logo di struk')).toBeVisible()
 
-  // Aktifkan pager (manual) supaya chip nomor pager muncul di Kasir.
+  // Aktifkan pager (manual) supaya chip nomor pager muncul di Kasir. Pager = pengaturan developer.
+  await unlockDeveloperModeMocked(page)
   await page.getByRole('button', { name: 'Pager', exact: true }).click()
   await page.locator('select').first().selectOption('manual')
   await page.getByRole('button', { name: 'Simpan', exact: true }).click()

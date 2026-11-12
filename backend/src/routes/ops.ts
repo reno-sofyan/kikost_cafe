@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { getPool } from '../db/pool.js'
 import { OPS_DASHBOARD_HTML } from './opsDashboard.js'
 import { generateOwnerCode, getOwnerCodeStatus, revokeOwnerCode } from '../lib/ownerCancelCodes.js'
+import { generateDeveloperCode, getDeveloperCodeStatus, revokeDeveloperCode } from '../lib/developerAccessCodes.js'
 import { createOwnerAccess, listOwnerAccess, revokeOwnerAccess } from '../lib/ownerAccess.js'
 import { loadTenantBusinessType, ownerConsoleAreaFor, ownerConsolePath } from '../lib/ownerConsole.js'
 import { buildAnyTenantExport } from '../lib/tenantDataExport.js'
@@ -268,6 +269,43 @@ export async function registerOpsRoutes(app: FastifyInstance, opsToken: string):
     }
     await revokeOwnerCode(getPool(), tenantId)
     request.log.info({ tenantId }, 'ops: kode pembatalan pemilik dihapus')
+    return { ok: true }
+  })
+
+  // ---- Token Mode Developer (4 angka, sekali pakai; dicocokkan tablet lewat /api/sync/developer-code) ----
+  app.get<{ Params: { tenantId: string } }>('/api/tenant/:tenantId/developer-code', async (request, reply) => {
+    const { tenantId } = request.params
+    if (!TENANT_ID_RE.test(tenantId)) {
+      reply.code(400)
+      return { error: 'tenantId tidak valid' }
+    }
+    return getDeveloperCodeStatus(getPool(), tenantId)
+  })
+
+  app.post<{ Params: { tenantId: string } }>(
+    '/api/tenant/:tenantId/developer-code',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { tenantId } = request.params
+      if (!TENANT_ID_RE.test(tenantId)) {
+        reply.code(400)
+        return { error: 'tenantId tidak valid' }
+      }
+      const result = await generateDeveloperCode(getPool(), tenantId)
+      request.log.info({ tenantId }, 'ops: token developer dibuat')
+      reply.header('cache-control', 'no-store')
+      return result
+    },
+  )
+
+  app.delete<{ Params: { tenantId: string } }>('/api/tenant/:tenantId/developer-code', async (request, reply) => {
+    const { tenantId } = request.params
+    if (!TENANT_ID_RE.test(tenantId)) {
+      reply.code(400)
+      return { error: 'tenantId tidak valid' }
+    }
+    await revokeDeveloperCode(getPool(), tenantId)
+    request.log.info({ tenantId }, 'ops: token developer dicabut')
     return { ok: true }
   })
 

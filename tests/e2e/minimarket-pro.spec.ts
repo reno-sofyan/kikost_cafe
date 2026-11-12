@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { completeOnboarding, idbAll, openShift } from './helpers'
+import { completeOnboarding, idbAll, openShift, unlockDeveloperModeMocked } from './helpers'
 
 interface ProductRow {
   id: string
@@ -169,6 +169,8 @@ test('minimarket pro: satuan dus, grosir, pengali, tahan, bayar campur, pemasok-
 
   // ---- Pengaturan: barcode timbangan ----
   await page.getByRole('link', { name: 'Pengaturan' }).click()
+  // Barcode Timbangan = pengaturan developer.
+  await unlockDeveloperModeMocked(page)
   await page.getByRole('button', { name: 'Barcode Timbangan' }).click()
   await expect(page.getByRole('heading', { name: 'Barcode Timbangan' })).toBeVisible()
 

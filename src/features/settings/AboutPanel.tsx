@@ -6,6 +6,11 @@ import { getApiBaseUrl } from '@/sync/deviceConfig'
 import { ensurePersistentStorage, getStoragePersistStatus } from '@/lib/persistentStorage'
 import { Icon } from '@/components/ui/Icon'
 import { PRODUCT_LOGO, PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_VERSION } from '@/lib/brand'
+import { useUiPrefsStore } from '@/state/uiPrefsStore'
+import { useSessionStore } from '@/state/sessionStore'
+import { useDeveloperUnlocked } from '@/state/developerStore'
+import { DEVELOPER_ONLY, DEVELOPER_TOKEN_LENGTH, lockDeveloperMode, unlockDeveloperMode } from '@/lib/developerAccess'
+import { Button } from '@/components/ui/Button'
 
 /**
  * Panel "Tentang". Selain identitas produk, panel ini adalah tempat pertama
@@ -16,6 +21,8 @@ import { PRODUCT_LOGO, PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_VERSION } from '@/
 export function AboutPanel() {
   const settings = useLiveQuery(() => getSettings(), [])
   const apiBaseUrl = getApiBaseUrl()
+  const haptics = useUiPrefsStore((s) => s.haptics)
+  const setHaptics = useUiPrefsStore((s) => s.setHaptics)
   const [storageStatus, setStorageStatus] = useState(getStoragePersistStatus())
 
   useEffect(() => {
@@ -64,6 +71,17 @@ export function AboutPanel() {
         ))}
       </div>
 
+      {/* Preferensi perangkat ini saja (tiap tablet bisa beda) — lihat uiPrefsStore. */}
+      <label className="card flex cursor-pointer items-center justify-between gap-4 p-5">
+        <span>
+          <span className="block text-sm font-semibold text-ink-50">Getar saat tombol ditekan</span>
+          <span className="block text-xs text-ink-300">Getar ringan di tablet Android sebagai tanda ketukan diterima. Hanya untuk perangkat ini.</span>
+        </span>
+        <input type="checkbox" className="h-5 w-5 flex-none" checked={haptics} onChange={(e) => setHaptics(e.target.checked)} />
+      </label>
+
+      <DeveloperAccessCard />
+
       <div className="card flex items-start gap-3 p-5 text-sm text-ink-200">
         <span className="mt-0.5 flex-none text-brand-400">
           <Icon name="alertTriangle" size={18} />
@@ -73,6 +91,80 @@ export function AboutPanel() {
           tab <span className="font-semibold text-ink-50">Backup</span> — tanpa itu, kerusakan perangkat berarti data hilang.
         </p>
       </div>
+    </div>
+  )
+}
+
+/** Mode Developer: dibuka dengan token 4 angka sekali pakai dari Konsol Operator (/ops). */
+function DeveloperAccessCard() {
+  const unlocked = useDeveloperUnlocked()
+  const user = useSessionStore((s) => s.currentUser)
+  const [token, setToken] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  // Satu-satunya jalur kirim (form submit): token sekali pakai tak boleh terkirim dua kali.
+  async function submit() {
+    if (!user || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await unlockDeveloperMode(token, { userId: user.id, userName: user.name })
+      if (!res.ok) setError(res.message)
+    } finally {
+      setToken('')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <p className="flex items-center gap-2 text-sm font-semibold text-ink-50">
+        <Icon name={unlocked ? 'settings' : 'lock'} size={16} className="text-brand-400" /> Mode Developer
+      </p>
+      {unlocked ? (
+        <>
+          <p className="mt-1 text-xs text-ink-300">Aktif sampai keluar akun. Pengaturan teknis terbuka:</p>
+          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-ink-200">
+            {DEVELOPER_ONLY.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+          <Button variant="secondary" size="sm" className="mt-3" leftIcon={<Icon name="lock" size={15} />} onClick={lockDeveloperMode}>
+            Kunci sekarang
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-ink-300">
+            Pengaturan teknis (sinkronisasi, pemulihan backup, penyedia QRIS, pager, barcode timbangan) hanya untuk developer. Masukkan token {DEVELOPER_TOKEN_LENGTH} angka
+            dari Konsol Operator — sekali pakai, butuh internet.
+          </p>
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void submit()
+            }}
+          >
+            <input
+              className="input-field max-w-[9rem] text-center text-lg tracking-[0.4em]"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={DEVELOPER_TOKEN_LENGTH}
+              aria-label="Token developer"
+              placeholder="••••"
+              value={token}
+              onChange={(e) => setToken(e.target.value.replace(/\D/g, ''))}
+            />
+            <Button type="submit" disabled={token.length !== DEVELOPER_TOKEN_LENGTH} loading={busy}>
+              Buka
+            </Button>
+          </form>
+          {error && <p className="mt-2 text-sm text-red-600" role="alert">{error}</p>}
+        </>
+      )}
     </div>
   )
 }

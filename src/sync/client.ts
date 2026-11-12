@@ -279,3 +279,28 @@ export async function listStaffPhones(): Promise<StaffPhone[]> {
 export async function revokeStaffPhone(id: string): Promise<void> {
   await midtransCall(`/api/sync/attendance/phones/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: '{}' }, 'Gagal mencabut HP')
 }
+
+// ---- Token Mode Developer dari konsol /ops (lihat backend/src/routes/developerCode.ts) ----
+
+export type ServerDeveloperCodeResult =
+  | { ok: true; createdAt: number }
+  | { ok: false; reason: 'no_code' | 'expired' | 'burned' }
+  | { ok: false; reason: 'invalid'; attemptsLeft: number }
+
+/** Mencocokkan & menghanguskan token 4 angka di server. Melempar bila tak terhubung. */
+export async function consumeServerDeveloperCode(code: string): Promise<ServerDeveloperCodeResult> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OWNER_CODE_TIMEOUT_MS)
+  try {
+    const response = await authorizedFetch('/api/sync/developer-code/consume', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+      signal: controller.signal,
+    })
+    const data = await parseJsonOrThrow<ServerDeveloperCodeResult & { error?: string }>(response, 'Cek token gagal')
+    if (!response.ok) throw new Error(data.error || `Cek token gagal (HTTP ${response.status})`)
+    return data
+  } finally {
+    clearTimeout(timer)
+  }
+}

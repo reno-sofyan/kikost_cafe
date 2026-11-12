@@ -18,6 +18,8 @@ import { markBackupDone } from '@/lib/backupReminder'
 import { Capacitor } from '@capacitor/core'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Modal } from '@/components/ui/Modal'
+import { Icon } from '@/components/ui/Icon'
+import { useDeveloperUnlocked } from '@/state/developerStore'
 
 /** Dialog input passphrase — dipakai untuk mengunci backup baru (dua kali, cegah salah ketik)
  * maupun membuka backup lama saat memulihkan (satu kali). Satu komponen, dua mode, supaya
@@ -95,6 +97,8 @@ function PassphraseModal({
 
 export function BackupManager() {
   const currentUser = useSessionStore((s) => s.currentUser)!
+  // Pulihkan backup menimpa seluruh data — hanya di Mode Developer (lihat DEVELOPER_ONLY).
+  const devUnlocked = useDeveloperUnlocked()
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +140,7 @@ export function BackupManager() {
   }
 
   async function tryParseRestore(text: string, passphrase?: string) {
+    if (!devUnlocked) return
     setBusy(true)
     setPassphraseError(null)
     try {
@@ -193,6 +198,15 @@ export function BackupManager() {
         </button>
       </div>
 
+      {!devUnlocked ? (
+        <div className="card flex items-start gap-3 p-5 text-sm text-ink-200">
+          <Icon name="lock" size={18} className="mt-0.5 flex-none text-ink-400" />
+          <p>
+            <b className="text-ink-50">Pulihkan dari Backup</b> menimpa seluruh data perangkat ini, jadi hanya bisa dilakukan developer (Pengaturan → Tentang → Mode
+            Developer). Unduh backup tetap bisa dilakukan kapan saja.
+          </p>
+        </div>
+      ) : (
       <div className="card p-5">
         <h3 className="mb-2 font-semibold text-ink-100">Pulihkan dari Backup</h3>
         <p className="mb-4 text-sm text-red-400">
@@ -214,6 +228,7 @@ export function BackupManager() {
           Pilih File Backup untuk Dipulihkan
         </button>
       </div>
+      )}
 
       {message && <p className="text-sm text-success-500">{message}</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}

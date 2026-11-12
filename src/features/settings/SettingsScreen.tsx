@@ -22,8 +22,12 @@ import { ScaleBarcodeSettings } from '@/features/settings/ScaleBarcodeSettings'
 import { ScannerSettings } from '@/features/settings/ScannerSettings'
 import { readFileAsResizedDataUrl } from '@/lib/image'
 import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
-import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, BUSINESS_TYPE_ORDER, featuresForBusinessType } from '@/lib/businessType'
-import type { BusinessType, OnlinePlatform, ReceiptPaperSize } from '@/types/domain'
+import { Icon } from '@/components/ui/Icon'
+import { useDeveloperUnlocked } from '@/state/developerStore'
+import { getDeviceKey } from '@/sync/deviceConfig'
+import { lockDeveloperMode } from '@/lib/developerAccess'
+import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, featuresForBusinessType } from '@/lib/businessType'
+import type { OnlinePlatform, ReceiptPaperSize } from '@/types/domain'
 
 type Tab =
   | 'profil'
@@ -76,6 +80,7 @@ export function SettingsScreen() {
   // Sebelum `settings` termuat, anggap semua fitur relevan (aman: tidak pernah
   // menyembunyikan tab sekejap lalu memunculkannya lagi setelah data siap).
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
+  const devUnlocked = useDeveloperUnlocked()
 
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
     { key: 'profil', label: 'Profil Usaha', visible: true },
@@ -86,19 +91,23 @@ export function SettingsScreen() {
     { key: 'qris', label: 'QRIS', visible: true },
     { key: 'printer', label: 'Printer', visible: true },
     { key: 'pemindai', label: 'Pemindai Barcode', visible: features.retailUi },
-    { key: 'timbangan', label: 'Barcode Timbangan', visible: features.retailUi && roleHasPermission(currentUser.role, 'settings.manage') },
-    { key: 'pager', label: 'Pager', visible: features.pager && roleHasPermission(currentUser.role, 'settings.manage') },
+    // Pengaturan teknis (lihat DEVELOPER_ONLY): hanya tampil di Mode Developer.
+    { key: 'timbangan', label: 'Barcode Timbangan', visible: devUnlocked && features.retailUi },
+    { key: 'pager', label: 'Pager', visible: devUnlocked && features.pager },
     { key: 'meja-qr', label: 'Meja & QR', visible: features.qrOrdering && roleHasPermission(currentUser.role, 'qr.manage') },
     { key: 'fitur-akses', label: 'Fitur & Akses', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'kode-batal', label: 'Kode Pembatalan', visible: features.ownerPinCancel && currentUser.role === 'pemilik' },
-    { key: 'sinkronisasi', label: 'Sinkronisasi', visible: true },
+    // Terbuka juga sebelum perangkat dipasangkan ke server (token developer dicek ke server).
+    { key: 'sinkronisasi', label: 'Sinkronisasi', visible: devUnlocked || !getDeviceKey() },
     { key: 'backup', label: 'Backup', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'audit', label: 'Log Aktivitas', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'tentang', label: 'Tentang', visible: true },
   ]
 
   if (!settings) return null
+  // Tab yang tersembunyi (mis. Mode Developer baru terkunci) → kembali ke Profil Usaha.
+  const activeTab: Tab = tabs.some((t) => t.key === tab && t.visible) ? tab : 'profil'
 
   return (
     <div className="flex h-full flex-col">
@@ -106,31 +115,39 @@ export function SettingsScreen() {
         {tabs
           .filter((t) => t.visible)
           .map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${tab === t.key ? 'btn-primary' : 'btn-secondary'}`}>
+            <button key={t.key} onClick={() => setTab(t.key)} className={`btn !min-h-[2.75rem] !px-4 !py-2 text-sm ${activeTab === t.key ? 'btn-primary' : 'btn-secondary'}`}>
               {t.label}
             </button>
           ))}
+        {devUnlocked && (
+          <span className="ml-auto flex items-center gap-2 rounded-full bg-accent-500/15 px-3 py-1.5 text-xs font-semibold text-accent-700">
+            <Icon name="settings" size={14} /> Mode Developer aktif
+            <button className="underline underline-offset-2" onClick={lockDeveloperMode}>
+              Kunci
+            </button>
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === 'profil' && <ProfileForm />}
-        {tab === 'outlet' && <OutletSettings />}
-        {tab === 'pajak' && <FiscalForm />}
-        {tab === 'operasional' && <OperationsSettings />}
-        {tab === 'antrean' && <QueueSettings />}
-        {tab === 'qris' && <QrisForm />}
-        {tab === 'printer' && <PrinterSettings />}
-        {tab === 'pemindai' && <ScannerSettings />}
-        {tab === 'timbangan' && <ScaleBarcodeSettings />}
-        {tab === 'pager' && <PagerSettings />}
-        {tab === 'meja-qr' && <TableQrSettings />}
-        {tab === 'fitur-akses' && <FeatureAccessSettings />}
-        {tab === 'pengguna' && <UserManager />}
-        {tab === 'kode-batal' && <CancelCodePanel />}
-        {tab === 'sinkronisasi' && <SyncPanel />}
-        {tab === 'backup' && <BackupManager />}
-        {tab === 'audit' && <AuditLogPanel />}
-        {tab === 'tentang' && <AboutPanel />}
+        {activeTab === 'profil' && <ProfileForm />}
+        {activeTab === 'outlet' && <OutletSettings />}
+        {activeTab === 'pajak' && <FiscalForm />}
+        {activeTab === 'operasional' && <OperationsSettings />}
+        {activeTab === 'antrean' && <QueueSettings />}
+        {activeTab === 'qris' && <QrisForm />}
+        {activeTab === 'printer' && <PrinterSettings />}
+        {activeTab === 'pemindai' && <ScannerSettings />}
+        {activeTab === 'timbangan' && <ScaleBarcodeSettings />}
+        {activeTab === 'pager' && <PagerSettings />}
+        {activeTab === 'meja-qr' && <TableQrSettings />}
+        {activeTab === 'fitur-akses' && <FeatureAccessSettings />}
+        {activeTab === 'pengguna' && <UserManager />}
+        {activeTab === 'kode-batal' && <CancelCodePanel />}
+        {activeTab === 'sinkronisasi' && <SyncPanel />}
+        {activeTab === 'backup' && <BackupManager />}
+        {activeTab === 'audit' && <AuditLogPanel />}
+        {activeTab === 'tentang' && <AboutPanel />}
       </div>
     </div>
   )
@@ -139,7 +156,6 @@ export function SettingsScreen() {
 function ProfileForm() {
   const settings = useLiveQuery(() => getSettings(), [])
   const [businessName, setBusinessName] = useState('')
-  const [businessType, setBusinessType] = useState<BusinessType>('lainnya')
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
@@ -149,7 +165,6 @@ function ProfileForm() {
   useEffect(() => {
     if (!settings) return
     setBusinessName(settings.businessName)
-    setBusinessType(settings.businessType)
     setAddress(settings.address)
     setPhone(settings.phone)
     setLogoDataUrl(settings.logoDataUrl)
@@ -173,21 +188,15 @@ function ProfileForm() {
       </label>
       <div className="block">
         <span className="mb-1 block text-sm text-ink-300">Jenis Usaha</span>
-        <div className="grid grid-cols-2 gap-2">
-          {BUSINESS_TYPE_ORDER.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setBusinessType(t)}
-              className={`rounded-xl border p-2.5 text-left text-sm transition-colors ${
-                businessType === t ? 'border-brand-500 bg-brand-600/12 font-semibold text-ink-50' : 'border-ink-700 bg-ink-900 text-ink-200 hover:border-ink-500'
-              }`}
-            >
-              {BUSINESS_TYPE_LABELS[t]}
-            </button>
-          ))}
+        {/* Dikunci sejak pengaturan awal (lihat updateSettings) — hanya ditampilkan. */}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-ink-700 bg-ink-800 p-3">
+          <span>
+            <span className="block text-sm font-semibold text-ink-50">{BUSINESS_TYPE_LABELS[settings.businessType]}</span>
+            <span className="mt-0.5 block text-xs text-ink-400">{BUSINESS_TYPE_DESCRIPTIONS[settings.businessType]}</span>
+          </span>
+          <Icon name="lock" size={16} className="flex-none text-ink-400" />
         </div>
-        <p className="mt-1 text-xs text-ink-500">{BUSINESS_TYPE_DESCRIPTIONS[businessType]}</p>
+        <p className="mt-1 text-xs text-ink-300">Ditentukan saat pengaturan awal dan tidak bisa diubah.</p>
       </div>
       <label className="block">
         <span className="mb-1 block text-sm text-ink-300">Alamat</span>
@@ -227,7 +236,7 @@ function ProfileForm() {
         className="btn-primary"
         disabled={!businessName.trim()}
         onClick={async () => {
-          await updateSettings({ businessName: businessName.trim(), businessType, address, phone, logoDataUrl })
+          await updateSettings({ businessName: businessName.trim(), address, phone, logoDataUrl })
           setSaved(true)
           setTimeout(() => setSaved(false), 2000)
         }}
@@ -433,6 +442,8 @@ function FiscalForm() {
 
 function QrisForm() {
   const settings = useLiveQuery(() => getSettings(), [])
+  // Penyedia QRIS menentukan alur pembayaran — hanya diubah lewat Mode Developer.
+  const devUnlocked = useDeveloperUnlocked()
   const [qrisImageDataUrl, setQrisImageDataUrl] = useState<string | null>(null)
   const [qrisMerchantName, setQrisMerchantName] = useState('')
   const [qrisProvider, setQrisProvider] = useState<'static' | 'midtrans'>('static')
@@ -467,6 +478,15 @@ function QrisForm() {
     <div className="max-w-md space-y-4">
       <div className="card space-y-2 p-4">
         <span className="block text-sm font-semibold text-ink-200">Cara bayar QRIS di kasir</span>
+        {!devUnlocked ? (
+          <p className="flex items-start gap-2 text-sm text-ink-200">
+            <Icon name="lock" size={15} className="mt-0.5 flex-none text-ink-400" />
+            <span>
+              <b className="text-ink-100">{qrisProvider === 'midtrans' ? 'QRIS dinamis Midtrans' : 'QRIS statis'}</b> — penyedia QRIS diatur oleh developer.
+            </span>
+          </p>
+        ) : (
+          <>
         <label className="flex items-start gap-3 text-sm text-ink-300">
           <input type="radio" name="qrisProvider" className="mt-1" checked={qrisProvider === 'static'} onChange={() => setQrisProvider('static')} />
           <span>
@@ -488,6 +508,8 @@ function QrisForm() {
             </button>
             {midtransCheck && <p className={`mt-2 text-sm ${midtransCheck.ok ? 'text-success-500' : 'text-red-400'}`}>{midtransCheck.text}</p>}
           </div>
+        )}
+          </>
         )}
       </div>
       <div>

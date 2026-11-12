@@ -102,6 +102,8 @@ export async function configureBackend(page: Page, apiUrl: string, deviceKey: st
 /** Sinkronkan sekarang lalu tunggu antrean kosong tanpa kegagalan. */
 export async function waitForNoPending(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Pengaturan' }).click()
+  // Setelah perangkat terpasang ke server, tab Sinkronisasi hanya muncul di Mode Developer.
+  if (!(await page.getByRole('button', { name: 'Sinkronisasi' }).isVisible())) await unlockDeveloperModeWithOps(page)
   await page.getByRole('button', { name: 'Sinkronisasi' }).click()
   await page.getByRole('button', { name: 'Sinkronkan Sekarang' }).click()
   await expect(page.getByText('Menunggu sinkronisasi: 0')).toBeVisible({ timeout: 20_000 })
@@ -128,4 +130,38 @@ export async function manualAttendance(page: Page, staffName: string, approverPi
   await page.getByLabel('Alasan absen manual').fill(reason)
   await page.getByLabel('PIN penyetuju').fill(approverPin)
   await page.getByRole('button', { name: /^Catat Absen (Masuk|Pulang)$/ }).click()
+}
+
+/**
+ * Buka Mode Developer (Pengaturan → Tentang) untuk tes tanpa backend: server peniru
+ * menerima token, dan alamat server diisi sementara lalu dihapus lagi supaya tes lain
+ * tetap berjalan tanpa sinkronisasi. Spec *.sync.spec.ts memakai token asli dari /ops.
+ */
+export async function unlockDeveloperModeMocked(page: Page): Promise<void> {
+  await page.route('**/api/sync/developer-code/consume', (route) => route.fulfill({ json: { ok: true, createdAt: Date.now() } }))
+  await page.evaluate(() => {
+    localStorage.setItem('kione.sync.apiBaseUrl', 'http://e2e-backend.invalid')
+    localStorage.setItem('kione.sync.deviceKey', 'e2e-device-key')
+  })
+  await page.getByRole('link', { name: 'Pengaturan', exact: true }).click()
+  await page.getByRole('button', { name: 'Tentang', exact: true }).click()
+  await page.getByLabel('Token developer').fill('1234')
+  await page.getByRole('button', { name: 'Buka', exact: true }).click()
+  await expect(page.getByText('Mode Developer aktif')).toBeVisible()
+  await page.evaluate(() => {
+    localStorage.removeItem('kione.sync.apiBaseUrl')
+    localStorage.removeItem('kione.sync.deviceKey')
+  })
+}
+
+/** Mode Developer dengan token asli dari /ops (spec *.sync.spec.ts dengan backend sungguhan). */
+export async function unlockDeveloperModeWithOps(page: Page): Promise<void> {
+  const { E2E_API_URL, E2E_KANTIN_TENANT, E2E_OPS_TOKEN } = await import('../../playwright.sync.config')
+  const res = await fetch(`${E2E_API_URL}/ops/api/tenant/${E2E_KANTIN_TENANT}/developer-code`, { method: 'POST', headers: { Authorization: `Bearer ${E2E_OPS_TOKEN}` } })
+  const { code } = (await res.json()) as { code: string }
+  await page.getByRole('link', { name: 'Pengaturan', exact: true }).click()
+  await page.getByRole('button', { name: 'Tentang', exact: true }).click()
+  await page.getByLabel('Token developer').fill(code)
+  await page.getByRole('button', { name: 'Buka', exact: true }).click()
+  await expect(page.getByText('Mode Developer aktif')).toBeVisible()
 }
