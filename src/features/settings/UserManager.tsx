@@ -4,6 +4,9 @@ import { createUser, listUsers, LastUserManagerError, setUserActive, updateUser,
 import { ROLE_LABELS } from '@/lib/permissions'
 import { isValidPinFormat } from '@/lib/pinHash'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { AccountAvatar } from '@/features/auth/AccountAvatar'
+import { readFileAsResizedDataUrl } from '@/lib/image'
 import { useSessionStore } from '@/state/sessionStore'
 import { toast } from '@/state/toastStore'
 import type { Role, User } from '@/types/domain'
@@ -30,9 +33,12 @@ export function UserManager() {
       <div className="space-y-2">
         {users.map((u) => (
           <div key={u.id} className="card flex items-center justify-between p-4">
-            <div>
-              <p className="font-semibold text-ink-50">{u.name}</p>
-              <p className="text-sm text-ink-400">{ROLE_LABELS[u.role]}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <AccountAvatar name={u.name} photoDataUrl={u.photoDataUrl} size="sm" />
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-ink-50">{u.name}</p>
+                <p className="text-sm text-ink-400">{ROLE_LABELS[u.role]}</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-2 text-sm text-ink-400">
@@ -63,6 +69,7 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
   const [name, setName] = useState(initial?.name ?? '')
   const [role, setRole] = useState<Role>(initial?.role ?? 'kasir')
   const [pin, setPin] = useState('')
+  const [photo, setPhoto] = useState<string | null>(initial?.photoDataUrl ?? null)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSave() {
@@ -77,7 +84,7 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
     const actor = { userId: currentUser.id, userName: currentUser.name }
     try {
       if (initial) {
-        await updateUser(initial.id, { name: name.trim(), role }, actor)
+        await updateUser(initial.id, { name: name.trim(), role, photoDataUrl: photo }, actor)
         if (pin) {
           if (!isValidPinFormat(pin)) {
             setError('PIN harus 4-8 digit angka')
@@ -86,7 +93,7 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
           await updateUserPin(initial.id, pin, actor)
         }
       } else {
-        await createUser({ name: name.trim(), role, pin }, actor)
+        await createUser({ name: name.trim(), role, pin, photoDataUrl: photo }, actor)
       }
     } catch (err) {
       setError(err instanceof LastUserManagerError ? err.message : 'Gagal menyimpan pengguna.')
@@ -98,6 +105,33 @@ function UserFormModal({ initial, onClose }: { initial: User | null; onClose: ()
   return (
     <Modal onClose={onClose}>
         <h2 className="mb-4 text-lg font-bold text-ink-50">{initial ? 'Edit Pengguna' : 'Pengguna Baru'}</h2>
+        <div className="mb-4 flex items-center gap-4">
+          <AccountAvatar name={name || '?'} photoDataUrl={photo} size="lg" />
+          <div className="flex flex-col items-start gap-1">
+            <label className="kbtn kbtn-secondary kbtn-sm cursor-pointer">
+              {photo ? 'Ganti Foto' : 'Ambil / Pilih Foto'}
+              <input
+                type="file"
+                accept="image/*"
+                capture="user"
+                className="sr-only"
+                aria-label="Foto profil"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  // Kecil saja: dipakai sebagai avatar di layar masuk.
+                  if (file) setPhoto(await readFileAsResizedDataUrl(file, 256, 0.82))
+                }}
+              />
+            </label>
+            {photo && (
+              <Button variant="ghost" size="sm" className="text-red-400" onClick={() => setPhoto(null)}>
+                Hapus foto
+              </Button>
+            )}
+            <span className="text-xs text-ink-300">Tampil di layar masuk. Tanpa foto, inisial yang dipakai.</span>
+          </div>
+        </div>
         <label className="mb-3 block">
           <span className="mb-1 block text-sm text-ink-300">Nama</span>
           <input className="input-field" value={name} onChange={(e) => setName(e.target.value)} />

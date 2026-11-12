@@ -46,6 +46,8 @@ export interface User {
   pinHash: string
   pinSalt: string
   active: boolean
+  /** Foto profil (JPEG data URL kecil) — tampil di layar masuk & daftar pengguna. Kosong = inisial. */
+  photoDataUrl?: string | null
   createdAt: number
   updatedAt: number
 }

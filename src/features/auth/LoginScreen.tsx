@@ -1,74 +1,170 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listUsers, verifyUserPin } from '@/db/repositories/users'
-import { recordAuditLog } from '@/db/repositories/auditLog'
+import { lastLoginByUser, recordAuditLog } from '@/db/repositories/auditLog'
+import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { useSessionStore } from '@/state/sessionStore'
-import { PinPad } from '@/components/ui/PinPad'
+import { PinDots, PinPad } from '@/components/ui/PinPad'
 import { Icon } from '@/components/ui/Icon'
-import { BusinessBrand } from '@/components/BusinessBrand'
+import { Button } from '@/components/ui/Button'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { BusinessLogo } from '@/components/BusinessBrand'
 import { PoweredByKione } from '@/components/PoweredByKione'
 import { ROLE_LABELS } from '@/lib/permissions'
+import { EASING, MOTION, prefersReducedMotion, routeKeyframes } from '@/lib/motion'
 import { attemptsRemaining, getLockoutRemainingMs, recordFailedAttempt, recordSuccessfulAttempt } from '@/lib/loginRateLimit'
+import { lastLoginLabel } from '@/features/auth/avatarColors'
+import { AccountAvatar } from '@/features/auth/AccountAvatar'
 import type { User } from '@/types/domain'
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/)
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase()
-}
+/** Lama dot merah bergetar sebelum PIN yang salah dikosongkan. */
+const PIN_ERROR_FLASH_MS = 450
 
 export function LoginScreen() {
-  const users = useLiveQuery(() => listUsers(), []) ?? []
-  const activeUsers = users.filter((u) => u.active)
+  const users = useLiveQuery(() => listUsers(), [])
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
 
-  if (!selectedUser) {
-    return (
-      <div className="flex h-full items-center justify-center overflow-y-auto bg-ink-950 p-6">
-        <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
-          <BusinessBrand />
-          <p className="-mt-2 text-sm text-ink-300">Pilih akun untuk masuk</p>
+  // Pilih akun → PIN masuk dari kanan; kembali → daftar akun masuk dari kiri.
+  const stepRef = useRef<HTMLDivElement>(null)
+  const firstRender = useRef(true)
+  useLayoutEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      return
+    }
+    const frames = routeKeyframes(selectedUser ? 'forward' : 'back', prefersReducedMotion())
+    if (stepRef.current && typeof stepRef.current.animate === 'function') stepRef.current.animate(frames, { duration: MOTION.route, easing: EASING.out })
+  }, [selectedUser])
 
-          {activeUsers.length === 0 ? (
-            <p className="text-center text-sm text-ink-400">
-              Belum ada pengguna aktif. Hubungi administrator untuk mengaktifkan akun.
-            </p>
-          ) : (
-            <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3">
-              {activeUsers.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => setSelectedUser(u)}
-                  className="flex w-full flex-col items-center gap-2 rounded-2xl border border-ink-700 bg-ink-800 p-4 transition-colors hover:border-brand-500 hover:bg-ink-700"
-                >
-                  <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-brand-600/15 text-lg font-bold text-brand-600">
-                    {initials(u.name)}
-                  </span>
-                  <span className="line-clamp-2 w-full text-center text-sm font-semibold text-ink-50">{u.name}</span>
-                  <span className="text-xs text-ink-400">{ROLE_LABELS[u.role]}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <PoweredByKione showVersion />
-        </div>
+  return (
+    <div className="kione-auth-bg flex h-full flex-col overflow-y-auto">
+      <div ref={stepRef} className="flex flex-1 flex-col items-center justify-center px-6 py-8">
+        {selectedUser ? <PinStep user={selectedUser} onBack={() => setSelectedUser(null)} /> : <AccountPicker users={users} onSelect={setSelectedUser} />}
       </div>
-    )
-  }
+      <footer className="flex-none pb-4">
+        <PoweredByKione showVersion />
+      </footer>
+    </div>
+  )
+}
 
-  return <PinStep user={selectedUser} onBack={() => setSelectedUser(null)} />
+/** Identitas toko dari Pengaturan → Profil Usaha (logo, nama, alamat). */
+function StoreHeader() {
+  const settings = useLiveQuery(() => getSettings(), [])
+  return (
+    <header className="flex flex-col items-center text-center">
+      <BusinessLogo size="lg" className="shadow-card" />
+      <h1 className="mt-4 text-[1.75rem] font-bold leading-tight text-ink-50">{businessDisplayName(settings)}</h1>
+      {settings?.address ? (
+        <p className="mt-1 flex max-w-md items-center gap-1.5 text-sm text-ink-200">
+          <Icon name="mapPin" size={15} className="flex-none text-brand-400" />
+          <span className="line-clamp-1">{settings.address}</span>
+        </p>
+      ) : null}
+    </header>
+  )
+}
+
+export interface AccountPickerProps {
+  /** `undefined` = masih memuat (kerangka), `[]` = belum ada akun. */
+  users: User[] | undefined
+  onSelect: (user: User) => void
+}
+
+/** Daftar akun aktif. Kartu lebar tetap & ditengahkan, jadi 1, 3, atau 6 akun tetap seimbang. */
+export function AccountPicker({ users, onSelect }: AccountPickerProps) {
+  const lastLogins = useLiveQuery(() => lastLoginByUser(), [])
+  const active = users?.filter((u) => u.active)
+  const now = Date.now()
+
+  return (
+    <div className="flex w-full max-w-4xl flex-col items-center gap-8">
+      <StoreHeader />
+      <section className="w-full" aria-labelledby="pilih-akun">
+        <h2 id="pilih-akun" className="eyebrow mb-4 text-center">
+          Pilih akun untuk masuk
+        </h2>
+        {active === undefined ? (
+          <div className="flex flex-wrap justify-center gap-4" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex w-52 flex-col items-center gap-3 rounded-2xl border border-ink-600 bg-ink-900 p-5">
+                <Skeleton className="h-16 w-16 rounded-full" />
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : active.length === 0 ? (
+          <div className="card mx-auto flex max-w-md flex-col items-center gap-3 p-6 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-600/15 text-brand-400">
+              <Icon name="user" size={24} />
+            </span>
+            <p className="font-semibold text-ink-50">Belum ada akun aktif di perangkat ini</p>
+            <p className="text-sm text-ink-200">
+              Akun kasir disimpan per perangkat. Minta Pemilik/Administrator mengaktifkan akun, atau pulihkan data perangkat ini dari backup.
+            </p>
+            <Button variant="secondary" size="sm" leftIcon={<Icon name="refresh" size={16} />} onClick={() => window.location.reload()}>
+              Muat ulang
+            </Button>
+          </div>
+        ) : (
+          <ul className="flex flex-wrap justify-center gap-4">
+            {active.map((u, i) => {
+              const role = ROLE_LABELS[u.role]
+              const last = lastLoginLabel(lastLogins?.get(u.id), now)
+              return (
+                <li key={u.id} className="w-52">
+                  <button
+                    type="button"
+                    className="kione-account-card"
+                    style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+                    aria-label={`Masuk sebagai ${u.name}, ${role}`}
+                    onClick={() => onSelect(u)}
+                  >
+                    <AccountAvatar name={u.name} photoDataUrl={u.photoDataUrl} />
+                    <span className="line-clamp-2 w-full text-base font-bold leading-snug text-ink-50">{u.name}</span>
+                    <span className="badge bg-brand-600/15 text-brand-400">{role}</span>
+                    {last && <span className="text-xs text-ink-300">{last}</span>}
+                    <span className="mt-1 flex items-center gap-1 text-sm font-semibold text-brand-400" aria-hidden="true">
+                      Masuk <Icon name="chevronRight" size={16} />
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
 }
 
 function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [wrongFlash, setWrongFlash] = useState(false)
   const [busy, setBusy] = useState(false)
   const [lockoutMs, setLockoutMs] = useState(() => getLockoutRemainingMs(user.id))
   const login = useSessionStore((s) => s.login)
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
     const timer = setInterval(() => setLockoutMs(getLockoutRemainingMs(user.id)), 1000)
-    return () => clearInterval(timer)
+    return () => {
+      clearInterval(timer)
+      clearTimeout(flashTimer.current)
+    }
   }, [user.id])
+
+  /** Dot merah bergetar sebentar, lalu PIN dikosongkan (tak disimpan lebih lama). */
+  function flashWrong() {
+    setWrongFlash(true)
+    clearTimeout(flashTimer.current)
+    flashTimer.current = setTimeout(() => {
+      setPin('')
+      setWrongFlash(false)
+    }, PIN_ERROR_FLASH_MS)
+  }
 
   async function handleSubmit() {
     if (getLockoutRemainingMs(user.id) > 0) return
@@ -85,7 +181,7 @@ function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
         } else {
           setError(`PIN salah. Sisa percobaan: ${attemptsRemaining(user.id)}.`)
         }
-        setPin('')
+        flashWrong()
         return
       }
       recordSuccessfulAttempt(user.id)
@@ -97,6 +193,7 @@ function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
         entityId: verified.id,
         details: `${verified.name} masuk ke aplikasi`,
       })
+      setPin('')
       login(verified)
     } finally {
       setBusy(false)
@@ -106,37 +203,25 @@ function PinStep({ user, onBack }: { user: User; onBack: () => void }) {
   const isLocked = lockoutMs > 0
 
   return (
-    <div className="flex h-full items-center justify-center overflow-y-auto bg-ink-950 p-6">
-      <div className="relative flex w-full max-w-sm flex-col items-center gap-6 rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-card">
-        <button onClick={onBack} className="btn-ghost absolute left-4 top-4 !min-h-0 !p-2" title="Pilih akun lain">
-          <Icon name="arrowLeft" size={18} />
-        </button>
+    <div className="grid w-full max-w-4xl overflow-hidden rounded-3xl border border-ink-600 bg-ink-900 shadow-card md:grid-cols-2">
+      {/* Kiri: siapa yang masuk + jalan kembali yang jelas. */}
+      <div className="flex flex-col items-center justify-center gap-3 bg-brand-600/[0.06] p-8 text-center md:border-r md:border-ink-600">
+        <AccountAvatar name={user.name} photoDataUrl={user.photoDataUrl} size="lg" className="shadow-card" />
+        <h1 className="text-2xl font-bold text-ink-50">{user.name}</h1>
+        <span className="badge bg-brand-600/15 text-brand-400">{ROLE_LABELS[user.role]}</span>
+        <Button variant="secondary" className="mt-4" leftIcon={<Icon name="arrowLeft" size={18} />} onClick={onBack}>
+          Pilih akun lain
+        </Button>
+      </div>
 
-        <div className="text-center">
-          <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600/15 text-lg font-bold text-brand-600">
-            {initials(user.name)}
-          </span>
-          <h1 className="text-xl font-bold text-ink-50">{user.name}</h1>
-          <p className="mt-1 text-sm text-ink-300">Masukkan PIN untuk masuk</p>
+      {/* Kanan: PIN & keypad. */}
+      <div className="flex flex-col items-center gap-5 p-8">
+        <p className="text-base font-semibold text-ink-100">Masukkan PIN untuk masuk</p>
+        <PinDots length={pin.length} error={wrongFlash} />
+        <div className="min-h-[1.25rem] text-center text-sm font-medium text-red-600" role="alert">
+          {isLocked ? `Coba lagi dalam ${Math.ceil(lockoutMs / 1000)} detik` : error}
         </div>
-
-        <div className="flex h-4 w-full max-w-xs justify-center gap-3">
-          {Array.from({ length: Math.max(pin.length, 4) }).map((_, i) => (
-            <span
-              key={i}
-              className={`h-3.5 w-3.5 rounded-full border-2 transition-colors ${
-                i < pin.length ? 'border-brand-600 bg-brand-600' : 'border-ink-600'
-              }`}
-            />
-          ))}
-        </div>
-
-        {error && <p className="text-center text-sm font-medium text-red-500">{error}</p>}
-        {isLocked && (
-          <p className="text-center text-sm font-medium text-red-500">Coba lagi dalam {Math.ceil(lockoutMs / 1000)} detik</p>
-        )}
-
-        <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} disabled={busy || isLocked} />
+        <PinPad value={pin} onChange={setPin} onSubmit={() => void handleSubmit()} onCancel={onBack} disabled={isLocked || wrongFlash} loading={busy} />
       </div>
     </div>
   )

@@ -74,3 +74,15 @@ export async function listAuditLogsByAction(action: string, limit = 200): Promis
 export async function verifyAuditLogIntegrity(): Promise<AuditLogIntegritySummary> {
   return verifyAuditLog(await db.auditLogs.toArray())
 }
+
+/** Waktu masuk terakhir per pengguna (dari Log Aktivitas `auth.login`) — untuk layar pilih akun. */
+export async function lastLoginByUser(): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  await db.auditLogs
+    .where('action')
+    .equals('auth.login')
+    .each((e) => {
+      if ((out.get(e.userId) ?? 0) < e.createdAt) out.set(e.userId, e.createdAt)
+    })
+  return out
+}

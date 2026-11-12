@@ -22,7 +22,7 @@ async function countOtherActiveUserManagers(excludeUserId: string): Promise<numb
   return others
 }
 
-export async function createUser(input: { name: string; role: Role; pin: string }, actor?: Actor): Promise<User> {
+export async function createUser(input: { name: string; role: Role; pin: string; photoDataUrl?: string | null }, actor?: Actor): Promise<User> {
   const { hash, salt } = await hashPin(input.pin)
   const now = Date.now()
   const user: User = {
@@ -32,6 +32,7 @@ export async function createUser(input: { name: string; role: Role; pin: string 
     pinHash: hash,
     pinSalt: salt,
     active: true,
+    photoDataUrl: input.photoDataUrl ?? null,
     createdAt: now,
     updatedAt: now,
   }
@@ -104,7 +105,7 @@ export async function updateUserPin(userId: string, newPin: string, actor: Actor
   })
 }
 
-export async function updateUser(userId: string, patch: Partial<Pick<User, 'name' | 'role'>>, actor: Actor): Promise<void> {
+export async function updateUser(userId: string, patch: Partial<Pick<User, 'name' | 'role' | 'photoDataUrl'>>, actor: Actor): Promise<void> {
   await db.transaction('rw', db.users, db.syncQueue, db.auditLogs, async () => {
     const user = await db.users.get(userId)
     if (!user) return
@@ -121,6 +122,7 @@ export async function updateUser(userId: string, patch: Partial<Pick<User, 'name
     const changes: string[] = []
     if (patch.name && patch.name !== user.name) changes.push(`nama "${user.name}" → "${patch.name}"`)
     if (patch.role && patch.role !== user.role) changes.push(`role ${ROLE_LABELS[user.role]} → ${ROLE_LABELS[patch.role]}`)
+    if (patch.photoDataUrl !== undefined && patch.photoDataUrl !== (user.photoDataUrl ?? null)) changes.push(patch.photoDataUrl ? 'foto profil diganti' : 'foto profil dihapus')
     await recordAuditLog({
       userId: actor.userId,
       userName: actor.userName,
