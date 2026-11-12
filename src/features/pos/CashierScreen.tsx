@@ -295,10 +295,11 @@ export function CashierScreen() {
     }
     // Hanya item yang belum dikirim ke dapur yang bisa dikosongkan massal.
     // Item yang sudah di dapur harus dibatalkan satu per satu (butuh approval supervisor).
+    // Barang langsung saji (skipKitchen, mis. layanan laundry/minuman botol) ikut dikosongkan.
     for (const item of activeItems) {
-      if (item.kitchenStatus === 'new') await removeOrderItem(item.id)
+      if (!isItemSentToKitchen(item)) await removeOrderItem(item.id)
     }
-    const stillHasKitchenItems = activeItems.some((i) => i.kitchenStatus !== 'new')
+    const stillHasKitchenItems = activeItems.some(isItemSentToKitchen)
     if (stillHasKitchenItems) {
       toast.warning('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
     }
@@ -310,7 +311,7 @@ export function CashierScreen() {
     try {
       const n = await clearOrderItems(activeOrderId, reason, { userId: currentUser.id, userName: currentUser.name }, approval)
       toast.success(`${n} item dihapus dari keranjang.`)
-      if (activeItems.some((i) => i.kitchenStatus !== 'new')) {
+      if (activeItems.some(isItemSentToKitchen)) {
         toast.warning('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
       }
     } catch (e) {
@@ -576,7 +577,7 @@ export function CashierScreen() {
                   {product.photoDataUrl ? (
                     <img src={product.photoDataUrl} alt={product.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   ) : (
-                    <Icon name={features.quickSale ? 'box' : 'coffee'} size={30} className="text-ink-400" />
+                    <Icon name={features.quickSale ? 'box' : settings?.businessType === 'laundry' ? 'bag' : 'coffee'} size={30} className="text-ink-400" />
                   )}
                 </div>
                 <span className="line-clamp-2 px-1 text-[0.95rem] font-semibold leading-snug text-ink-50">{product.name}</span>
@@ -711,7 +712,7 @@ export function CashierScreen() {
                             {item.notes ? 'Ubah catatan' : 'Tambah catatan'}
                           </button>
                         )}
-                        {item.kitchenStatus !== 'new' && (
+                        {features.kitchen && !item.skipKitchen && item.kitchenStatus !== 'new' && (
                           <span className="inline-block rounded bg-success-600/20 px-2 py-0.5 text-[10px] text-success-500">Dapur: {item.kitchenStatus}</span>
                         )}
                       </div>

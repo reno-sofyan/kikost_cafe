@@ -187,7 +187,7 @@ export function ProductsScreen() {
                     {product.photoDataUrl ? (
                       <img src={product.photoDataUrl} className="h-full w-full rounded-lg object-cover" alt={product.name} />
                     ) : (
-                      <Icon name="coffee" size={28} className="text-ink-400" />
+                      <Icon name={settings?.businessType === 'laundry' ? 'bag' : 'coffee'} size={28} className="text-ink-400" />
                     )}
                   </div>
                   <p className="truncate text-sm font-semibold text-ink-50">{product.name}</p>

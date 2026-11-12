@@ -27,7 +27,7 @@ export function QrisPaymentModal({ amount, onCancel, onConfirm }: Props) {
         {settings?.qrisMerchantName && <p className="mb-4 text-sm text-ink-400">{settings.qrisMerchantName}</p>}
 
         <p className="mb-4 text-xs text-ink-500">
-          Periksa notifikasi pembayaran pada perangkat/aplikasi penerima QRIS kafe sebelum menekan tombol konfirmasi.
+          Periksa notifikasi pembayaran pada perangkat/aplikasi penerima QRIS usaha Anda sebelum menekan tombol konfirmasi.
         </p>
 
         <div className="flex gap-3">

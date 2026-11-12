@@ -763,7 +763,9 @@ export async function clearOrderItems(
     const items = await db.orderItems
       .where('orderId')
       .equals(orderId)
-      .filter((i) => !i.removed && !i.voided && i.kitchenStatus === 'new')
+      // Yang belum diteruskan ke dapur — termasuk barang langsung saji (skipKitchen) yang
+      // berstatus 'done' sejak ditambahkan dan tak pernah lewat dapur.
+      .filter((i) => !i.removed && !i.voided && !isItemSentToKitchen(i))
       .toArray()
     if (items.length === 0) return 0
     if (ownerApproval) await consumeCancelCodeInTx(ownerApproval)
