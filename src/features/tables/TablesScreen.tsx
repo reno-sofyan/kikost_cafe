@@ -100,7 +100,7 @@ export function TablesScreen() {
       waiter: defaultWaiterFor(currentUser, features.waiterTracking),
       shiftId: openShift.id,
     })
-    if (skipped.length) toast.error(`Menu ini sudah tidak dijual dan dilewati: ${skipped.join(', ')}`)
+    if (skipped.length) toast.warning(`Menu ini sudah tidak dijual dan dilewati: ${skipped.join(', ')}`)
     setActiveOrderId(order.id)
     navigate('/kasir')
   }

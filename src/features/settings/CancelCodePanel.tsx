@@ -36,7 +36,7 @@ export function CancelCodePanel() {
 
   async function saveDiscountMax() {
     const v = Number(maxDraft)
-    if (!Number.isFinite(v) || v < 0 || v > 100) return toast.error('Batas diskon harus 0–100%')
+    if (!Number.isFinite(v) || v < 0 || v > 100) return toast.warning('Batas diskon harus 0–100%')
     await updateSettings({ cashierDiscountMaxPercent: v })
     await recordAuditLog({
       userId: currentUser.id,

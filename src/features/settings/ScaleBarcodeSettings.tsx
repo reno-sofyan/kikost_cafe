@@ -29,8 +29,8 @@ export function ScaleBarcodeSettings() {
   const parsed = sample.trim() ? parseScaleBarcode(sample, { ...config, enabled: true }) : null
 
   async function save() {
-    if (!/^\d{1,3}$/.test(config.prefix) || config.prefix.length > config.flagLength) return toast.error('Awalan harus 1–3 digit dan tak lebih panjang dari digit penanda.')
-    if (valueDigits < 3) return toast.error('Digit nilai terlalu sedikit — kurangi panjang PLU.')
+    if (!/^\d{1,3}$/.test(config.prefix) || config.prefix.length > config.flagLength) return toast.warning('Awalan harus 1–3 digit dan tak lebih panjang dari digit penanda.')
+    if (valueDigits < 3) return toast.warning('Digit nilai terlalu sedikit — kurangi panjang PLU.')
     await updateSettings({ scaleBarcode: config })
     toast.success('Format barcode timbangan disimpan.')
   }

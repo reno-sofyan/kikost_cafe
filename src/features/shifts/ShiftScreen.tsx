@@ -389,7 +389,7 @@ function OwnerSummaryModal({ shiftId, ownerWhatsapp, onClose }: { shiftId: strin
       await navigator.clipboard.writeText(message)
       toast.success('Ringkasan disalin.')
     } catch {
-      toast.error('Tidak bisa menyalin otomatis — tekan lama teksnya untuk menyalin.')
+      toast.warning('Tidak bisa menyalin otomatis — tekan lama teksnya untuk menyalin.')
     }
   }
 

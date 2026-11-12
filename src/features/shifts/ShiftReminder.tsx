@@ -4,7 +4,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Icon } from '@/components/ui/Icon'
 import { formatRupiah } from '@/lib/currency'
 import { durationSince, formatDateTime } from '@/lib/datetime'
-import { getShiftReminderAck, setShiftReminderAck, shouldShowShiftReminder } from '@/lib/shiftReminder'
+import { getShiftReminderAck, nextReminderAt, setShiftReminderAck, shouldShowShiftReminder } from '@/lib/shiftReminder'
+import { cancelShiftReminder, scheduleShiftReminder } from '@/native/systemNotify'
 import type { Shift } from '@/types/domain'
 
 /**
@@ -16,6 +17,13 @@ export function ShiftReminder({ shift }: { shift: Shift }) {
   const navigate = useNavigate()
   const [now, setNow] = useState(() => Date.now())
   const [ackAt, setAckAt] = useState(() => getShiftReminderAck(shift.id))
+
+  // Notifikasi sistem Android pukul 21.00 berikutnya selama shift ini terbuka (juga saat
+  // aplikasi di latar belakang); dibatalkan begitu shift ditutup (komponen dilepas).
+  useEffect(() => {
+    void scheduleShiftReminder(nextReminderAt(Date.now()), `Shift ${shift.cashierName} belum ditutup. Lanjutkan atau tutup shift?`)
+    return () => void cancelShiftReminder()
+  }, [shift.id, shift.cashierName])
 
   useEffect(() => {
     setAckAt(getShiftReminderAck(shift.id))

@@ -47,3 +47,8 @@ export function setShiftReminderAck(shiftId: string, at: number): void {
     /* penyimpanan diblokir → pengingat muncul lagi menit berikutnya; tidak fatal */
   }
 }
+
+/** Pengingat 21.00 WIB berikutnya setelah `now` — jadwal notifikasi sistem Android. */
+export function nextReminderAt(now: number): number {
+  return latestReminderAt(now) + DAY_MS
+}

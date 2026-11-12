@@ -108,7 +108,7 @@ export function ProductsScreen() {
     if (skipped.length === 0) {
       toast.success(`${imported} produk berhasil diimpor.`)
     } else {
-      toast.error(`${imported} produk diimpor, ${skipped.length} dilewati: ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? ', ...' : ''}`)
+      toast.warning(`${imported} produk diimpor, ${skipped.length} dilewati: ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? ', ...' : ''}`)
     }
   }
 

@@ -49,7 +49,7 @@ export function InventoryScreen() {
   const handleDeleteIngredient = async (ing: Ingredient) => {
     const blockReason = await ingredientDeleteBlockReason(ing.id)
     if (blockReason) {
-      toast.error(blockReason)
+      toast.warning(blockReason)
       return
     }
     const ok = await confirm({

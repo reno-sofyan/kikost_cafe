@@ -55,7 +55,7 @@ async function shot(name) {
 async function ensureLoggedIn() {
   await page.goto(BASE_URL)
   await page.waitForFunction(
-    () => /Selamat Datang|Pilih akun untuk masuk/.test(document.body.innerText) || !!document.querySelector('nav'),
+    () => /Selamat Datang|Pilih akun untuk masuk/i.test(document.body.innerText) || !!document.querySelector('nav'),
     { timeout: 20000 },
   )
 

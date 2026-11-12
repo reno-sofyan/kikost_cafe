@@ -221,7 +221,7 @@ export function CashierScreen() {
 
   async function handleProductTap(product: Product, justStartedId?: string) {
     if (!product.isAvailable) {
-      toast.error(`${product.name} sedang habis / tidak tersedia`)
+      toast.warning(`${product.name} sedang habis / tidak tersedia`)
       return
     }
     // Belum ada pesanan: tap produk langsung membuka dialog Pesanan Baru, lalu
@@ -250,7 +250,7 @@ export function CashierScreen() {
       : undefined
     const canFulfill = await canFulfillProductQty(product, (stackTarget?.qty ?? 0) + 1)
     if (!canFulfill) {
-      toast.error(`Stok bahan untuk ${product.name} tidak mencukupi`)
+      toast.warning(`Stok bahan untuk ${product.name} tidak mencukupi`)
       return
     }
     if (stackTarget) {
@@ -300,7 +300,7 @@ export function CashierScreen() {
     }
     const stillHasKitchenItems = activeItems.some((i) => i.kitchenStatus !== 'new')
     if (stillHasKitchenItems) {
-      toast.error('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
+      toast.warning('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
     }
   }
 
@@ -311,7 +311,7 @@ export function CashierScreen() {
       const n = await clearOrderItems(activeOrderId, reason, { userId: currentUser.id, userName: currentUser.name }, approval)
       toast.success(`${n} item dihapus dari keranjang.`)
       if (activeItems.some((i) => i.kitchenStatus !== 'new')) {
-        toast.error('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
+        toast.warning('Item yang sudah di dapur harus dibatalkan satu per satu dengan persetujuan supervisor.')
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal mengosongkan keranjang')
@@ -475,7 +475,7 @@ export function CashierScreen() {
     if (!activeOrderId || !pickerProduct) return
     const canFulfill = await canFulfillProductQty(pickerProduct, params.qty)
     if (!canFulfill) {
-      toast.error(`Stok bahan untuk ${pickerProduct.name} tidak mencukupi`)
+      toast.warning(`Stok bahan untuk ${pickerProduct.name} tidak mencukupi`)
       setPickerProduct(null)
       return
     }

@@ -109,7 +109,7 @@ function StockList({ products, userId, canEdit }: { products: Product[]; userId:
       setAdjust(p)
     } else {
       setSearch(code)
-      if (!p) toast.error(`Barcode ${code} belum terdaftar`)
+      if (!p) toast.warning(`Barcode ${code} belum terdaftar`)
     }
   }
 

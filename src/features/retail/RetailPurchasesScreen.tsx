@@ -169,7 +169,7 @@ function PurchaseFormModal({ userId, onClose }: { userId: string; onClose: () =>
   async function addByCode(code: string) {
     const p = await findProductByCode(code)
     if (p?.trackOwnStock) add(p)
-    else toast.error(`Barcode ${code} belum terdaftar sebagai produk ber-stok`)
+    else toast.warning(`Barcode ${code} belum terdaftar sebagai produk ber-stok`)
   }
 
   const toPcs = (l: FormLine) => (l.unit === 'dus' && l.product.packSize ? l.qty * l.product.packSize : l.qty)

@@ -128,7 +128,7 @@ export function PaymentSuccessScreen({ orderId }: { orderId: string }) {
       }
       const tickets = await db.kitchenTickets.where('orderId').equals(order.id).toArray()
       if (tickets.length === 0) {
-        toast.error('Tidak ada item untuk dapur/bar pada pesanan ini.')
+        toast.warning('Tidak ada item untuk dapur/bar pada pesanan ini.')
         return
       }
       for (const t of tickets) await reprintKitchenTicket(t.id, actor, { station })

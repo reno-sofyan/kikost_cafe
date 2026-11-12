@@ -371,7 +371,7 @@ function SupplierReturnModal({ onClose }: { onClose: () => void }) {
     (code) =>
       void findProductByCode(code).then((p) => {
         if (p && p.stockQty > 0) add(p)
-        else toast.error('Produk tidak ditemukan / stok kosong')
+        else toast.warning('Produk tidak ditemukan / stok kosong')
       }),
     { inModal: true },
   )
@@ -446,7 +446,7 @@ function SupplierReturnModal({ onClose }: { onClose: () => void }) {
             else
               void findProductByCode(pick).then((p) => {
                 if (p && p.stockQty > 0) add(p)
-                else toast.error('Produk tidak ditemukan / stok kosong')
+                else toast.warning('Produk tidak ditemukan / stok kosong')
               })
           }}
         />

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { ErrorBoundary } from '@/app/ErrorBoundary'
 import { ToastHost } from '@/components/ui/ToastHost'
+import { ConfirmHost } from '@/components/ui/ConfirmHost'
 import { installGlobalErrorHandlers } from '@/lib/globalErrorHandler'
 import { toast } from '@/state/toastStore'
 import { cleanupLegacyBrand } from '@/lib/legacyCleanup'
@@ -87,6 +88,7 @@ if (window.location.pathname.startsWith('/order/')) {
             <CustomerApp />
           </BrowserRouter>
           <ToastHost />
+        <ConfirmHost />
         </ErrorBoundary>
       </React.StrictMode>,
     )
@@ -157,6 +159,7 @@ if (window.location.pathname.startsWith('/order/')) {
           <AppBoot load={loadPosApp} />
         </BrowserRouter>
         <ToastHost />
+        <ConfirmHost />
       </ErrorBoundary>
     </React.StrictMode>,
   )

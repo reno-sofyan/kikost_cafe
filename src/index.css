@@ -407,6 +407,33 @@
   }
 }
 
+/* ---- Toast (src/components/ui/ToastHost.tsx) & banner status ---- */
+.kione-toast {
+  animation: kione-toast-in 200ms var(--kione-ease-out, ease-out) both;
+}
+.kione-toast--leaving {
+  animation: kione-toast-out 180ms var(--kione-ease-in, ease-in) both;
+}
+.kione-banner {
+  animation: kione-fade-in 200ms var(--kione-ease-out, ease-out) both;
+}
+@keyframes kione-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kione-toast-out {
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
 /* ---- Modal & bottom sheet (src/components/ui/Modal.tsx) ---- */
 .kione-modal {
   animation: kione-fade-in var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
@@ -501,6 +528,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Toast: pudar saja. */
+  .kione-toast {
+    animation-name: kione-fade-in;
+  }
+  .kione-toast--leaving {
+    animation-name: kione-fade-out;
+  }
   /* PIN & kartu akun: tanpa getar/skala — perubahan warna & fade saja. */
   .kione-pin-dot,
   .kione-pin-dot--filled,

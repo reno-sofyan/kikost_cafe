@@ -22,6 +22,9 @@ import { getSettings, businessDisplayName } from '@/db/repositories/settings'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { RETAIL_NAV_HIDDEN, RETAIL_NAV_ORDER, retailPageHeading } from '@/features/retail/retailNav'
 import { ShiftReminder } from '@/features/shifts/ShiftReminder'
+import { StatusBanner } from '@/app/StatusBanner'
+import { SystemReminders } from '@/app/SystemReminders'
+import { bannerConditions } from '@/lib/statusBanner'
 import { formatTime, startOfJakartaDay } from '@/lib/datetime'
 import { listLateKitchenOrders } from '@/db/repositories/serviceInsights'
 import { countDuePreOrders } from '@/db/repositories/preOrders'
@@ -306,7 +309,19 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
+        <StatusBanner
+          conditions={bannerConditions({
+            backendConfigured: isBackendConfigured(),
+            isOnline: sync.isOnline,
+            failedSync: sync.failedCount,
+            printFailures: printAlerts,
+            onRetrySync: () => void triggerManualSync(),
+            onOpenPrintQueue: () => navigate('/cetak'),
+          })}
+        />
+
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        <SystemReminders pendingQr={pendingQr} />
       </div>
       {confirmDialog}
       {businessFeatures.shiftReminder && openShift && SHIFT_ROLES.includes(currentUser.role) && <ShiftReminder shift={openShift} />}

@@ -196,13 +196,13 @@ export function RetailCashierScreen() {
   /** Menambah `qty` satuan (dasar, atau `sellUnit`) ke keranjang. Barang timbang selalu baris baru. */
   async function addProduct(product: Product, qty = 1, sellUnit?: SellUnit, weighed = false) {
     if (!product.isAvailable) {
-      toast.error(`${product.name} sedang habis / tidak ditampilkan`)
+      toast.warning(`${product.name} sedang habis / tidak ditampilkan`)
       return
     }
     const existing = weighed ? undefined : stackableLine(activeItems, product.id, sellUnit?.id ?? null)
     const nextQty = (existing?.qty ?? 0) + qty
     if (!(await canFulfillProductQty(product, nextQty * (sellUnit?.qty ?? 1)))) {
-      toast.error(`Stok ${product.name} tidak mencukupi`)
+      toast.warning(`Stok ${product.name} tidak mencukupi`)
       return
     }
     try {
@@ -238,7 +238,7 @@ export function RetailCashierScreen() {
       setSearch('')
     } else {
       setSearch(text.trim())
-      toast.error(`Barcode ${code} belum terdaftar`)
+      toast.warning(`Barcode ${code} belum terdaftar`)
     }
   }
 
@@ -259,7 +259,7 @@ export function RetailCashierScreen() {
       if (delta > 0) {
         const product = await db.products.get(item.productId)
         if (product && !(await canFulfillProductQty(product, next * (item.sellUnit?.qty ?? 1)))) {
-          toast.error(`Stok ${item.productName} tidak mencukupi`)
+          toast.warning(`Stok ${item.productName} tidak mencukupi`)
           return
         }
       }
