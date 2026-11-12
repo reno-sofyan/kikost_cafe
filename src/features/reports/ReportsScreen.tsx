@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef } from 'react'
+import { useScreenState } from '@/lib/screenMemory'
 import { NavLink, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { buildDepositReport } from '@/db/repositories/deposits'
@@ -24,6 +25,8 @@ import { featuresForBusinessType } from '@/lib/businessType'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { HPP_PRICING_LABELS } from '@/lib/hppPricing'
 import { exportAccountingJournalCsv, exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
+import { LoadingAnnouncement, Skeleton, TableSkeleton } from '@/components/ui/Skeleton'
+import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator'
 import { MarketingBillsSection } from '@/features/reports/MarketingBillsSection'
 import { ColumnChart, ShareTable, type ColumnDatum } from '@/features/reports/ReportCharts'
 import { PAYMENT_METHOD_LABELS, paymentMethodRows } from '@/features/reports/paymentMethods'
@@ -114,9 +117,9 @@ function buildTrendData(report: SalesReport, singleDay: boolean): ColumnDatum[] 
 
 export function ReportsScreen() {
   const scope = scopeFromParam(useParams().scope)
-  const [preset, setPreset] = useState<Preset>('today')
-  const [customFrom, setCustomFrom] = useState(() => jakartaDateKey(startOfJakartaDay(6)))
-  const [customTo, setCustomTo] = useState(() => jakartaDateKey(Date.now()))
+  const [preset, setPreset] = useScreenState<Preset>('laporan.preset', 'today')
+  const [customFrom, setCustomFrom] = useScreenState('laporan.from', () => jakartaDateKey(startOfJakartaDay(6)))
+  const [customTo, setCustomTo] = useScreenState('laporan.to', () => jakartaDateKey(Date.now()))
 
   const range = useMemo<DateRange>(() => {
     const now = Date.now()
@@ -148,6 +151,8 @@ export function ReportsScreen() {
   // Usaha tanpa pesanan online (kantin, minimarket) cukup satu halaman gabungan.
   const showScopeTabs = features.onlineOrders || scope !== 'all' || (report?.channelSplit.online.transactionCount ?? 0) > 0
   const isAll = scope === 'all'
+  const tabsRef = useRef<HTMLElement>(null)
+  const tabIndicator = useSlidingIndicator(tabsRef, 'a[aria-current="page"]', [scope, showScopeTabs])
   const isOnline = scope === 'online'
 
   const singleDay = jakartaDateKey(range.from) === jakartaDateKey(range.to)
@@ -165,7 +170,8 @@ export function ReportsScreen() {
   return (
     <div className="h-full overflow-y-auto p-6">
       {showScopeTabs && (
-        <nav aria-label="Halaman laporan" className="mb-4 flex flex-wrap gap-1 border-b border-ink-800">
+        <nav ref={tabsRef} aria-label="Halaman laporan" className="relative mb-4 flex flex-wrap gap-1 border-b border-ink-800">
+          <span aria-hidden="true" className="kione-indicator h-0.5 bg-brand-500" style={tabIndicator} />
           {SCOPE_PAGES.map((s) => (
             <NavLink
               key={s.scope}
@@ -174,7 +180,7 @@ export function ReportsScreen() {
               title={s.hint}
               className={({ isActive }) =>
                 `-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                  isActive ? 'border-brand-500 text-ink-50' : 'border-transparent text-ink-300 hover:text-ink-100'
+                  isActive ? 'border-transparent text-ink-50' : 'border-transparent text-ink-300 hover:text-ink-100'
                 }`
               }
             >
@@ -237,7 +243,18 @@ export function ReportsScreen() {
       </p>
 
       {!report ? (
-        <p className="text-ink-500">Memuat laporan...</p>
+        <div className="space-y-6" aria-busy="true">
+          <LoadingAnnouncement label="Memuat laporan…" />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="card space-y-3 p-4">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-7 w-32" />
+              </div>
+            ))}
+          </div>
+          <TableSkeleton rows={6} cols={4} />
+        </div>
       ) : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useScreenState, useScrollMemory } from '@/lib/screenMemory'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
@@ -30,6 +31,8 @@ import { ScanButton } from '@/features/retail/ScanButton'
 import { useBarcodeScanner } from '@/features/retail/useBarcodeScanner'
 import { ProductThumb } from '@/features/retail/retailUi'
 import { stockTone } from '@/features/retail/retailHelpers'
+import { ProductGridSkeleton } from '@/components/ui/Skeleton'
+import { Button } from '@/components/ui/Button'
 import type { DiscountType, OrderItem, Product, SellUnit } from '@/types/domain'
 
 /** Shortcut keyboard kasir ritel (ditampilkan di bawah kolom cari). */
@@ -60,8 +63,9 @@ export function RetailCashierScreen() {
   const setPendingScan = usePosStore((s) => s.setPendingScan)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
 
-  const [search, setSearch] = useState('')
-  const [categoryId, setCategoryId] = useState('all')
+  // Bertahan saat pindah modul lalu kembali (lihat screenMemory).
+  const [search, setSearch] = useScreenState('ritel.search', '')
+  const [categoryId, setCategoryId] = useScreenState('ritel.category', 'all')
   const [scanning, setScanning] = useState(false)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showHeld, setShowHeld] = useState(false)
@@ -73,13 +77,15 @@ export function RetailCashierScreen() {
   // Teks pengali ("12*") bukan kata kunci — yang dicari hanya bagian setelahnya.
   const keyword = parseQtyMultiplier(search).code
   // "Tampilkan" dimatikan di Stok = disembunyikan dari kasir. Yang habis tetap tampil (redup).
-  const products =
+  const loadedProducts =
     useLiveQuery(
       async () => (await searchProducts(keyword, categoryId))
           .filter((p) => p.isAvailable || (p.trackOwnStock && p.stockQty <= 0))
           .sort((a, b) => a.name.localeCompare(b.name, 'id')),
       [keyword, categoryId],
-    ) ?? []
+    )
+  const products = loadedProducts ?? []
+  const productScrollRef = useScrollMemory('ritel.products', loadedProducts !== undefined)
   const order = useLiveQuery(() => (activeOrderId ? getOrder(activeOrderId) : undefined), [activeOrderId])
   const items = useLiveQuery(() => (activeOrderId ? listOrderItems(activeOrderId) : []), [activeOrderId])
   const heldOrders = useLiveQuery(() => (openShift ? listHeldOrders(openShift.id, activeOrderId) : []), [openShift?.id, activeOrderId]) ?? []
@@ -161,9 +167,7 @@ export function RetailCashierScreen() {
         <Icon name="cashDrawer" size={48} className="text-ink-400" />
         <h2 className="text-xl font-bold text-ink-50">Belum Ada Shift Aktif</h2>
         <p className="max-w-sm text-ink-400">Buka shift terlebih dahulu sebelum mulai mencatat transaksi.</p>
-        <button className="btn-primary" onClick={() => navigate('/shift')}>
-          Buka Shift
-        </button>
+        <Button onClick={() => navigate('/shift')}>Buka Shift</Button>
       </div>
     )
   }
@@ -354,7 +358,7 @@ export function RetailCashierScreen() {
           ))}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        <div ref={productScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="grid grid-cols-3 gap-2.5 xl:grid-cols-4">
             {products.map((p) => {
               const tone = stockTone(p)
@@ -397,7 +401,8 @@ export function RetailCashierScreen() {
                 </div>
               )
             })}
-            {products.length === 0 && <p className="col-span-full py-10 text-center text-ink-300">Produk tidak ditemukan</p>}
+            {loadedProducts === undefined && <ProductGridSkeleton variant="retail" count={8} />}
+            {loadedProducts?.length === 0 && <p className="col-span-full py-10 text-center text-ink-300">Produk tidak ditemukan</p>}
           </div>
         </div>
       </div>
@@ -495,17 +500,20 @@ export function RetailCashierScreen() {
             <span>{formatRupiah(total)}</span>
           </div>
           {hasItems && canDiscount && (
-            <button className="mb-1 w-full text-sm font-medium text-brand-400 hover:text-brand-700" onClick={() => setShowDiscount(true)}>
+            <Button variant="ghost" size="sm" fullWidth className="mb-1 font-medium text-brand-400 hover:text-brand-700" onClick={() => setShowDiscount(true)}>
               {order!.discountType ? 'Ubah diskon' : '+ Diskon'}
-            </button>
+            </Button>
           )}
-          <button
-            className="min-h-[3.5rem] w-full rounded-xl bg-brand-700 text-base font-semibold text-white hover:bg-brand-600 disabled:bg-brand-600/60 disabled:opacity-100"
+          {/* Gaya ritel: biru pekat, tetap biru (bukan pudar) saat keranjang kosong. */}
+          <Button
+            size="lg"
+            fullWidth
+            className="bg-brand-700 text-base hover:bg-brand-600 disabled:bg-brand-600/60 disabled:opacity-100"
             disabled={!hasItems}
             onClick={() => order && navigate(`/kasir/${order.id}/bayar`)}
           >
             Bayar · {formatRupiah(total)}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -550,9 +558,9 @@ export function RetailCashierScreen() {
                     onBlur={(e) => e.target.value !== o.notes && void setHeldLabel(o.id, e.target.value)}
                   />
                 </div>
-                <button className="btn-primary btn-compact flex-none" onClick={() => resumeHeld(o.id)}>
+                <Button size="sm" className="flex-none" onClick={() => resumeHeld(o.id)}>
                   Buka
-                </button>
+                </Button>
               </div>
             ))}
             {heldOrders.length === 0 && <p className="py-6 text-center text-sm text-ink-300">Tidak ada transaksi ditahan.</p>}

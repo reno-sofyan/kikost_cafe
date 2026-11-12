@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/Button'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -355,16 +356,12 @@ export function RetailPaymentScreen() {
         {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
 
         <div className="mt-auto grid grid-cols-[1fr_1.9fr] gap-3 pt-6">
-          <button className="min-h-[3.5rem] rounded-xl border border-ink-600 bg-ink-900 font-medium text-ink-100 hover:bg-ink-800" onClick={() => navigate('/kasir')}>
+          <Button variant="secondary" size="lg" className="text-base font-medium" onClick={() => navigate('/kasir')}>
             Kembali
-          </button>
-          <button
-            className="min-h-[3.5rem] rounded-xl bg-brand-600 font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-            disabled={!canSubmit || submitting}
-            onClick={() => submit()}
-          >
-            {submitting ? 'Memproses…' : 'Selesaikan pembayaran'}
-          </button>
+          </Button>
+          <Button size="lg" className="text-base" disabled={!canSubmit} loading={submitting} onClick={() => submit()}>
+            Selesaikan pembayaran
+          </Button>
         </div>
       </div>
 

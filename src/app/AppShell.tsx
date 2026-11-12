@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useSessionStore } from '@/state/sessionStore'
@@ -15,6 +15,7 @@ import { countPendingQrOrders } from '@/db/repositories/qrOrders'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { db } from '@/db/schema'
 import { Icon } from '@/components/ui/Icon'
+import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
@@ -84,6 +85,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   // bisa menindaklanjuti (cek tanggal/waktu Android), bukan kasir yang tak bisa berbuat apa-apa.
   const showClockWarning = !!currentUser && roleHasPermission(currentUser.role, 'settings.manage') && isSystemClockBehindTrusted()
 
+  // Pil menu aktif bergeser mengikuti pilihan (transform saja). Diukur ulang tiap pindah
+  // halaman & saat ukuran menu berubah (item muncul/hilang). Harus sebelum return di bawah.
+  const navRef = useRef<HTMLElement>(null)
+  const navIndicator = useSlidingIndicator(navRef, 'a[aria-current="page"]', [pathname, settings?.businessType, currentUser?.role], 'y')
+
+  // Foto profil terbaru dari database (berubah di Pengaturan → Pengguna tanpa perlu masuk ulang).
+  const userPhoto = useLiveQuery(async () => (currentUser ? ((await db.users.get(currentUser.id))?.photoDataUrl ?? null) : null), [currentUser?.id])
+
   if (!currentUser) return null
 
   async function handleLogout() {
@@ -138,12 +147,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           landscape ≈ 1280×728 CSS px) item ikut menyusut & blok nama usaha
           terpotong alih-alih nav bisa di-scroll. */}
       <nav
+        ref={navRef}
         className={
           retail
-            ? 'flex w-[6.25rem] flex-none flex-col items-stretch gap-0.5 overflow-y-auto rounded-[1.25rem] bg-brand-600 py-4 text-white shadow-card'
-            : 'flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3'
+            ? 'relative flex w-[6.25rem] flex-none flex-col items-stretch gap-0.5 overflow-y-auto rounded-[1.25rem] bg-brand-600 py-4 text-white shadow-card'
+            : 'relative flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3'
         }
       >
+        <span aria-hidden="true" className={`kione-indicator ${retail ? 'left-0 right-0 bg-white/25' : 'left-2 right-2 rounded-xl bg-brand-600 shadow-sm'}`} style={navIndicator} />
         <div className={`mb-2 flex flex-none flex-col items-center gap-1.5 px-2 pb-3 [@media(max-height:800px)]:mb-1 [@media(max-height:800px)]:pb-2 ${retail ? 'mb-4' : ''}`} title={businessName}>
           {retail ? (
             <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-white">
@@ -163,10 +174,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             className={({ isActive }) =>
               retail
                 ? `group relative flex flex-none flex-col items-center gap-1.5 py-3 text-[0.78rem] font-medium transition-colors [@media(max-height:800px)]:py-2 ${
-                    isActive ? 'bg-white/25 text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
+                    isActive ? 'text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
                   }`
                 : `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
-                    isActive ? 'bg-brand-600 text-white shadow-sm' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
+                    isActive ? 'text-white' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-100'
                   }`
             }
           >
@@ -261,9 +272,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               }
               title={`${currentUser.name} • ${ROLE_LABELS[currentUser.role]}`}
             >
-              <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${retail ? 'bg-brand-600/15 text-brand-700' : 'bg-brand-600 text-white'}`}>
-                {currentUser.name.trim()[0]?.toUpperCase() ?? '?'}
-              </span>
+              {userPhoto ? (
+                <img src={userPhoto} alt="" aria-hidden="true" className="h-8 w-8 flex-none rounded-full object-cover" />
+              ) : (
+                <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${retail ? 'bg-brand-600/15 text-brand-700' : 'bg-brand-600 text-white'}`}>
+                  {currentUser.name.trim()[0]?.toUpperCase() ?? '?'}
+                </span>
+              )}
               <span className="ml-2 max-w-[8rem] truncate">{currentUser.name}</span>
               {retail ? <span className="mx-1.5 text-ink-300">·</span> : <span className="mx-2 h-6 w-px bg-ink-600" />}
               <span className={openShift ? '' : 'text-red-500'}>{openShift ? `Shift ${shiftNumber ?? ''}`.trim() : 'Belum Shift'}</span>

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { getSettings } from '@/db/repositories/settings'
@@ -16,6 +16,10 @@ import { LockScreen } from '@/features/auth/LockScreen'
 import { CashierScreen } from '@/features/pos/CashierScreen'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { canOpenPath, homePathFor, resolveNavItems } from '@/lib/navAccess'
+import { rememberBootBrand } from '@/lib/bootSplash'
+import { ResumeIndicator } from '@/app/ResumeIndicator'
+import { EASING, MOTION, prefersReducedMotion, routeKeyframes, routeTransitionFor } from '@/lib/motion'
+import { startBackButtonHandler } from '@/native/backButton'
 import type { AppSettings, Role } from '@/types/domain'
 
 // Layar inti (jalur transaksi) dimuat langsung; sisanya di-split per rute supaya
@@ -50,14 +54,33 @@ function ScreenLoading() {
   )
 }
 
-/** Boundary + Suspense yang otomatis pulih saat pindah rute (key = segmen pertama path). */
+/**
+ * Boundary + Suspense yang otomatis pulih saat pindah rute (key = segmen pertama path),
+ * plus transisi masuk layar: geser maju/mundur di dalam modul, pudar antar modul (arah
+ * dari riwayat, lihat `routeTransitionFor`). Dianimasikan lewat Web Animations API pada
+ * pembungkus yang sama — layar tak di-mount ulang karenanya, dan input tetap aktif.
+ */
 function RouteView({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const segment = pathname.split('/')[1] || 'kasir'
+  const ref = useRef<HTMLDivElement>(null)
+  const prev = useRef<{ path: string; idx: number | null } | null>(null)
+  useLayoutEffect(() => {
+    const state = window.history.state as { idx?: unknown } | null
+    const next = { path: pathname, idx: typeof state?.idx === 'number' ? state.idx : null }
+    const from = prev.current
+    prev.current = next
+    const el = ref.current
+    if (!from || !el || typeof el.animate !== 'function') return
+    const frames = routeKeyframes(routeTransitionFor(from, next), prefersReducedMotion())
+    if (frames.length) el.animate(frames, { duration: MOTION.route, easing: EASING.out })
+  }, [pathname])
   return (
-    <ErrorBoundary key={segment} scope="layar ini">
-      <Suspense fallback={<ScreenLoading />}>{children}</Suspense>
-    </ErrorBoundary>
+    <div ref={ref} className="h-full">
+      <ErrorBoundary key={segment} scope="layar ini">
+        <Suspense fallback={<ScreenLoading />}>{children}</Suspense>
+      </ErrorBoundary>
+    </div>
   )
 }
 
@@ -91,7 +114,9 @@ export default function App() {
     const stopEvents = startEventStream()
     const stopPrint = startPrintEngine()
     const stopPager = startPagerEngine()
+    const stopBack = startBackButtonHandler()
     return () => {
+      stopBack()
       stopSync()
       stopEvents()
       stopPrint()
@@ -108,13 +133,15 @@ export default function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', retail ? '#1f66c1' : '#4338ca')
   }, [retail])
 
-  if (settings === undefined) {
-    return (
-      <div className="flex h-full items-center justify-center bg-ink-950 text-ink-300">
-        Memuat aplikasi...
-      </div>
-    )
-  }
+  // Diingat untuk splash cold start berikutnya (gaya per jenis usaha, sebelum database terbuka).
+  const bootType = settings?.onboardingCompleted ? settings.businessType : null
+  const bootName = settings?.onboardingCompleted ? settings.businessName : ''
+  useEffect(() => {
+    if (bootType) rememberBootBrand({ businessType: bootType, businessName: bootName })
+  }, [bootType, bootName])
+
+  // Sekejap setelah splash (pengaturan sudah disiapkan AppBoot): kanvas kosong, tanpa teks berkedip.
+  if (settings === undefined) return <div className="h-full bg-ink-950" />
 
   if (!settings.onboardingCompleted) {
     return (
@@ -139,6 +166,7 @@ export default function App() {
   return (
     <>
       <AutoLockWatcher autoLockMinutes={settings.autoLockMinutes} />
+      <ResumeIndicator />
       <AppShell>
         <RouteView>
           <AccessGuard settings={settings} role={currentUser.role}>

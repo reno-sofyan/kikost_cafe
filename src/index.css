@@ -86,14 +86,166 @@
   .btn-ghost {
     @apply btn min-h-touch bg-transparent px-4 text-ink-200 hover:bg-ink-800 hover:text-ink-50;
   }
+  /* ---- Komponen Button (src/components/ui/Button.tsx) ----
+     Tekan = mengecil + lapisan gelap tipis (transform & opacity saja). */
+  .kbtn {
+    @apply relative inline-flex select-none items-center justify-center overflow-hidden rounded-xl font-sans font-semibold tracking-[0.01em];
+    -webkit-tap-highlight-color: transparent;
+    transition: transform var(--kione-motion-press, 100ms) var(--kione-ease-out, ease-out), opacity 150ms ease-out;
+  }
+  .kbtn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--kione-motion-press, 100ms) var(--kione-ease-out, ease-out);
+  }
+  .kbtn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .kbtn:active:not(:disabled)::after {
+    opacity: 0.1;
+  }
+  .kbtn:focus-visible {
+    @apply outline-none ring-2 ring-brand-500/50 ring-offset-2 ring-offset-ink-950;
+  }
+  .kbtn:disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+  /* Sedang memproses: tetap jelas terbaca (bukan tampak mati). */
+  .kbtn[data-busy]:disabled {
+    @apply cursor-progress opacity-90;
+  }
+  .kbtn-primary {
+    @apply bg-brand-600 text-white shadow-sm hover:bg-brand-700;
+  }
+  .kbtn-secondary {
+    @apply border border-ink-600 bg-ink-900 text-ink-100 hover:bg-ink-800;
+  }
+  .kbtn-ghost {
+    @apply bg-transparent text-ink-200 hover:bg-ink-800 hover:text-ink-50;
+  }
+  /* Garis warna merek (Pesanan Terbuka, Kirim ke Dapur). */
+  .kbtn-outline {
+    @apply border-2 border-brand-600 bg-ink-900 text-brand-400 hover:bg-brand-600/5;
+  }
+  .kbtn-danger {
+    @apply bg-red-700 text-white hover:bg-red-600;
+  }
+  .kbtn-success {
+    @apply bg-success-600 text-white hover:bg-success-500;
+  }
+  .kbtn-sm {
+    @apply min-h-[2.75rem] px-3 text-sm;
+  }
+  .kbtn-md {
+    @apply min-h-touch px-5;
+  }
+  .kbtn-lg {
+    @apply min-h-[3.5rem] px-6 text-[1.1rem];
+  }
+  .kbtn__overlay {
+    @apply absolute inset-0 flex items-center justify-center gap-2;
+  }
+  .kbtn__spinner {
+    @apply h-5 w-5 animate-spin rounded-full border-2 border-current border-r-transparent;
+  }
+  .kbtn__busy-text {
+    @apply sr-only;
+  }
+  .kbtn__success {
+    animation: kione-pop-in var(--kione-motion-indicator, 220ms) var(--kione-ease-out, ease-out) both;
+  }
+
+  /* ---- Keypad PIN (src/components/ui/PinPad.tsx) ---- */
+  .kione-key {
+    @apply relative flex h-16 select-none items-center justify-center overflow-hidden rounded-2xl border border-ink-600 bg-ink-800 text-[1.75rem] font-bold text-ink-50 shadow-sm;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform var(--kione-motion-press, 100ms) var(--kione-ease-out, ease-out), opacity 150ms ease-out;
+  }
+  .kione-key::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgb(var(--kione-brand-600));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--kione-motion-press, 100ms) var(--kione-ease-out, ease-out);
+  }
+  .kione-key:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+  .kione-key:active:not(:disabled)::after {
+    opacity: 0.14;
+  }
+  .kione-key:focus-visible {
+    @apply outline-none ring-2 ring-brand-500/60 ring-offset-2 ring-offset-ink-900;
+  }
+  .kione-key:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .kione-key--util {
+    @apply bg-ink-900 text-ink-200;
+  }
+  /* Tombol kirim PIN saat belum lengkap: tetap terbaca (bukan pudar), berisi petunjuk. */
+  .pin-submit:disabled:not([data-busy]) {
+    @apply bg-ink-700 text-ink-200 opacity-100 shadow-none;
+  }
+  .kione-pin-dot {
+    @apply block h-4 w-4 rounded-full border-2 border-ink-400 bg-transparent;
+    transition: transform 120ms var(--kione-ease-out, ease-out);
+  }
+  .kione-pin-dot--filled {
+    @apply border-brand-600 bg-brand-600;
+    animation: kione-dot-pop 120ms var(--kione-ease-out, ease-out);
+  }
+  .kione-pin-dots--error .kione-pin-dot {
+    @apply border-red-600;
+  }
+  .kione-pin-dots--error .kione-pin-dot--filled {
+    @apply bg-red-600;
+  }
+  .kione-pin-dots--error {
+    animation: kione-shake 320ms var(--kione-ease-out, ease-out);
+  }
+
+  /* ---- Layar masuk: latar bergradasi halus + tekstur titik (ikut tema indigo/biru) ---- */
+  /* Kolom yang salah di wizard Pengaturan Awal: garis merah. */
+  .kione-field--error .input-field {
+    @apply border-red-600 focus:border-red-600 focus:ring-red-600/25;
+  }
+  .kione-auth-bg {
+    background-color: rgb(var(--kione-canvas));
+    background-image:
+      radial-gradient(circle at 1px 1px, rgb(var(--kione-brand-500) / 0.1) 1px, transparent 0),
+      radial-gradient(ellipse at 0% 0%, rgb(var(--kione-brand-500) / 0.16), transparent 55%),
+      radial-gradient(ellipse at 100% 100%, rgb(var(--kione-brand-600) / 0.12), transparent 50%);
+    background-size: 22px 22px, 100% 100%, 100% 100%;
+  }
+  .kione-account-card {
+    @apply relative flex w-full flex-col items-center gap-3 rounded-2xl border border-ink-600 bg-ink-900 p-5 text-center shadow-card;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 160ms var(--kione-ease-out, ease-out);
+    animation: kione-card-in var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
+  }
+  .kione-account-card:hover {
+    @apply border-brand-500;
+    transform: translateY(-2px);
+  }
+  .kione-account-card:active {
+    transform: scale(0.98);
+  }
+  .kione-account-card:focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-ink-950;
+  }
+
   .card {
     @apply rounded-2xl border border-ink-700 bg-ink-900 shadow-card;
   }
   .input-field {
     @apply min-h-touch w-full rounded-xl border border-ink-600 bg-ink-900 px-4 py-3 text-ink-50 transition-colors placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25;
-  }
-  .numpad-key {
-    @apply btn aspect-square w-full border border-ink-700 bg-ink-900 text-2xl font-bold text-ink-50 hover:bg-ink-800;
   }
   /* Lencana status kecil (Terisi, LUNAS, dsb). */
   .badge {
@@ -128,50 +280,272 @@
   background: theme('colors.ink.500');
 }
 
-/* Aplikasi kasir hanya didesain untuk lanskap (tablet). Di potret tampilkan
-   pesan "putar perangkat". Di Android APK orientasi sudah dikunci lewat
-   AndroidManifest; ini jaring pengaman untuk iPad/PWA.
-   Halaman pesan-mandiri pelanggan (/order/*) memang untuk HP potret —
-   `body.customer-view` (di-set di main.tsx) menonaktifkannya. */
-#portrait-lock {
-  display: none;
+/* Gerbang orientasi ("Putar perangkat ke mode lanskap") ada di <style> inline index.html —
+   harus berlaku sebelum CSS ini termuat, jadi sengaja tidak di sini. */
+
+/* ---- Splash cold start (src/app/SplashScreen.tsx) ----
+   Hanya transform/opacity/stroke-dashoffset: tetap lancar di tablet Android kelas bawah. */
+.kione-splash {
+  transition: opacity 250ms ease-out;
 }
-@media (orientation: portrait), (max-width: 760px) {
-  body:not(.customer-view) #portrait-lock {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    background: rgb(var(--kione-canvas));
-    color: theme('colors.ink.100');
-    text-align: center;
+.kione-splash--leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+.kione-splash__mark {
+  animation: kione-splash-pop 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.kione-splash__stroke {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: kione-splash-draw 380ms ease-out 260ms forwards;
+}
+.kione-splash__stroke--2 {
+  animation-delay: 380ms;
+}
+.kione-splash__stroke--3 {
+  animation-delay: 480ms;
+}
+.kione-splash__text {
+  animation: kione-splash-rise 420ms ease-out 220ms both;
+}
+.kione-splash__bar {
+  position: relative;
+  display: block;
+  width: 7rem;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+}
+.kione-splash__bar > span {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  animation: kione-splash-bar 1.1s ease-in-out infinite;
+}
+@keyframes kione-splash-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
   }
-  #portrait-lock .portrait-lock__inner {
-    display: flex;
-    max-width: 22rem;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
-  #portrait-lock .portrait-lock__logo {
-    width: 11rem;
-    height: auto;
-    margin-bottom: 0.25rem;
+}
+@keyframes kione-splash-draw {
+  to {
+    stroke-dashoffset: 0;
   }
-  #portrait-lock .portrait-lock__title {
-    font-family: theme('fontFamily.display');
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: theme('colors.ink.50');
+}
+@keyframes kione-splash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
-  #portrait-lock .portrait-lock__sub {
-    font-size: 0.85rem;
-    color: theme('colors.ink.300');
+  to {
+    opacity: 1;
+    transform: none;
   }
-  body:not(.customer-view) #root {
+}
+@keyframes kione-splash-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* Indikator kecil saat aplikasi kembali dari background (src/app/ResumeIndicator.tsx). */
+.kione-resume {
+  animation: kione-splash-rise 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kione-splash,
+  .kione-splash__mark,
+  .kione-splash__text,
+  .kione-resume {
+    transition: none;
+    animation: none;
+  }
+  .kione-splash__stroke {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .kione-splash__bar > span {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* ---- Transisi layar: lihat `routeKeyframes` (src/lib/motion.ts) & RouteView (src/App.tsx) ---- */
+@keyframes kione-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes kione-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes kione-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Modal & bottom sheet (src/components/ui/Modal.tsx) ---- */
+.kione-modal {
+  animation: kione-fade-in var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
+}
+.kione-modal__panel--up {
+  animation: kione-sheet-up var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
+}
+.kione-modal__panel--side {
+  animation: kione-sheet-side var(--kione-motion-sheet-in, 260ms) var(--kione-ease-out, ease-out) both;
+}
+.kione-modal--closing {
+  animation: kione-fade-out var(--kione-motion-sheet-out, 180ms) var(--kione-ease-in, ease-in) both;
+}
+.kione-modal--closing .kione-modal__panel--up {
+  animation: kione-sheet-down var(--kione-motion-sheet-out, 180ms) var(--kione-ease-in, ease-in) both;
+}
+.kione-modal--closing .kione-modal__panel--side {
+  animation: kione-sheet-side-out var(--kione-motion-sheet-out, 180ms) var(--kione-ease-in, ease-in) both;
+}
+@keyframes kione-sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kione-sheet-down {
+  to {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+}
+@keyframes kione-sheet-side {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes kione-sheet-side-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ---- Indikator tab yang bergeser (src/components/ui/useSlidingIndicator.ts) ---- */
+.kione-indicator {
+  position: absolute;
+  pointer-events: none;
+  transition: transform var(--kione-motion-indicator, 220ms) var(--kione-ease-in-out, ease-in-out);
+  will-change: transform;
+}
+
+@keyframes kione-dot-pop {
+  from {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes kione-shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20%,
+  60% {
+    transform: translateX(-8px);
+  }
+  40%,
+  80% {
+    transform: translateX(8px);
+  }
+}
+@keyframes kione-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* PIN & kartu akun: tanpa getar/skala — perubahan warna & fade saja. */
+  .kione-pin-dot,
+  .kione-pin-dot--filled,
+  .kione-pin-dots--error,
+  .kione-key,
+  .kione-key:active:not(:disabled),
+  .kione-account-card:hover,
+  .kione-account-card:active {
+    animation: none;
+    transform: none;
+  }
+  .kione-account-card {
+    animation-name: kione-fade-in;
+  }
+  /* Fade sederhana saja: tanpa geser & tanpa skala (layar: lihat routeKeyframes). */
+  .kione-modal__panel--up,
+  .kione-modal__panel--side {
+    animation-name: kione-fade-in;
+  }
+  .kione-modal--closing .kione-modal__panel--up,
+  .kione-modal--closing .kione-modal__panel--side {
+    animation-name: kione-fade-out;
+  }
+  .kione-indicator {
+    transition: none;
+  }
+  .kbtn,
+  .kbtn:active:not(:disabled) {
+    transform: none;
+  }
+  .kbtn__success {
+    animation: none;
+  }
+  /* Spinner berputar diganti teks. */
+  .kbtn__spinner {
     display: none;
+  }
+  .kbtn__busy-text {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: nowrap;
+    font-size: 0.85em;
   }
 }

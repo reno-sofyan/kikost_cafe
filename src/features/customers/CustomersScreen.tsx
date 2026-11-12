@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { createCustomer, purchaseHistoryForCustomer, searchCustomers, updateCustomer } from '@/db/repositories/customers'
 import { formatDate, formatDateTime } from '@/lib/datetime'
@@ -16,6 +16,7 @@ import { toast } from '@/state/toastStore'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
 import { MarketingTeamPanel } from '@/features/customers/MarketingTeamPanel'
+import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator'
 import type { Customer, PaymentMethod } from '@/types/domain'
 
 export function CustomersScreen() {
@@ -41,6 +42,8 @@ export function CustomersScreen() {
   const [showGreeting, setShowGreeting] = useState(false)
   const marketingOn = !!settings && featuresForBusinessType(settings.businessType).marketingBill
   const [tab, setTab] = useState<'customers' | 'marketing'>('customers')
+  const tabsRef = useRef<HTMLElement>(null)
+  const tabIndicator = useSlidingIndicator(tabsRef, 'button[aria-current="page"]', [tab, marketingOn])
   const now = Date.now()
   const daysSinceVisit = (customerId: string) => {
     const last = loyaltyByCustomer?.get(customerId)?.lastOrderAt
@@ -55,12 +58,14 @@ export function CustomersScreen() {
   const selectedDays = selected ? daysSinceVisit(selected.id) : null
 
   const tabs = marketingOn && (
-    <nav aria-label="Halaman pelanggan" className="flex flex-none gap-1 border-b border-ink-800 px-4">
+    <nav ref={tabsRef} aria-label="Halaman pelanggan" className="relative flex flex-none gap-1 border-b border-ink-800 px-4">
+      <span aria-hidden="true" className="kione-indicator h-0.5 bg-brand-500" style={tabIndicator} />
       {(['customers', 'marketing'] as const).map((t) => (
         <button
           key={t}
           onClick={() => setTab(t)}
-          className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold ${tab === t ? 'border-brand-500 text-ink-50' : 'border-transparent text-ink-300 hover:text-ink-100'}`}
+          aria-current={tab === t ? 'page' : undefined}
+          className={`-mb-px border-b-2 border-transparent px-4 py-2.5 text-sm font-semibold ${tab === t ? 'text-ink-50' : 'text-ink-300 hover:text-ink-100'}`}
         >
           {t === 'customers' ? 'Pelanggan' : 'Tim Marketing'}
         </button>

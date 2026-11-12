@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { useScreenState, useScrollMemory } from '@/lib/screenMemory'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { formatDateTime } from '@/lib/datetime'
 import { formatRupiah } from '@/lib/currency'
 import { OrderDetailPanel } from '@/features/history/OrderDetailPanel'
+import { TransactionRowsSkeleton } from '@/components/ui/Skeleton'
 import type { OrderStatus } from '@/types/domain'
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -21,11 +23,12 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
 }
 
 export function HistoryScreen() {
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
+  const [search, setSearch] = useScreenState('riwayat.search', '')
+  const [statusFilter, setStatusFilter] = useScreenState<OrderStatus | 'all'>('riwayat.status', 'all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const orders = useLiveQuery(() => db.orders.orderBy('createdAt').reverse().limit(500).toArray(), [])
+  const listScrollRef = useScrollMemory('riwayat.list', orders !== undefined)
   const selectedOrder = useLiveQuery(() => (selectedId ? db.orders.get(selectedId) : undefined), [selectedId])
 
   const filtered = useMemo(() => {
@@ -55,7 +58,7 @@ export function HistoryScreen() {
         </select>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={listScrollRef} className="flex-1 overflow-y-auto p-4">
         <div className="space-y-2">
           {filtered.map((order) => (
             <button key={order.id} onClick={() => setSelectedId(order.id)} className="card flex w-full items-center justify-between p-4 text-left">
@@ -71,7 +74,8 @@ export function HistoryScreen() {
               </div>
             </button>
           ))}
-          {filtered.length === 0 && <p className="mt-10 text-center text-ink-500">Tidak ada transaksi</p>}
+          {orders === undefined && <TransactionRowsSkeleton />}
+          {orders !== undefined && filtered.length === 0 && <p className="mt-10 text-center text-ink-500">Tidak ada transaksi</p>}
         </div>
       </div>
 

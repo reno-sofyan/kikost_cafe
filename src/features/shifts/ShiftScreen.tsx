@@ -21,6 +21,7 @@ import { featuresForBusinessType } from '@/lib/businessType'
 import { SHIFT_REMINDER_HOUR } from '@/lib/shiftReminder'
 import { toast } from '@/state/toastStore'
 import { Icon } from '@/components/ui/Icon'
+import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { printShiftReport } from '@/features/shifts/printShiftReport'
@@ -57,13 +58,13 @@ export function ShiftScreen() {
         <div className="card mx-auto max-w-sm p-6 text-center">
           <Icon name="cashDrawer" size={40} className="mx-auto mb-3 text-ink-400" />
           <p className="mb-4 text-ink-400">Belum ada shift yang berjalan</p>
-          <button className="btn-primary w-full" onClick={() => setShowOpenForm(true)}>
+          <Button variant="primary" fullWidth onClick={() => setShowOpenForm(true)}>
             Buka Shift
-          </button>
+          </Button>
           {proTools && lastClosed && (
-            <button className="btn-ghost mt-2 w-full text-sm" onClick={() => setSummaryShiftId(lastClosed.id)}>
+            <Button variant="ghost" fullWidth size="sm" className="mt-2" onClick={() => setSummaryShiftId(lastClosed.id)}>
               Ringkasan shift terakhir ({formatDateTime(lastClosed.closedAt ?? lastClosed.openedAt)})
-            </button>
+            </Button>
           )}
         </div>
       ) : (
@@ -97,12 +98,12 @@ export function ShiftScreen() {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <button className="btn-secondary" onClick={() => setShowCashMovement('in')}>
+            <Button variant="secondary" onClick={() => setShowCashMovement('in')}>
               Kas Masuk
-            </button>
-            <button className="btn-secondary" onClick={() => setShowCashMovement('out')}>
+            </Button>
+            <Button variant="secondary" onClick={() => setShowCashMovement('out')}>
               Kas Keluar
-            </button>
+            </Button>
           </div>
 
           <div className="card p-4">
@@ -119,9 +120,9 @@ export function ShiftScreen() {
             ))}
           </div>
 
-          <button className="btn-danger w-full" onClick={() => setShowCloseForm(true)}>
+          <Button variant="danger" fullWidth onClick={() => setShowCloseForm(true)}>
             Tutup Shift
-          </button>
+          </Button>
         </div>
       )}
 
@@ -176,9 +177,9 @@ export function ShiftScreen() {
             Pesanan berikut belum selesai saat shift sebelumnya ditutup. Pelunasannya akan masuk ke shift ini.
           </p>
           <OpenOrderList orders={carriedOrders} />
-          <button className="btn-primary mt-4 w-full" onClick={() => setShowCarriedReminder(false)}>
+          <Button variant="primary" fullWidth className="mt-4" onClick={() => setShowCarriedReminder(false)}>
             Mengerti
-          </button>
+          </Button>
         </Modal>
       )}
 
@@ -197,12 +198,12 @@ function OpenShiftModal({ onClose, onConfirm }: { onClose: () => void; onConfirm
           <input className="input-field" inputMode="numeric" value={formatRupiah(amount)} onChange={(e) => setAmount(parseRupiahInput(e.target.value))} />
         </label>
         <div className="flex gap-3">
-          <button className="btn-ghost flex-1" onClick={onClose}>
+          <Button variant="ghost" className="flex-1" onClick={onClose}>
             Batal
-          </button>
-          <button className="btn-primary flex-[2]" onClick={() => void onConfirm(amount)}>
+          </Button>
+          <Button variant="primary" className="flex-[2]" onClick={() => onConfirm(amount)}>
             Buka Shift
-          </button>
+          </Button>
         </div>
     </Modal>
   )
@@ -231,12 +232,12 @@ function CashMovementModal({
           <input className="input-field" value={reason} onChange={(e) => setReason(e.target.value)} />
         </label>
         <div className="flex gap-3">
-          <button className="btn-ghost flex-1" onClick={onClose}>
+          <Button variant="ghost" className="flex-1" onClick={onClose}>
             Batal
-          </button>
-          <button className="btn-primary flex-[2]" disabled={amount <= 0} onClick={() => void onConfirm(amount, reason)}>
+          </Button>
+          <Button variant="primary" className="flex-[2]" disabled={amount <= 0} onClick={() => onConfirm(amount, reason)}>
             Simpan
-          </button>
+          </Button>
         </div>
     </Modal>
   )
@@ -323,12 +324,12 @@ function CloseShiftModal({
 
         {blindClose && !entered ? (
           <div className="flex gap-3">
-            <button className="btn-ghost flex-1" onClick={onClose}>
+            <Button variant="ghost" className="flex-1" onClick={onClose}>
               Batal
-            </button>
-            <button className="btn-primary flex-[2]" disabled={actualCash <= 0} onClick={() => setEntered(true)}>
+            </Button>
+            <Button variant="primary" className="flex-[2]" disabled={actualCash <= 0} onClick={() => setEntered(true)}>
               Lanjut
-            </button>
+            </Button>
           </div>
         ) : (
           <>
@@ -351,12 +352,12 @@ function CloseShiftModal({
               <textarea className="input-field" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </label>
             <div className="flex gap-3">
-              <button className="btn-ghost flex-1" onClick={onClose}>
+              <Button variant="ghost" className="flex-1" onClick={onClose}>
                 Batal
-              </button>
-              <button className="btn-danger flex-[2]" onClick={() => void handleClose()}>
+              </Button>
+              <Button variant="danger" className="flex-[2]" onClick={() => handleClose()}>
                 {carryOver.length > 0 ? 'Tetap Tutup Shift & Cetak Laporan' : 'Tutup Shift & Cetak Laporan'}
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -400,12 +401,12 @@ function OwnerSummaryModal({ shiftId, ownerWhatsapp, onClose }: { shiftId: strin
       </p>
       <pre className="mb-3 max-h-72 select-text overflow-auto whitespace-pre-wrap rounded-xl bg-ink-800 p-3 text-xs text-ink-200">{message ?? 'Menyusun ringkasan…'}</pre>
       <div className="flex gap-3">
-        <button className="btn-ghost flex-1" onClick={onClose}>
+        <Button variant="ghost" className="flex-1" onClick={onClose}>
           Tutup
-        </button>
-        <button className="btn-secondary flex-1" disabled={!message} onClick={() => void copy()}>
+        </Button>
+        <Button variant="secondary" className="flex-1" disabled={!message} onClick={() => void copy()}>
           Salin
-        </button>
+        </Button>
         {link && (
           <a className="btn-primary flex-[2] whitespace-nowrap text-center !px-3 text-sm" href={link} target="_blank" rel="noreferrer" onClick={onClose}>
             Kirim ke WhatsApp

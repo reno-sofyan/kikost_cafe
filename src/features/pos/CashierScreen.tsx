@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useScreenState, useScrollMemory } from '@/lib/screenMemory'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { warmUpStationPrinters } from '@/db/repositories/printQueue'
@@ -59,6 +60,8 @@ import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
 import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
+import { Button } from '@/components/ui/Button'
+import { ProductGridSkeleton } from '@/components/ui/Skeleton'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { usePromptDialog } from '@/components/ui/usePromptDialog'
 import { setOrderPagerNumber } from '@/features/pager/pagerEngine'
@@ -79,8 +82,9 @@ export function CashierScreen() {
   const activeOrderId = usePosStore((s) => s.activeOrderId)
   const setActiveOrderId = usePosStore((s) => s.setActiveOrderId)
 
-  const [search, setSearch] = useState('')
-  const [categoryId, setCategoryId] = useState('all')
+  // Bertahan saat pindah modul lalu kembali (lihat screenMemory).
+  const [search, setSearch] = useScreenState('kasir.search', '')
+  const [categoryId, setCategoryId] = useScreenState('kasir.category', 'all')
   const [showNewOrder, setShowNewOrder] = useState(false)
   const [showOpenBills, setShowOpenBills] = useState(false)
   const [showDiscount, setShowDiscount] = useState(false)
@@ -106,7 +110,9 @@ export function CashierScreen() {
 
   const openShift = useLiveQuery(() => getOpenShift(), [])
   const categories = useLiveQuery(() => listCategories(), []) ?? []
-  const products = useLiveQuery(() => searchProducts(search, categoryId), [search, categoryId]) ?? []
+  const loadedProducts = useLiveQuery(() => searchProducts(search, categoryId), [search, categoryId])
+  const products = loadedProducts ?? []
+  const productScrollRef = useScrollMemory('kasir.products', loadedProducts !== undefined)
   const order = useLiveQuery(() => (activeOrderId ? getOrder(activeOrderId) : undefined), [activeOrderId])
   // Layar pelanggan (jendela kedua) mengikuti pesanan yang sedang dikerjakan kasir.
   useEffect(() => {
@@ -146,9 +152,7 @@ export function CashierScreen() {
         <Icon name="cashDrawer" size={48} className="text-ink-400" />
         <h2 className="text-xl font-bold text-ink-50">Belum Ada Shift Aktif</h2>
         <p className="max-w-sm text-ink-400">Buka shift terlebih dahulu sebelum mulai mencatat transaksi.</p>
-        <button className="btn-primary" onClick={() => navigate('/shift')}>
-          Buka Shift
-        </button>
+        <Button onClick={() => navigate('/shift')}>Buka Shift</Button>
       </div>
     )
   }
@@ -535,19 +539,12 @@ export function CashierScreen() {
               }}
             />
           </div>
-          <button
-            className="btn btn-compact whitespace-nowrap border-2 border-brand-600 bg-ink-900 px-4 text-sm text-brand-400 hover:bg-brand-600/5"
-            onClick={() => setShowOpenBills(true)}
-          >
+          <Button variant="outline" size="sm" className="whitespace-nowrap px-4" onClick={() => setShowOpenBills(true)}>
             Pesanan Terbuka
-          </button>
-          <button
-            className="btn-primary btn-compact whitespace-nowrap !px-4 text-sm"
-            onClick={handleNewOrderClick}
-          >
-            <Icon name="plus" size={18} />
+          </Button>
+          <Button size="sm" className="whitespace-nowrap px-4" leftIcon={<Icon name="plus" size={18} />} onClick={handleNewOrderClick}>
             {features.quickSale ? 'Transaksi Baru' : 'Pesanan Baru'}
-          </button>
+          </Button>
         </div>
 
         {/* Satu baris yang digeser ke samping: tombol tidak boleh menyusut,
@@ -567,7 +564,7 @@ export function CashierScreen() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
+        <div ref={productScrollRef} className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
           <div className="grid grid-cols-3 gap-2.5">
             {products.map((product) => (
               <button
@@ -602,7 +599,8 @@ export function CashierScreen() {
                 )}
               </button>
             ))}
-            {products.length === 0 && <p className="col-span-full py-8 text-center text-ink-300">Produk tidak ditemukan</p>}
+            {loadedProducts === undefined && <ProductGridSkeleton />}
+            {loadedProducts?.length === 0 && <p className="col-span-full py-8 text-center text-ink-300">Produk tidak ditemukan</p>}
           </div>
         </div>
       </div>
@@ -620,9 +618,9 @@ export function CashierScreen() {
               </p>
             </div>
             {!features.quickSale && (
-              <button className="flex min-h-[3rem] items-center gap-2 rounded-full bg-brand-600 px-6 font-semibold text-white hover:bg-brand-700" onClick={handleNewOrderClick}>
-                <Icon name="plus" size={18} /> Buat Pesanan
-              </button>
+              <Button className="rounded-full px-6" leftIcon={<Icon name="plus" size={18} />} onClick={handleNewOrderClick}>
+                Buat Pesanan
+              </Button>
             )}
           </div>
         ) : (
@@ -770,21 +768,23 @@ export function CashierScreen() {
               </div>
 
               <div className="grid grid-cols-3 gap-1.5 px-1.5 pt-1">
-                <button className={CART_OUTLINE_BTN} disabled={!canDiscount || !!order?.hppPricing} title={order?.hppPricing ? 'Pesanan KOL/Compliment sudah berharga HPP' : undefined} onClick={() => setShowDiscount(true)}>
+                <Button variant="secondary" size="sm" className={CART_BTN} disabled={!canDiscount || !!order?.hppPricing} title={order?.hppPricing ? 'Pesanan KOL/Compliment sudah berharga HPP' : undefined} onClick={() => setShowDiscount(true)}>
                   Diskon
-                </button>
-                <button
-                  className={CART_OUTLINE_BTN}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className={CART_BTN}
                   title="Pesanan sudah tersimpan otomatis — ini hanya menutup layar keranjang"
                   onClick={() => {
                     setActiveOrderId(null)
                   }}
                 >
                   Tutup
-                </button>
-                <button className={CART_OUTLINE_BTN} disabled={activeItems.length === 0} onClick={() => void handleClearCart()}>
+                </Button>
+                <Button variant="secondary" size="sm" className={CART_BTN} disabled={activeItems.length === 0} onClick={() => void handleClearCart()}>
                   Kosongkan
-                </button>
+                </Button>
               </div>
               {(() => {
                 const hasBillAdditions = !!order.billPrintCount && billAdditions(order, activeItems).length > 0
@@ -793,8 +793,10 @@ export function CashierScreen() {
                 return (
                   <div className={`grid gap-1.5 px-1.5 ${showKitchen && features.preBill ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {showKitchen && (
-                      <button
-                        className="min-h-[2.6rem] rounded-xl border-2 border-brand-600 bg-ink-900 px-2 text-[0.95rem] font-semibold text-brand-400 hover:bg-brand-600/5"
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={CART_BTN}
                         onClick={async () => {
                           const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
                           toast.success(
@@ -805,61 +807,52 @@ export function CashierScreen() {
                         }}
                       >
                         {heldCourse != null ? `Lepas ${COURSE_LABELS[heldCourse]} ke Dapur/Bar` : 'Kirim ke Dapur/Bar'}
-                      </button>
+                      </Button>
                     )}
                     {features.preBill && (
-                      <button
-                        className="min-h-[2.6rem] rounded-xl bg-brand-600 px-2 text-[0.95rem] font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-                        disabled={activeItems.length === 0}
-                        onClick={() => void prepareReceiptData(order, { preBill: true }).then(setPreBill)}
-                      >
+                      <Button size="sm" className={CART_BTN} disabled={activeItems.length === 0} onClick={() => prepareReceiptData(order, { preBill: true }).then(setPreBill)}>
                         {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
-                      </button>
+                      </Button>
                     )}
                     {features.preBill && hasBillAdditions && (
-                      <button
-                        className="col-span-full min-h-[2.6rem] rounded-xl border-2 border-brand-600 bg-ink-900 px-2 text-[0.95rem] font-semibold text-brand-400 hover:bg-brand-600/5"
-                        onClick={() => void prepareReceiptData(order, { preBill: true, additionsOnly: true }).then(setPreBill)}
-                      >
+                      <Button variant="outline" size="sm" className={`col-span-full ${CART_BTN}`} onClick={() => prepareReceiptData(order, { preBill: true, additionsOnly: true }).then(setPreBill)}>
                         Cetak Tagihan Tambahan
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )
               })()}
               <div className="px-1 pt-1.5">
                 {order.marketingBill && !order.payLater ? (
-                  <button
-                    className="min-h-[3.5rem] w-full rounded-full bg-brand-600 text-[1.1rem] font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-                    disabled={activeItems.length === 0}
-                    onClick={() => void handleMarketingBillSave()}
-                  >
+                  <Button size="lg" fullWidth className="rounded-full" disabled={activeItems.length === 0} onClick={() => void handleMarketingBillSave()}>
                     Simpan Tagihan Marketing
-                  </button>
+                  </Button>
                 ) : (
-                  <button
-                    className="min-h-[3.5rem] w-full rounded-full bg-brand-600 text-[1.2rem] font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+                  <Button
+                    size="lg"
+                    fullWidth
+                    className="rounded-full text-[1.2rem]"
                     disabled={activeItems.length === 0}
                     onClick={() => navigate(`/kasir/${order.id}/bayar`)}
                     aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
                   >
                     {order.payLater ? 'Bayar / Lunasi' : 'Bayar'}
-                  </button>
+                  </Button>
                 )}
               </div>
               {order.marketingBill && !order.payLater && (
-                <button className={`${CART_OUTLINE_BTN} w-full`} disabled={activeItems.length === 0} onClick={() => navigate(`/kasir/${order.id}/bayar`)}>
+                <Button variant="secondary" size="sm" fullWidth className={CART_BTN} disabled={activeItems.length === 0} onClick={() => navigate(`/kasir/${order.id}/bayar`)}>
                   Bayar Langsung di Tempat
-                </button>
+                </Button>
               )}
               {features.payLater && !order.payLater && !order.marketingBill && (
-                <button className={`${CART_OUTLINE_BTN} w-full`} disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
+                <Button variant="secondary" size="sm" fullWidth className={CART_BTN} disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
                   Tagihan Tertunda (Bayar Nanti)
-                </button>
+                </Button>
               )}
-              <button className="w-full py-2 text-[0.95rem] font-medium text-red-400 hover:text-red-300" onClick={() => void handleCancelOrderClick()}>
+              <Button variant="ghost" size="sm" fullWidth className="font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300" onClick={() => void handleCancelOrderClick()}>
                 Batalkan Pesanan
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -1070,8 +1063,8 @@ export function CashierScreen() {
   )
 }
 
-const CART_OUTLINE_BTN =
-  'min-h-[2.6rem] rounded-xl border border-ink-600 bg-ink-900 px-2 text-[0.95rem] font-semibold text-ink-100 hover:bg-ink-800 disabled:opacity-40'
+/** Tombol aksi keranjang: lebih rapat dari bawaan supaya muat 2–3 sejajar. */
+const CART_BTN = 'px-2 text-[0.95rem]'
 
 function SummaryRow({ label, value }: { label: string; value: number }) {
   return (

@@ -36,6 +36,7 @@ import { isOnlineOrder, onlineChannelLabel } from '@/lib/onlineOrders'
 import { discountLinesOf } from '@/lib/promos'
 import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { Icon } from '@/components/ui/Icon'
+import { Button } from '@/components/ui/Button'
 import { PAYMENT_METHOD_LABELS } from '@/lib/paymentLabels'
 import type { Bill, Order, OrderItem, PaymentMethod, User } from '@/types/domain'
 
@@ -109,9 +110,9 @@ export function OrderPaymentScreen() {
   return (
     <div className="flex h-full">
       <div className="flex-1 overflow-y-auto p-6">
-        <button className="btn-ghost mb-4" onClick={() => navigate(-1)}>
-          <Icon name="arrowLeft" size={18} className="mr-1" /> Kembali
-        </button>
+        <Button variant="ghost" className="mb-4" leftIcon={<Icon name="arrowLeft" size={18} />} onClick={() => navigate(-1)}>
+          Kembali
+        </Button>
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-ink-50">Pembayaran • {order.orderNumber}</h1>
@@ -119,17 +120,14 @@ export function OrderPaymentScreen() {
             <p className="text-ink-400">{activeItems.length} item · Total {formatRupiah(order.grandTotal)}</p>
           </div>
           {!isSplit && activeItems.length > 1 && (
-            <button className="btn-secondary !min-h-[2.75rem] !px-3 !py-2 text-sm" onClick={() => setShowSplit(true)}>
-              <Icon name="receipt" size={15} className="mr-1 inline" /> Pisah per Item
-            </button>
+            <Button variant="secondary" size="sm" leftIcon={<Icon name="receipt" size={15} />} onClick={() => setShowSplit(true)}>
+              Pisah per Item
+            </Button>
           )}
           {isSplit && (
-            <button
-              className="btn-ghost !min-h-[2.75rem] !px-3 !py-2 text-sm"
-              onClick={() => void unsplitBills(orderId).catch(() => {})}
-            >
+            <Button variant="ghost" size="sm" onClick={() => unsplitBills(orderId).catch(() => {})}>
               Gabungkan Tagihan
-            </button>
+            </Button>
           )}
         </div>
 
@@ -309,9 +307,9 @@ function SingleBillPayment({
 
       {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
-      <button className="btn-primary w-full" disabled={!canSettle || isSubmitting} onClick={() => submitPayment()}>
-        {isSubmitting ? 'Memproses...' : allowPartial && remaining > 0 ? `Bayar Sebagian • ${formatRupiah(linesTotal)}` : 'Selesaikan Pembayaran'}
-      </button>
+      <Button fullWidth disabled={!canSettle} loading={isSubmitting} onClick={() => submitPayment()}>
+        {allowPartial && remaining > 0 ? `Bayar Sebagian • ${formatRupiah(linesTotal)}` : 'Selesaikan Pembayaran'}
+      </Button>
 
       {stockOverride && (
         <SupervisorPinModal
@@ -431,9 +429,9 @@ function BillPayCard({
             <PaymentProofCapture draft={proof} onChange={setProof} required={requireProof} />
           )}
           {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
-          <button className="btn-primary w-full !min-h-[2.75rem] !py-2.5 text-sm" disabled={!canSettle || isSubmitting} onClick={() => submit()}>
-            {isSubmitting ? 'Memproses…' : `Bayar ${bill.label}`}
-          </button>
+          <Button size="sm" fullWidth disabled={!canSettle} loading={isSubmitting} onClick={() => submit()}>
+            {`Bayar ${bill.label}`}
+          </Button>
         </>
       )}
 
@@ -532,8 +530,10 @@ function PayControls({
       )}
       <div className={`mb-3 grid gap-2 ${methods.length <= 2 ? 'grid-cols-2' : methods.length === 3 || methods.length > 4 ? 'grid-cols-3' : 'grid-cols-4'}`}>
         {methods.map((method) => (
-          <button
+          <Button
             key={method}
+            variant={method === 'platform' ? 'primary' : 'secondary'}
+            size="sm"
             disabled={remaining <= 0 || (method === 'deposit' && depositLeft <= 0)}
             // Dibayar di aplikasi / dari saldo: tak ada uang yang diterima kasir — langsung catat.
             onClick={() =>
@@ -543,14 +543,13 @@ function PayControls({
                   ? addLine({ method: 'deposit', amount: Math.min(remaining, depositLeft) })
                   : setActiveModal(method)
             }
-            className={`!min-h-[2.75rem] !py-2 text-sm ${method === 'platform' ? 'btn-primary' : 'btn-secondary'}`}
           >
             {method === 'platform'
               ? `Dibayar via ${platformRef?.split(' #')[0] ?? 'Aplikasi'}`
               : method === 'deposit'
                 ? `Saldo Member (${formatRupiah(depositLeft)})`
                 : METHOD_LABELS[method]}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -567,9 +566,9 @@ function PayControls({
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-ink-50">{formatRupiah(line.amount)}</span>
                 {setLineTip && !line.gateway && (
-                  <button className="btn-ghost !min-h-[2.75rem] !px-3 !py-1 text-xs" onClick={() => setTipLineKey(line.key)}>
+                  <Button variant="ghost" size="sm" className="text-xs" onClick={() => setTipLineKey(line.key)}>
                     {line.tipAmount ? 'Ubah Tip' : '+ Tip'}
-                  </button>
+                  </Button>
                 )}
                 {!line.gateway && (
                 <button
