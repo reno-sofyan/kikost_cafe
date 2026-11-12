@@ -5,6 +5,7 @@ import { authenticateOwnerToken } from '../lib/ownerAccess.js'
 import {
   OWNER_CONSOLE_TITLES,
   loadCafeHighlights,
+  loadCafeMarketingBills,
   loadCafeTables,
   loadKantinHighlights,
   loadKantinPayLater,
@@ -143,6 +144,17 @@ export async function registerOwnerRoutes(app: FastifyInstance, opts: { area: Ow
   // ---- Khusus kafe: status meja saat ini ----
   if (area === 'kafe') {
     app.get('/api/tables', async (request) => loadCafeTables(getPool(), request.ownerTenantId))
+
+    // Tagihan Marketing: jamuan klien oleh sales, ditagihkan ke kantor.
+    app.get<{ Querystring: { from?: string; to?: string } }>('/api/marketing', async (request, reply) => {
+      const range = parseWibRange(request.query.from, request.query.to)
+      if ('error' in range) {
+        reply.code(400)
+        return { error: range.error }
+      }
+      const result = await loadCafeMarketingBills(getPool(), request.ownerTenantId, range.sinceMs, range.untilMs)
+      return { label: range.label, ...result }
+    })
 
     // Absensi karyawan: semua absen (HP + manual di tablet), selfie, dan HP terdaftar.
     app.get<{ Querystring: { from?: string; to?: string } }>('/api/attendance', async (request, reply) => {

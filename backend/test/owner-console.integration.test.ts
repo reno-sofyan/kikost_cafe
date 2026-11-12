@@ -316,6 +316,48 @@ suite('konsol Pemilik /owner (integrasi)', () => {
     expect((await get('/owner/kantin/api/proofs/pr2/photo', kantin.token)).statusCode).toBe(404)
   })
 
+  it('kafe: Tagihan Marketing per sales, sisa belum dibayar kantor, dan hanya di /owner/kafe', async () => {
+    await seed()
+    const now = Date.now()
+    const mb = (salesId: string, salesName: string, clientName: string) => ({
+      salesId, salesName, salesDivision: 'Marketing Korporat', clientName, purpose: 'meeting', recordedByName: 'Rani', recordedAt: now,
+    })
+    const extra: [string, string, string, Record<string, unknown>][] = [
+      // Belum dibayar kantor, sudah dibayar sebagian Rp10.000.
+      ['cafe', 'orders', 'm1', { id: 'm1', orderNumber: 'MKT-1', status: 'open', grandTotal: 50000, discountAmount: 5000, createdAt: now,
+        payLater: { name: 'Budi', markedAt: now, markedByName: 'Rani' }, marketingBill: mb('s1', 'Budi', 'PT Maju') }],
+      ['cafe', 'payments', 'mp1', { id: 'mp1', orderId: 'm1', method: 'transfer', amount: 10000 }],
+      // Dilunasi kantor.
+      ['cafe', 'orders', 'm2', { id: 'm2', orderNumber: 'MKT-2', status: 'paid', grandTotal: 30000, createdAt: now - 1000, paidAt: now,
+        payLater: { name: 'Budi', markedAt: now }, marketingBill: mb('s1', 'Budi', '') }],
+      // Dibayar langsung di tempat.
+      ['cafe', 'orders', 'm3', { id: 'm3', orderNumber: 'MKT-3', status: 'paid', grandTotal: 20000, createdAt: now - 2000, paidAt: now, marketingBill: mb('s2', 'Rina', 'CV Jaya') }],
+      // Belum disimpan sebagai tagihan (pesanan terbuka biasa) → belum diakui.
+      ['cafe', 'orders', 'm4', { id: 'm4', orderNumber: 'MKT-4', status: 'open', grandTotal: 99000, createdAt: now, marketingBill: mb('s2', 'Rina', '') }],
+    ]
+    for (const [tenant, entity, id, payload] of extra) {
+      await getPool().query(
+        `INSERT INTO sync_entity_state (tenant_id, entity, entity_id, payload, entity_updated_at) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (tenant_id, entity, entity_id) DO UPDATE SET payload = EXCLUDED.payload`,
+        [tenant, entity, id, JSON.stringify(payload), now],
+      )
+    }
+    const cafe = await createAccess('cafe')
+    const kantin = await createAccess('kantin')
+    const get = (url: string, token: string) => app.inject({ method: 'GET', url, headers: bearer(token) })
+
+    const r = (await get('/owner/kafe/api/marketing', cafe.token)).json()
+    expect(r.bills.map((b: { orderNumber: string }) => b.orderNumber)).toEqual(['MKT-1', 'MKT-2', 'MKT-3'])
+    expect(r.bills[0]).toMatchObject({ salesName: 'Budi', clientName: 'PT Maju', discount: 5000, total: 50000, outstanding: 40000, status: 'unpaid', cashierName: 'Rani' })
+    expect(r.bills[1]).toMatchObject({ status: 'settled', outstanding: 0 })
+    expect(r.bills[2]).toMatchObject({ status: 'direct', salesName: 'Rina' })
+    expect(r).toMatchObject({ total: 100000, outstanding: 40000, outstandingCount: 1 })
+    expect(r.bySales[0]).toMatchObject({ salesName: 'Budi', count: 2, total: 80000, outstanding: 40000 })
+    expect((await get('/owner/kafe/api/marketing?from=2026-13-01', cafe.token)).statusCode).toBe(400)
+    expect((await get('/owner/kantin/api/marketing', kantin.token)).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: '/owner/kafe' })).body).toContain("['marketing', 'Tagihan Marketing', 'paneMarketing']")
+  })
+
   it('percobaan token salah berulang memblokir IP sementara', async () => {
     const { token } = await createAccess('kantin')
     for (let i = 0; i < 10; i++) {

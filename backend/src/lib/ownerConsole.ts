@@ -226,3 +226,59 @@ export async function loadKantinProofPhoto(
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(rows[0]?.photo ?? '')
   return match ? { contentType: match[1], body: Buffer.from(match[2], 'base64') } : null
 }
+
+// ---------------------------------------------------------------- Kafe: Tagihan Marketing
+
+/**
+ * Tagihan Marketing (kafe): jamuan klien oleh sales tim marketing yang ditagihkan ke
+ * kantor (`payload.marketingBill`). Akrual — per tanggal pesanan; yang masih tagihan
+ * tertunda = belum dibayar kantor. Pesanan Marketing yang dibayar langsung ikut tercatat.
+ */
+export async function loadCafeMarketingBills(pool: Pool, tenantId: string, sinceMs: number, untilMs: number) {
+  const { rows } = await pool.query<{ payload: Record<string, unknown>; unpaid: string }>(
+    `SELECT payload, CASE WHEN payload->>'status' = 'open' THEN ${UNPAID_SQL} ELSE 0 END AS unpaid
+       FROM sync_entity_state o
+      WHERE tenant_id = $1 AND entity = 'orders' AND deleted = FALSE
+        AND jsonb_typeof(payload->'marketingBill') = 'object' AND ${RECOGNIZED_SALE_SQL}
+        AND ${SALE_AT_MS} >= $2 AND ${SALE_AT_MS} < $3
+      ORDER BY ${SALE_AT_MS} DESC
+      LIMIT 1000`,
+    [tenantId, sinceMs, untilMs],
+  )
+  const bills = rows.map((r) => {
+    const o = r.payload
+    const m = (o.marketingBill ?? {}) as Record<string, unknown>
+    const outstanding = num(r.unpaid)
+    const status = o.status === 'open' || outstanding > 0 ? 'unpaid' : o.payLater ? 'settled' : 'direct'
+    return {
+      orderNumber: str(o.orderNumber),
+      orderedAt: o.createdAt == null ? null : num(o.createdAt),
+      salesId: str(m.salesId) ?? '-',
+      salesName: str(m.salesName) ?? '-',
+      salesDivision: str(m.salesDivision),
+      clientName: str(m.clientName),
+      purpose: str(m.purpose),
+      cashierName: str(m.recordedByName) ?? str(o.cashierName),
+      discount: num(o.discountAmount),
+      total: num(o.grandTotal),
+      outstanding,
+      status,
+      paidAt: o.paidAt == null ? null : num(o.paidAt),
+    }
+  })
+  const bySales = new Map<string, { salesName: string; salesDivision: string | null; count: number; total: number; outstanding: number }>()
+  for (const b of bills) {
+    const s = bySales.get(b.salesId) ?? { salesName: b.salesName, salesDivision: b.salesDivision, count: 0, total: 0, outstanding: 0 }
+    s.count += 1
+    s.total += b.total
+    s.outstanding += b.outstanding
+    bySales.set(b.salesId, s)
+  }
+  return {
+    bills,
+    bySales: [...bySales.values()].sort((a, b) => b.total - a.total),
+    total: bills.reduce((s, b) => s + b.total, 0),
+    outstanding: bills.reduce((s, b) => s + b.outstanding, 0),
+    outstandingCount: bills.filter((b) => b.outstanding > 0).length,
+  }
+}

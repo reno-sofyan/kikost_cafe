@@ -259,6 +259,7 @@
     <div id="paneSales" class="hide"></div>
     <div id="paneTables" class="hide"></div>
     <div id="paneAttendance" class="hide"></div>
+    <div id="paneMarketing" class="hide"></div>
     <div id="panePayLater" class="hide"></div>
     <div id="paneProofs" class="hide"></div>
     <div id="paneCancels" class="hide"></div>
@@ -276,14 +277,15 @@
   let salesPreset = 'today';
   let proofPreset = 'today';
   let attPreset = 'today';
+  let mktPreset = 'month';
   let currentTab = 'orders';
   const loaded = {};
 
   const TABS = [['orders', 'Transaksi', 'paneOrders'], ['sales', 'Penjualan', 'paneSales']]
-    .concat(AREA === 'kafe' ? [['tables', 'Meja', 'paneTables'], ['attendance', 'Absensi', 'paneAttendance']] : [])
+    .concat(AREA === 'kafe' ? [['tables', 'Meja', 'paneTables'], ['marketing', 'Tagihan Marketing', 'paneMarketing'], ['attendance', 'Absensi', 'paneAttendance']] : [])
     .concat(AREA === 'kantin' ? [['payLater', 'Tagihan Tertunda', 'panePayLater'], ['proofs', 'Bukti Bayar', 'paneProofs']] : [])
     .concat([['cancels', 'Pembatalan', 'paneCancels'], ['activity', 'Aktivitas', 'paneActivity']]);
-  const LOADERS = { cancels: () => loadCancels(), sales: () => loadSales(), tables: () => loadTables(), attendance: () => loadAttendance(), payLater: () => loadPayLater(), proofs: () => loadProofs() };
+  const LOADERS = { cancels: () => loadCancels(), sales: () => loadSales(), tables: () => loadTables(), attendance: () => loadAttendance(), marketing: () => loadMarketing(), payLater: () => loadPayLater(), proofs: () => loadProofs() };
   document.getElementById('tabs').innerHTML = TABS.map(([key, label]) =>
     '<button data-tab="' + key + '" onclick="showTab(\'' + key + '\')">' + label + '</button>').join('');
 
@@ -887,6 +889,43 @@
       if (!res.ok) throw new Error('Gagal mencabut (HTTP ' + res.status + ').');
       loadAttendance();
     } catch (e) { if (String(e.message) !== '401') alert(e.message); }
+  }
+
+  // ---- Tagihan Marketing (kafe): jamuan klien oleh sales, ditagihkan ke kantor ----
+  const MKT_PRESETS = [['today', 'Hari ini'], ['7d', '7 hari'], ['month', 'Bulan ini'], ['lastmonth', 'Bulan lalu']];
+  const MKT_STATUS = { unpaid: ['Belum dibayar kantor', 'open'], settled: ['Lunas', 'paid'], direct: ['Dibayar langsung', ''] };
+  async function loadMarketing(preset) {
+    if (preset) mktPreset = preset;
+    const pane = document.getElementById('paneMarketing');
+    pane.innerHTML = '<div class="card loading">Memuat…</div>';
+    const [from, to] = presetRange(mktPreset);
+    try { renderMarketing(await api('/marketing?from=' + from + '&to=' + to)); loaded.marketing = true; }
+    catch (e) { if (String(e.message) !== '401') pane.innerHTML = '<div class="card empty">Gagal memuat tagihan marketing.</div>'; }
+  }
+  function renderMarketing(d) {
+    const seg = '<div class="seg">' + MKT_PRESETS.map(([k, label]) =>
+      '<button class="' + (k === mktPreset ? 'active' : '') + '" onclick="loadMarketing(\'' + k + '\')">' + label + '</button>').join('') + '</div>';
+    const kp = '<div class="ckpis">' +
+      kpi('Total tagihan', compact(d.total), d.bills.length + ' kunjungan · ' + d.label) +
+      kpi('Belum dibayar kantor', compact(d.outstanding), d.outstandingCount ? d.outstandingCount + ' tagihan' : 'semua lunas', d.outstanding > 0) +
+      kpi('Sudah dibayar', compact(d.total - d.outstanding), '') + '</div>';
+    const head = '<div class="toolbar"><span class="muted">Jamuan klien oleh tim marketing · termasuk omzet (tanggal pesanan)</span>' + seg + '</div>';
+    if (!d.bills.length) { document.getElementById('paneMarketing').innerHTML = kp + head + '<div class="card empty">Belum ada tagihan marketing pada periode ini.</div>'; return; }
+    const sales = '<div class="sect">Rekap per sales</div><div class="card list">' + d.bySales.map((s) =>
+      '<div class="item"><div class="main"><div class="t1">' + esc(s.salesName) + '</div>' +
+      '<div class="t2">' + (s.salesDivision ? esc(s.salesDivision) + ' · ' : '') + s.count + ' kunjungan</div></div>' +
+      '<div class="amt">' + rupiah(s.total) + (s.outstanding > 0 ? '<small>belum dibayar ' + rupiah(s.outstanding) + '</small>' : '') + '</div></div>').join('') + '</div>';
+    const list = '<div class="sect">Rincian · terbaru di atas</div><div class="card list">' + d.bills.map((b) => {
+      const st = MKT_STATUS[b.status] || MKT_STATUS.unpaid;
+      const info = [b.clientName ? 'Klien: ' + esc(b.clientName) : '', b.purpose ? esc(b.purpose) : ''].filter(Boolean).join(' · ');
+      return '<div class="item"><div class="main"><div class="t1">' + esc(b.salesName) + ' <span class="tag ' + st[1] + '">' + st[0] + '</span></div>' +
+        '<div class="t2">' + esc(fmtTime(b.orderedAt)) + ' · ' + esc(b.orderNumber || '—') + (b.cashierName ? ' · kasir ' + esc(b.cashierName) : '') +
+        (info ? '<br>' + info : '') +
+        (b.discount > 0 ? '<br>Diskon ' + rupiah(b.discount) : '') +
+        (b.status !== 'unpaid' && b.paidAt ? '<br>Dibayar ' + esc(fmtTime(b.paidAt)) : '') + '</div></div>' +
+        '<div class="amt">' + rupiah(b.total) + (b.outstanding > 0 && b.outstanding < b.total ? '<small>sisa ' + rupiah(b.outstanding) + '</small>' : '') + '</div></div>';
+    }).join('') + '</div>';
+    document.getElementById('paneMarketing').innerHTML = kp + head + sales + list;
   }
 
   // ---- Tagihan Tertunda (kantin) ----
