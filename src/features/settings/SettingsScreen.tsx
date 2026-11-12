@@ -81,6 +81,7 @@ export function SettingsScreen() {
   // menyembunyikan tab sekejap lalu memunculkannya lagi setelah data siap).
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const devUnlocked = useDeveloperUnlocked()
+  const [pairedWhenOpened] = useState(() => !!getDeviceKey())
 
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
     { key: 'profil', label: 'Profil Usaha', visible: true },
@@ -98,8 +99,10 @@ export function SettingsScreen() {
     { key: 'fitur-akses', label: 'Fitur & Akses', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'kode-batal', label: 'Kode Pembatalan', visible: features.ownerPinCancel && currentUser.role === 'pemilik' },
-    // Terbuka juga sebelum perangkat dipasangkan ke server (token developer dicek ke server).
-    { key: 'sinkronisasi', label: 'Sinkronisasi', visible: devUnlocked || !getDeviceKey() },
+    // Terbuka juga bila perangkat belum dipasangkan ke server saat Pengaturan dibuka (token
+    // developer dicek ke server). Dibaca SEKALI saat dibuka: tab tak hilang di tengah proses
+    // pemasangan pertama; setelah Pengaturan ditinggalkan, tab terkunci.
+    { key: 'sinkronisasi', label: 'Sinkronisasi', visible: devUnlocked || !pairedWhenOpened },
     { key: 'backup', label: 'Backup', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'audit', label: 'Log Aktivitas', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'tentang', label: 'Tentang', visible: true },

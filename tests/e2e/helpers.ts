@@ -103,6 +103,7 @@ export async function configureBackend(page: Page, apiUrl: string, deviceKey: st
 export async function waitForNoPending(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Pengaturan' }).click()
   // Setelah perangkat terpasang ke server, tab Sinkronisasi hanya muncul di Mode Developer.
+  await page.getByRole('button', { name: 'Tentang', exact: true }).waitFor()
   if (!(await page.getByRole('button', { name: 'Sinkronisasi' }).isVisible())) await unlockDeveloperModeWithOps(page)
   await page.getByRole('button', { name: 'Sinkronisasi' }).click()
   await page.getByRole('button', { name: 'Sinkronkan Sekarang' }).click()
@@ -156,11 +157,16 @@ export async function unlockDeveloperModeMocked(page: Page): Promise<void> {
 
 /** Mode Developer dengan token asli dari /ops (spec *.sync.spec.ts dengan backend sungguhan). */
 export async function unlockDeveloperModeWithOps(page: Page): Promise<void> {
-  const { E2E_API_URL, E2E_KANTIN_TENANT, E2E_OPS_TOKEN } = await import('../../playwright.sync.config')
-  const res = await fetch(`${E2E_API_URL}/ops/api/tenant/${E2E_KANTIN_TENANT}/developer-code`, { method: 'POST', headers: { Authorization: `Bearer ${E2E_OPS_TOKEN}` } })
+  const cfg = await import('../../playwright.sync.config')
+  // Token dibuat untuk tenant milik kunci perangkat tablet ini (token lintas tenant ditolak server).
+  const deviceKey = await page.evaluate(() => localStorage.getItem('kione.sync.deviceKey'))
+  const tenant =
+    deviceKey === cfg.E2E_KANTIN_DEVICE_KEY ? cfg.E2E_KANTIN_TENANT : deviceKey === cfg.E2E_MULTI_DEVICE_KEY ? 'multi-e2e' : 'default'
+  const res = await fetch(`${cfg.E2E_API_URL}/ops/api/tenant/${tenant}/developer-code`, { method: 'POST', headers: { Authorization: `Bearer ${cfg.E2E_OPS_TOKEN}` } })
   const { code } = (await res.json()) as { code: string }
   await page.getByRole('link', { name: 'Pengaturan', exact: true }).click()
   await page.getByRole('button', { name: 'Tentang', exact: true }).click()
+  if (await page.getByText('Mode Developer aktif').isVisible()) return
   await page.getByLabel('Token developer').fill(code)
   await page.getByRole('button', { name: 'Buka', exact: true }).click()
   await expect(page.getByText('Mode Developer aktif')).toBeVisible()
