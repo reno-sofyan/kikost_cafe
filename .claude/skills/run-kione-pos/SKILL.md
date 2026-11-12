@@ -94,11 +94,11 @@ Screenshots land in `.claude/skills/run-kione-pos/screenshots/`
 npm run dev
 ```
 
-Opens on `http://localhost:5173` — but the app is landscape-tablet-only
-below 760px width or in portrait orientation (`#portrait-lock` in
-`src/index.css` hides the app and shows a "putar perangkat" message
-otherwise), so widen the browser window past 760px in landscape before
-judging anything broken. Ctrl-C to stop.
+Opens on `http://localhost:5173`. On touch devices in portrait (or narrower
+than 760px) the app is hidden behind a "putar perangkat" message
+(`#portrait-lock`, inline `<style>` in `index.html` — it must not live in
+`src/index.css` or it flashes on every refresh). Desktop/laptop (non-touch)
+is never locked. Ctrl-C to stop.
 
 ## Test
 
@@ -156,9 +156,9 @@ confusing which one a failure came from).
 ## Troubleshooting
 
 - **`page.screenshot` shows only the "putar perangkat" message, app
-  content missing**: viewport is portrait or narrower than 760px. The
-  driver's context always launches at 1366×768 landscape — if you're
-  driving manually, match that.
+  content missing**: the context emulates a touch device (`hasTouch`/
+  `isMobile`) in portrait or narrower than 760px. The driver's context is
+  a non-touch 1366×768 landscape window — if you're driving manually, match that.
 - **`ERR_MODULE_NOT_FOUND: playwright`**: you ran the driver from
   outside the repo, or copied it somewhere without `node_modules`
   nearby. `cd` to the repo root first.

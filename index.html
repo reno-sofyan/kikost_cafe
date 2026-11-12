@@ -11,6 +11,33 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter.woff2" crossorigin />
     <title>Kione POS</title>
+    <!--
+      CSS kritis — HARUS inline di sini, bukan di src/index.css: CSS aplikasi baru
+      terpasang setelah JavaScript jalan (di mode dev disuntikkan Vite), sehingga markup
+      #portrait-lock di bawah sempat tampil polos ("Putar perangkat…") di setiap refresh.
+      Gerbang orientasi diputuskan CSS sejak gambar pertama, tanpa state JS.
+      Hanya untuk layar sentuh (tablet/HP) yang potret atau sempit — laptop/desktop
+      tak pernah dikunci. Di APK Android orientasi juga dikunci lewat AndroidManifest.
+      Halaman pelanggan (/order/*, dll.) memakai body.customer-view → tak dikunci.
+    -->
+    <style>
+      html, body, #root { height: 100%; }
+      /* Sama dengan kanvas aplikasi & splash: tak ada kedip putih sebelum splash React. */
+      body { margin: 0; background: rgb(241 245 249); }
+      #portrait-lock { display: none; }
+      @media (pointer: coarse) and (orientation: portrait), (pointer: coarse) and (max-width: 760px) {
+        body:not(.customer-view) #portrait-lock {
+          position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
+          padding: 2rem; background: rgb(241 245 249); color: #1e293b; text-align: center;
+          font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
+        body:not(.customer-view) #root { display: none; }
+      }
+      .portrait-lock__inner { display: flex; max-width: 22rem; flex-direction: column; align-items: center; gap: 0.75rem; }
+      .portrait-lock__logo { width: 11rem; height: auto; margin-bottom: 0.25rem; }
+      .portrait-lock__title { margin: 0; font-size: 1.15rem; font-weight: 600; color: #0f172a; }
+      .portrait-lock__sub { margin: 0; font-size: 0.85rem; color: #64748b; }
+    </style>
   </head>
   <body class="overscroll-none">
     <div id="portrait-lock">

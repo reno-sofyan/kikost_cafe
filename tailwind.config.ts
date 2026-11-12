@@ -22,6 +22,11 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // Tint tipis 12% (mis. `bg-brand-600/12`) dipakai di banyak komponen sejak awal, tapi
+      // bukan langkah bawaan Tailwind — tanpa ini kelasnya diam-diam tak menghasilkan CSS.
+      opacity: {
+        12: "0.12",
+      },
       colors: {
         // Netral dingin (slate). 50 = teks utama, 900 = kartu, 950 = kanvas.
         ink: {
@@ -51,6 +56,17 @@ export default {
           400: "#065f46", // teks tegas di atas tint — 7.0:1
           500: "#047857", // teks, ikon, titik status — 5.0:1
           600: "#059669", // isian solid & basis tint
+        },
+        // Avatar akun (layar masuk): dibedakan per nama. Semua dengan teks putih >= 4.5:1.
+        // Avatar pertama memakai `brand-600` (ikut tema indigo/biru ritel).
+        avatar: {
+          sky: "#0369a1", // 5.9:1
+          teal: "#0f766e", // 5.5:1
+          emerald: "#047857", // 5.5:1
+          amber: "#b45309", // 5.0:1
+          rose: "#be123c", // 6.3:1
+          violet: "#6d28d9", // 7.1:1
+          slate: "#334155", // 10.4:1
         },
         // Hijau lumut — warna ubin meja bar di outlet. Hanya dipakai halaman
         // pesan-mandiri pelanggan (/order/*); peran angka sama dengan `brand`.

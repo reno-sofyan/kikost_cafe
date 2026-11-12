@@ -8,10 +8,16 @@ import { toast } from '@/state/toastStore'
 import { cleanupLegacyBrand } from '@/lib/legacyCleanup'
 import { ensurePersistentStorage } from '@/lib/persistentStorage'
 import { menuTokenFromPath, preloadMenu } from '@/features/order/menuPreload'
+import { AppBoot } from '@/app/AppBoot'
+import { applyMotionTokens } from '@/lib/motion'
+import { readBootBrand } from '@/lib/bootSplash'
+import { hideNativeSplash } from '@/native/splashScreen'
 import '@/index.css'
 
 // Dipasang sebelum apa pun lain dirender — lihat globalErrorHandler.ts untuk alasannya.
 installGlobalErrorHandlers()
+// Durasi & kurva animasi (src/lib/motion.ts) → variabel CSS.
+applyMotionTokens()
 
 /**
  * Pekerjaan startup khusus perangkat kasir — TIDAK dijalankan di halaman
@@ -69,6 +75,7 @@ const rootEl = document.getElementById('root')!
 if (window.location.pathname.startsWith('/order/')) {
   // Halaman pelanggan dipakai di HP (potret) — matikan portrait-lock kasir.
   document.body.classList.add('customer-view')
+  hideNativeSplash() // bukan layar kasir: tanpa splash in-app
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff')
   const menuToken = menuTokenFromPath(window.location.pathname)
   if (menuToken) preloadMenu(menuToken)
@@ -87,6 +94,7 @@ if (window.location.pathname.startsWith('/order/')) {
 } else if (window.location.pathname.startsWith('/ulasan/')) {
   // Halaman ulasan tamu dari QR struk: publik, tanpa login/Dexie/sync — sama seperti /order/.
   document.body.classList.add('customer-view')
+  hideNativeSplash() // bukan layar kasir: tanpa splash in-app
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff')
   void Promise.all([import('@/features/review/ReviewApp'), import('@/features/review/reviewPath')]).then(([{ ReviewApp }, { reviewIdFromPath }]) => {
     ReactDOM.createRoot(rootEl).render(
@@ -100,6 +108,7 @@ if (window.location.pathname.startsWith('/order/')) {
 } else if (window.location.pathname === '/absen' || window.location.pathname.startsWith('/absen/')) {
   // Absensi karyawan di HP sendiri: publik, tanpa login/Dexie/sync — sama seperti /order/.
   document.body.classList.add('customer-view')
+  hideNativeSplash() // bukan layar kasir: tanpa splash in-app
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff')
   void import('@/features/absen/AbsenApp').then(({ AbsenApp }) => {
     ReactDOM.createRoot(rootEl).render(
@@ -114,6 +123,7 @@ if (window.location.pathname.startsWith('/order/')) {
   // Layar pelanggan: jendela kedua di perangkat kasir. Hanya MEMBACA database lokal —
   // tanpa login, sinkronisasi, atau mesin cetak (semua itu tetap milik jendela kasir).
   document.body.classList.add('customer-view')
+  hideNativeSplash() // bukan layar kasir: tanpa splash in-app
   startPosRuntime()
   void Promise.all([import('@/features/display/CustomerDisplayScreen'), import('@/db/repositories/settings')]).then(
     ([{ CustomerDisplayScreen }, { ensureDefaultSettings }]) =>
@@ -129,22 +139,25 @@ if (window.location.pathname.startsWith('/order/')) {
   )
 } else {
   startPosRuntime()
-  void Promise.all([import('@/App'), import('@/db/repositories/settings')]).then(
-    ([{ default: App }, { ensureDefaultSettings }]) =>
-      // Pastikan baris pengaturan default ada sebelum render, supaya komponen yang
-      // mengamati pengaturan lewat useLiveQuery tidak pernah memicu penulisan di dalam
-      // transaksi read-only (ReadOnlyError) pada first run.
-      ensureDefaultSettings().finally(() => {
-        ReactDOM.createRoot(rootEl).render(
-          <React.StrictMode>
-            <ErrorBoundary scope="aplikasi">
-              <BrowserRouter>
-                <App />
-              </BrowserRouter>
-              <ToastHost />
-            </ErrorBoundary>
-          </React.StrictMode>,
-        )
-      }),
+  // Splash in-app menunggu database lokal (bukan internet) sebelum aplikasi tampil.
+  // Pengaturan default dibuat dulu supaya komponen yang mengamati pengaturan lewat
+  // useLiveQuery tak pernah memicu penulisan di dalam transaksi read-only (ReadOnlyError)
+  // pada first run. Gagal → splash menampilkan "Coba lagi" (lihat AppBoot).
+  const loadPosApp = async () => {
+    const [{ default: App }, { ensureDefaultSettings }] = await Promise.all([import('@/App'), import('@/db/repositories/settings')])
+    await ensureDefaultSettings()
+    return App
+  }
+  // Tema minimarket dipasang sebelum render supaya splash langsung biru ritel.
+  if (readBootBrand()?.businessType === 'minimarket') document.documentElement.dataset.theme = 'retail'
+  ReactDOM.createRoot(rootEl).render(
+    <React.StrictMode>
+      <ErrorBoundary scope="aplikasi">
+        <BrowserRouter>
+          <AppBoot load={loadPosApp} />
+        </BrowserRouter>
+        <ToastHost />
+      </ErrorBoundary>
+    </React.StrictMode>,
   )
 }

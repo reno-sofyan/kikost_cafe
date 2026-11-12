@@ -13,10 +13,17 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
   },
   plugins: {
+    // Splash native (logo Kione netral — jenis usaha belum diketahui sebelum JS jalan).
+    // Ditutup oleh aplikasi begitu splash in-app (src/app/AppBoot.tsx) tampil, supaya
+    // tak ada layar kosong di antaranya. `launchShowDuration` hanya batas pengaman bila
+    // JS gagal memanggil hide().
     SplashScreen: {
-      launchShowDuration: 800,
+      launchAutoHide: true,
+      launchShowDuration: 4000,
+      launchFadeOutDuration: 200,
       backgroundColor: '#f1f5f9',
       androidSplashResourceName: 'splash',
+      androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
   },
