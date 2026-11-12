@@ -51,7 +51,7 @@ export function FeatureAccessSettings() {
 
   async function save() {
     // Hanya simpan yang berbeda dari bawaan, supaya menu yang tak disentuh tetap
-    // mengikuti jenis usaha bila Jenis Usaha diganti kemudian.
+    // mengikuti bawaan jenis usaha.
     const defaults = resolveNavItems({ navAccess: {} }, features)
     const navAccess: NavAccessConfig = {}
     for (const d of defaults) {

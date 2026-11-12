@@ -162,8 +162,8 @@ const NO_PREMIUM = { promos: false, kol: false, loyalty: false, combos: false, a
  * navigasi/pengaturan/kasir — tidak pernah memblokir rute atau data (produk
  * yang sudah punya modifier/resep tetap menampilkannya). Pemilik yang
  * salah pilih jenis usaha, atau berubah kebutuhan, tetap bisa mengakses semua
- * layar lewat URL langsung; mereka hanya perlu mengubah Jenis Usaha di
- * Pengaturan → Profil Usaha untuk memunculkannya lagi di navigasi.
+ * layar lewat URL langsung. Jenis usaha sendiri dikunci sejak pengaturan awal
+ * selesai (lihat `updateSettings`) — Pengaturan → Profil Usaha hanya menampilkannya.
  */
 export function featuresForBusinessType(type: BusinessType): BusinessFeatures {
   switch (type) {

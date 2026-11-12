@@ -83,6 +83,11 @@ export async function ensureDefaultSettings(): Promise<void> {
 
 export async function updateSettings(patch: Partial<Omit<AppSettings, 'id'>>): Promise<AppSettings> {
   const current = await getSettings()
+  // Jenis usaha dikunci sejak pengaturan awal selesai: fitur, laporan, & data
+  // (meja, tagihan tertunda, stok ritel, dll.) dibangun di atasnya.
+  if (current.onboardingCompleted && patch.businessType !== undefined && patch.businessType !== current.businessType) {
+    throw new Error('Jenis usaha tidak bisa diubah setelah pengaturan awal selesai.')
+  }
   const next: AppSettings = { ...current, ...patch, id: 'singleton', updatedAt: Date.now() }
   // Ikut disinkronkan supaya endpoint publik QR bisa membaca identitas kafe +
   // pajak/service charge/pembulatan yang otoritatif (bukan dari perangkat pelanggan).
