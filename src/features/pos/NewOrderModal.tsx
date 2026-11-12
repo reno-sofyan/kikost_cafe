@@ -1,11 +1,29 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { searchCustomers } from '@/db/repositories/customers'
+import { listMarketingSales, searchCustomers } from '@/db/repositories/customers'
+import { listKols } from '@/db/repositories/promos'
 import { listTables, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
 import { listWaiterCandidates } from '@/db/repositories/users'
+import { Icon, type IconName } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
+import { SalesAvatar } from '@/features/customers/SalesAvatar'
 import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
-import type { Customer, OnlinePlatform, OrderType } from '@/types/domain'
+import type { Customer, HppPricingKind, OnlinePlatform, OrderType } from '@/types/domain'
+
+/** Jenis tagihan pesanan selain pesanan biasa (kafe): harga HPP, atau Tagihan Marketing. */
+export type NewOrderBilling =
+  | { kind: HppPricingKind; kolId: string | null; name: string; reason: string }
+  | { kind: 'marketing'; salesId: string; clientName: string; purpose: string }
+
+type BillingChoice = 'normal' | HppPricingKind | 'marketing'
+
+const BILLING_OPTIONS: { value: BillingChoice; label: string; icon: IconName; hint: string }[] = [
+  { value: 'normal', label: 'Biasa', icon: 'receipt', hint: '' },
+  { value: 'kol', label: 'KOL', icon: 'megaphone', hint: 'Semua item dihargai HPP. Pajak, service, diskon & promo dinolkan.' },
+  { value: 'compliment', label: 'Compliment', icon: 'star', hint: 'Semua item dihargai HPP. Penerima diambil dari Catatan / Nama Pelanggan.' },
+  { value: 'calibration', label: 'Kalibrasi', icon: 'coffee', hint: 'Uji rasa / kalibrasi resep. Semua item dihargai HPP dan tetap dibayar.' },
+  { value: 'marketing', label: 'Marketing', icon: 'user', hint: 'Jamuan klien oleh sales — harga jual normal (diskon boleh), ditagihkan ke kantor.' },
+]
 
 interface Props {
   /** Jenis pesanan yang relevan untuk jenis usaha; elemen pertama = default. */
@@ -17,6 +35,10 @@ interface Props {
   /** Kafe & restoran: tampilkan pilihan pelayan untuk pesanan dine-in. */
   showWaiter?: boolean
   defaultWaiterId?: string | null
+  /** Kafe: pilihan KOL / Compliment / Kalibrasi (harga HPP). */
+  showHppBilling?: boolean
+  /** Kafe: pilihan Tagihan Marketing (sales dari Pelanggan → Tim Marketing). */
+  showMarketingBilling?: boolean
   onCancel: () => void
   onConfirm: (params: {
     type: OrderType
@@ -27,6 +49,7 @@ interface Props {
     waiter?: { id: string; name: string } | null
     onlinePlatform?: OnlinePlatform
     onlineOrderRef?: string
+    billing?: NewOrderBilling
   }) => void
 }
 
@@ -36,7 +59,17 @@ const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   delivery: 'Online',
 }
 
-export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false, showWaiter = false, defaultWaiterId = null, onCancel, onConfirm }: Props) {
+export function NewOrderModal({
+  orderTypes,
+  showTables,
+  requireBuyerName = false,
+  showWaiter = false,
+  defaultWaiterId = null,
+  showHppBilling = false,
+  showMarketingBilling = false,
+  onCancel,
+  onConfirm,
+}: Props) {
   const [type, setType] = useState<OrderType>(orderTypes[0] ?? 'dine_in')
   const [guestCount, setGuestCount] = useState(1)
   const [notes, setNotes] = useState('')
@@ -47,19 +80,43 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
   const [platform, setPlatform] = useState<OnlinePlatform>('gofood')
   const [onlineRef, setOnlineRef] = useState('')
   const isOnline = type === 'delivery'
+  const [billing, setBilling] = useState<BillingChoice>('normal')
+  const [kolId, setKolId] = useState<string | null>(null)
+  const [kolOther, setKolOther] = useState('')
+  const [calibrationNote, setCalibrationNote] = useState('')
+  const [salesId, setSalesId] = useState<string | null>(null)
+  const [clientName, setClientName] = useState('')
+  const [purpose, setPurpose] = useState('')
+  const billingOptions = BILLING_OPTIONS.filter(
+    (o) => o.value === 'normal' || (o.value === 'marketing' ? showMarketingBilling : showHppBilling),
+  )
+  const showBilling = !isOnline && billingOptions.length > 1
+  const activeBilling: BillingChoice = showBilling ? billing : 'normal'
+  const kols = (useLiveQuery(() => (showHppBilling ? listKols() : []), [showHppBilling]) ?? []).filter((k) => k.active)
+  const salesList = useLiveQuery(() => (showMarketingBilling ? listMarketingSales(true) : []), [showMarketingBilling]) ?? []
   const waiters = useLiveQuery(() => (showWaiter ? listWaiterCandidates() : []), [showWaiter]) ?? []
 
   const customerResults = useLiveQuery(() => searchCustomers(customerQuery), [customerQuery]) ?? []
   const tables = useLiveQuery(() => listTables(), []) ?? []
   const selectableTables = tables.filter((t) => t.status === 'available' || t.id === tableId)
 
-  const canConfirm = !requireBuyerName || notes.trim().length > 0
+  const billingReady =
+    activeBilling === 'kol' ? !!kolId || kolOther.trim().length > 0 : activeBilling === 'marketing' ? !!salesId : true
+  const canConfirm = (!requireBuyerName || notes.trim().length > 0) && billingReady
+
+  function billingParams(): NewOrderBilling | undefined {
+    if (activeBilling === 'normal') return undefined
+    if (activeBilling === 'marketing') return { kind: 'marketing', salesId: salesId!, clientName, purpose }
+    if (activeBilling === 'kol') return { kind: 'kol', kolId, name: kolId ? '' : kolOther, reason: '' }
+    return { kind: activeBilling, kolId: null, name: '', reason: activeBilling === 'calibration' ? calibrationNote : '' }
+  }
 
   function handleConfirm() {
     if (!canConfirm) return
     onConfirm({
+      billing: billingParams(),
       type,
-      customerId: customer?.id,
+      customerId: activeBilling === 'marketing' ? undefined : customer?.id,
       guestCount: showTables && type === 'dine_in' ? guestCount : undefined,
       notes: notes.trim() || undefined,
       tableId: showTables && type === 'dine_in' && tableId ? tableId : undefined,
@@ -203,6 +260,113 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
           </div>
         )}
 
+        {showBilling && (
+          <div className="mb-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink-300">Jenis Tagihan</h3>
+            <div className="grid grid-cols-5 gap-1.5">
+              {billingOptions.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => setBilling(o.value)}
+                  className={`btn btn-compact flex-col !gap-1 !px-1 !py-2 text-xs ${activeBilling === o.value ? 'btn-primary' : 'btn-secondary'}`}
+                >
+                  <Icon name={o.icon} size={16} />
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {activeBilling !== 'normal' && <p className="mt-1.5 text-xs text-ink-400">{BILLING_OPTIONS.find((o) => o.value === activeBilling)?.hint}</p>}
+
+            {activeBilling === 'kol' && (
+              <div className="mt-2 rounded-xl border border-ink-700 p-3">
+                <div className="flex flex-wrap gap-2">
+                  {kols.map((k) => (
+                    <button
+                      key={k.id}
+                      className={`btn btn-compact !px-3 text-sm ${kolId === k.id ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => {
+                        setKolId(k.id)
+                        setKolOther('')
+                      }}
+                    >
+                      {k.name}
+                    </button>
+                  ))}
+                  {kols.length === 0 && <p className="text-xs text-ink-400">Belum ada KOL terdaftar di menu KOL.</p>}
+                </div>
+                <input
+                  className="input-field mt-2"
+                  maxLength={60}
+                  placeholder="KOL lain (belum terdaftar)"
+                  aria-label="Nama KOL lain"
+                  value={kolOther}
+                  onChange={(e) => {
+                    setKolOther(e.target.value)
+                    if (e.target.value) setKolId(null)
+                  }}
+                />
+              </div>
+            )}
+
+            {activeBilling === 'calibration' && (
+              <input
+                className="input-field mt-2"
+                maxLength={80}
+                placeholder='Keterangan (opsional), mis. "kalibrasi espresso pagi"'
+                aria-label="Keterangan kalibrasi"
+                value={calibrationNote}
+                onChange={(e) => setCalibrationNote(e.target.value)}
+              />
+            )}
+
+            {activeBilling === 'marketing' && (
+              <div className="mt-2 rounded-xl border border-ink-700 p-3">
+                <span className="mb-2 block text-sm text-ink-300">
+                  Sales <span className="text-red-400">*</span>
+                </span>
+                {salesList.length === 0 ? (
+                  <p className="text-xs text-ink-400">Belum ada sales. Daftarkan dulu di Pelanggan → Tim Marketing.</p>
+                ) : (
+                  <div className="grid max-h-56 grid-cols-2 gap-2 overflow-y-auto">
+                    {salesList.map((sales) => (
+                      <button
+                        key={sales.id}
+                        aria-pressed={salesId === sales.id}
+                        onClick={() => setSalesId(sales.id)}
+                        className={`flex items-center gap-2.5 rounded-xl border p-2 text-left ${
+                          salesId === sales.id ? 'border-brand-600 bg-brand-600/15' : 'border-ink-700 bg-ink-900 hover:bg-ink-800'
+                        }`}
+                      >
+                        <SalesAvatar name={sales.name} photo={sales.marketingSales?.photoDataUrl ?? null} size={40} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-ink-50">{sales.name}</span>
+                          {sales.marketingSales?.division && <span className="block truncate text-xs text-ink-400">{sales.marketingSales.division}</span>}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <input
+                  className="input-field mt-3"
+                  maxLength={80}
+                  placeholder="Nama klien / perusahaan (opsional)"
+                  aria-label="Nama klien"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                />
+                <input
+                  className="input-field mt-2"
+                  maxLength={120}
+                  placeholder='Keperluan (opsional), mis. "meeting proyek X"'
+                  aria-label="Keperluan"
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {!requireBuyerName && (
           <div className="mb-4">
             <h3 className="mb-2 text-sm font-semibold text-ink-300">{isOnline ? 'Nama Pelanggan / Driver (opsional)' : 'Catatan / Nama Pelanggan (opsional)'}</h3>
@@ -216,6 +380,7 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
           </div>
         )}
 
+        {activeBilling !== 'marketing' && (
         <div className="mb-4">
           <h3 className="mb-2 text-sm font-semibold text-ink-300">Pelanggan Terdaftar (opsional)</h3>
           <input
@@ -244,6 +409,7 @@ export function NewOrderModal({ orderTypes, showTables, requireBuyerName = false
             </div>
           )}
         </div>
+        )}
 
         <div className="flex gap-3">
           <button className="btn-ghost flex-1" onClick={onCancel}>

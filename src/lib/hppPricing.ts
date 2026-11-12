@@ -8,7 +8,7 @@ import type { HppPricing, HppPricingKind, OrderItem, Product } from '@/types/dom
  * dan dilaporkan sebagai "nilai jual".
  */
 
-export const HPP_PRICING_LABELS: Record<HppPricingKind, string> = { kol: 'KOL', compliment: 'Compliment' }
+export const HPP_PRICING_LABELS: Record<HppPricingKind, string> = { kol: 'KOL', compliment: 'Compliment', calibration: 'Kalibrasi' }
 
 export class HppPricingBlockedError extends Error {
   constructor(what: string) {

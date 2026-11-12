@@ -748,8 +748,23 @@ export interface Customer {
    * Tidak tampil di daftar pelanggan.
    */
   giftCard?: { code: string; recipient: string } | null
+  /**
+   * Sales tim marketing kantor (kafe): dicatat sebagai "pelanggan" khusus supaya ikut
+   * sinkron ke semua tablet. Tidak tampil di daftar pelanggan & tak dapat poin —
+   * dipilih kasir saat mencatat Tagihan Marketing (lihat `MarketingBillInfo`).
+   */
+  marketingSales?: MarketingSalesProfile | null
   createdAt: number
   updatedAt: number
+}
+
+export interface MarketingSalesProfile {
+  /** Divisi / jabatan, mis. "Marketing Korporat". */
+  division: string
+  /** Foto wajah (JPEG data URL kecil) — membantu kasir memastikan sales yang benar. */
+  photoDataUrl: string | null
+  /** Nonaktif = tak muncul di pilihan kasir; riwayat tagihannya tetap ada. */
+  active: boolean
 }
 
 /** `delivery` = pesanan ONLINE (GoFood/GrabFood/ShopeeFood/dll.) — di UI berlabel "Online". */
@@ -1102,8 +1117,13 @@ export interface Order {
   /** "Tagihan Tertunda" (kantin): pesanan internal yang dicatat sekarang, dibayar nanti.
    *  Tetap terisi setelah lunas sebagai jejak. Kosong/undefined = pesanan biasa. */
   payLater?: PayLaterInfo | null
-  /** Pesanan KOL / Compliment (kafe): semua item dihargai HPP. */
+  /** Pesanan KOL / Compliment / Kalibrasi (kafe): semua item dihargai HPP. */
   hppPricing?: HppPricing | null
+  /**
+   * Tagihan Marketing (kafe): jamuan klien oleh sales, dipilih saat Pesanan Baru dan
+   * ditagihkan ke kantor (disimpan sebagai tagihan tertunda). Kosong = pesanan biasa.
+   */
+  marketingBill?: MarketingBillInfo | null
   /** Minimarket: nota pesanan ini disimpan ke Laporan → Nota Tersimpan (waktu disimpan). */
   notaSavedAt?: number | null
   createdAt: number
@@ -1114,7 +1134,8 @@ export interface Order {
 /** `self` = tanpa persetujuan atasan; `supervisor` = PIN supervisor/admin; `owner_code` = kode sekali pakai Pemilik. */
 export type VoidApproval = 'self' | 'supervisor' | 'owner_code'
 
-export type HppPricingKind = 'kol' | 'compliment'
+/** `calibration` = uji rasa / kalibrasi resep oleh barista. */
+export type HppPricingKind = 'kol' | 'compliment' | 'calibration'
 
 /** Pesanan KOL / Compliment: tamu membayar seharga HPP (harga pokok), bukan harga jual. */
 export interface HppPricing {
@@ -1143,6 +1164,20 @@ export interface PayLaterInfo {
   markedByName: string
   /** Shift saat tagihan tertunda dicatat — `Order.shiftId` pindah ke shift pelunasan. */
   shiftId: string | null
+}
+
+/** Rincian Tagihan Marketing — nama & divisi sales di-snapshot saat dicatat. */
+export interface MarketingBillInfo {
+  salesId: string
+  salesName: string
+  salesDivision: string
+  /** Nama klien / perusahaan tamu (opsional). */
+  clientName: string
+  /** Keperluan kunjungan (opsional). */
+  purpose: string
+  /** Kasir yang mencatat & waktunya. */
+  recordedByName: string
+  recordedAt: number
 }
 
 /**

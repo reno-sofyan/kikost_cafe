@@ -39,12 +39,14 @@ async function assertEditable(orderId: string) {
 /** Menjadikan pesanan KOL/Compliment (harga HPP), atas nama kasir yang sedang login. */
 export async function setOrderHppPricing(orderId: string, input: HppPricingInput, actor: Actor): Promise<void> {
   const settings = await getSettings()
-  if (!featuresForBusinessType(settings.businessType).hppPricing) throw new Error('Fitur KOL/Compliment hanya untuk Kafe & Restoran.')
+  if (!featuresForBusinessType(settings.businessType).hppPricing) throw new Error('Fitur KOL/Compliment/Kalibrasi hanya untuk Kafe & Restoran.')
   const kol = input.kind === 'kol' && input.kolId ? (settings.kols ?? []).find((k) => k.id === input.kolId && k.active) : undefined
   if (input.kind === 'kol' && input.kolId && !kol) throw new Error('KOL tidak ditemukan atau sudah nonaktif.')
   const order = await assertEditable(orderId)
   // Compliment = satu ketukan: penerima dari catatan/nama pelanggan pesanan bila tak diisi.
-  const name = (kol?.name ?? input.name).trim() || (input.kind === 'compliment' ? order.notes?.trim() || 'Tamu' : '')
+  // Kalibrasi (uji rasa barista) atas nama kasir yang login bila tak diisi.
+  const fallbackName = input.kind === 'compliment' ? order.notes?.trim() || 'Tamu' : input.kind === 'calibration' ? order.notes?.trim() || actor.userName : ''
+  const name = (kol?.name ?? input.name).trim() || fallbackName
   if (!name) throw new Error('Pilih KOL atau tulis namanya.')
   const reason = input.reason.trim()
   const items = (await db.orderItems.where('orderId').equals(orderId).toArray()).filter((i) => !i.removed && !i.voided)

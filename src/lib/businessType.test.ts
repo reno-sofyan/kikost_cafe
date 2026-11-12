@@ -36,6 +36,7 @@ describe('featuresForBusinessType', () => {
       attendance: false,
       proTools: false,
       hppPricing: false,
+      marketingBill: false,
       retailUi: true,
     })
   })
@@ -105,6 +106,7 @@ describe('featuresForBusinessType', () => {
       attendance: true,
       proTools: true,
       hppPricing: true,
+      marketingBill: true,
       retailUi: false,
     })
   })
@@ -143,6 +145,7 @@ describe('featuresForBusinessType', () => {
       attendance: true,
       proTools: true,
       hppPricing: true,
+      marketingBill: true,
       retailUi: false,
     })
     expect(featuresForBusinessType('unknown_future_type' as BusinessType)).toEqual({
@@ -178,6 +181,7 @@ describe('featuresForBusinessType', () => {
       attendance: true,
       proTools: true,
       hppPricing: true,
+      marketingBill: true,
       retailUi: false,
     })
   })

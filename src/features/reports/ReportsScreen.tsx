@@ -22,7 +22,9 @@ import { formatRupiah, formatNumber } from '@/lib/currency'
 import { formatDate, formatDateTime, jakartaDateKey, jakartaDateTimeToEpoch, startOfJakartaDay, startOfJakartaMonth } from '@/lib/datetime'
 import { featuresForBusinessType } from '@/lib/businessType'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
+import { HPP_PRICING_LABELS } from '@/lib/hppPricing'
 import { exportAccountingJournalCsv, exportSalesReportCsv, exportSalesReportPdf } from '@/features/reports/exportReport'
+import { MarketingBillsSection } from '@/features/reports/MarketingBillsSection'
 import { ColumnChart, ShareTable, type ColumnDatum } from '@/features/reports/ReportCharts'
 import { PAYMENT_METHOD_LABELS, paymentMethodRows } from '@/features/reports/paymentMethods'
 import { toast } from '@/state/toastStore'
@@ -224,7 +226,7 @@ export function ReportsScreen() {
         {rangeLabel} · dibandingkan dengan {comparison.label}
       </p>
       <p className="mb-5 mt-1 text-xs text-ink-400">
-        {features.payLater ? (
+        {features.payLater || features.marketingBill ? (
           <>
             Dasar akrual: omzet dicatat pada tanggal pesanan. Tagihan tertunda yang belum dibayar ikut omzet sebagai piutang; pesanan terbuka biasa belum
             dihitung. Uang dari pesanan tanggal lain tampil di &ldquo;Pelunasan Piutang&rdquo;. Kas laci tetap per shift, menurut waktu bayar.
@@ -337,7 +339,7 @@ export function ReportsScreen() {
                 {report.pointsRedeemedTotal > 0 && <MiniStat label="Poin Ditukar" value={formatNumber(report.pointsRedeemedTotal)} note={`senilai ${formatRupiah(report.pointsRedeemedValue)}`} />}
                 {report.hppPricing.count > 0 && (
                   <MiniStat
-                    label="KOL & Compliment (harga HPP)"
+                    label="KOL, Compliment & Kalibrasi (HPP)"
                     value={formatRupiah(report.hppPricing.paid)}
                     note={`${formatNumber(report.hppPricing.count)} pesanan • harga normal ${formatRupiah(report.hppPricing.normalValue)}`}
                   />
@@ -360,11 +362,11 @@ export function ReportsScreen() {
                 )}
                 {report.hppPricing.count > 0 && (
                   <ReportTable
-                    title="KOL & Compliment (harga HPP)"
+                    title="KOL, Compliment & Kalibrasi (harga HPP)"
                     headers={['Jenis / penerima', 'Pesanan', 'Dibayar (HPP)', 'Nilai diberikan']}
                     rows={[
                       ...report.hppPricing.byKol.map((k) => [`KOL • ${k.name}`, formatNumber(k.count), formatRupiah(k.paid), formatRupiah(k.normalValue - k.paid)]),
-                      ...report.hppPricing.byKind.filter((k) => k.kind === 'compliment').map((k) => ['Compliment', formatNumber(k.count), formatRupiah(k.paid), formatRupiah(k.normalValue - k.paid)]),
+                      ...report.hppPricing.byKind.filter((k) => k.kind !== 'kol').map((k) => [HPP_PRICING_LABELS[k.kind], formatNumber(k.count), formatRupiah(k.paid), formatRupiah(k.normalValue - k.paid)]),
                     ]}
                   />
                 )}
@@ -391,6 +393,8 @@ export function ReportsScreen() {
               <MiniStat label="Titipan Saldo Saat Ini" value={formatRupiah(depositReport.outstanding)} note={`${formatNumber(depositReport.customersWithBalance)} member • kewajiban usaha`} />
             </div>
           )}
+
+          {isAll && features.marketingBill && <MarketingBillsSection range={range} />}
 
           {(report.guestCount > 0 || report.returnTotal > 0 || report.voidCount > 0 || report.tipTotal > 0 || report.receivableTotal > 0) && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -1,3 +1,4 @@
+import { HPP_PRICING_LABELS } from '@/lib/hppPricing'
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { deleteKol, deleteKolPayout, kolCommissionLedger, listKols, listPromos, recordKolPayout, saveKol, type KolCommission } from '@/db/repositories/promos'
@@ -138,7 +139,7 @@ function KolTab() {
               <tbody>
                 {[
                   ...report.hppPricing.byKol.map((r) => ({ key: r.kolId ?? r.name, label: `KOL • ${r.name}${r.kolId ? '' : ' (belum terdaftar)'}`, ...r })),
-                  ...report.hppPricing.byKind.filter((r) => r.kind === 'compliment').map((r) => ({ key: 'compliment', label: 'Compliment (semua penerima)', ...r })),
+                  ...report.hppPricing.byKind.filter((r) => r.kind !== 'kol').map((r) => ({ key: r.kind, label: `${HPP_PRICING_LABELS[r.kind]} (semua)`, ...r })),
                 ].map((r) => (
                   <tr key={r.key} className="border-t border-ink-800">
                     <td className="px-4 py-2 text-ink-50">{r.label}</td>

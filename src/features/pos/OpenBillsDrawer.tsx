@@ -17,7 +17,7 @@ const ORDER_TYPE_LABELS: Record<Order['type'], string> = {
 }
 
 interface Props {
-  /** Kantin: pisahkan tagihan tertunda ke tab sendiri. */
+  /** Kantin & Tagihan Marketing kafe: pisahkan tagihan tertunda ke tab sendiri. */
   showPayLater?: boolean
   onSelect: (orderId: string) => void
   onClose: () => void
@@ -108,7 +108,9 @@ function OpenBillRow({
         {carriedOver && <div className="mt-1 text-xs font-semibold text-yellow-400">Dari shift sebelumnya</div>}
         {order.payLater && (
           <div className="mt-1 text-sm">
-            <span className="font-semibold text-accent-500">Tagihan Tertunda • {order.payLater.name}</span>
+            <span className="font-semibold text-accent-500">
+              {order.marketingBill ? 'Tagihan Marketing' : 'Tagihan Tertunda'} • {order.payLater.name}
+            </span>
             {order.payLater.note && <span className="text-ink-400"> — {order.payLater.note}</span>}
             <div className="text-xs text-ink-500">
               Dicatat {formatDateTime(order.payLater.markedAt)} oleh {order.payLater.markedByName}

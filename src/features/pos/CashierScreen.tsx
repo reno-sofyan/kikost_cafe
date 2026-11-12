@@ -16,6 +16,7 @@ import {
   listOrderItems,
   markOrderPayLater,
   removeOrderItem,
+  setOrderMarketingBill,
   setOrderDiscount,
   setOrderItemCourse,
   setOrderWaiter,
@@ -45,7 +46,8 @@ import { isOnlineOrder, onlineChannelLabel, onlinePlatformOf, productPriceFor } 
 import { discountLinesOf } from '@/lib/promos'
 import { OrderPerks } from '@/features/pos/OrderPerks'
 import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
-import { NewOrderModal } from '@/features/pos/NewOrderModal'
+import { NewOrderModal, type NewOrderBilling } from '@/features/pos/NewOrderModal'
+import { setOrderHppPricing } from '@/db/repositories/hppPricing'
 import { OpenBillsDrawer } from '@/features/pos/OpenBillsDrawer'
 import { DiscountModal } from '@/features/pos/DiscountModal'
 import { PayLaterModal } from '@/features/pos/PayLaterModal'
@@ -160,6 +162,7 @@ export function CashierScreen() {
     waiter?: { id: string; name: string } | null
     onlinePlatform?: OnlinePlatform
     onlineOrderRef?: string
+    billing?: NewOrderBilling
   }) {
     const newOrder = await startOrder({
       onlinePlatform: params.onlinePlatform,
@@ -177,7 +180,20 @@ export function CashierScreen() {
     })
     setActiveOrderId(newOrder.id)
     setShowNewOrder(false)
+    await applyBilling(newOrder.id, params.billing)
     return newOrder.id
+  }
+
+  /** Jenis tagihan dari dialog Pesanan Baru: KOL/Compliment/Kalibrasi (harga HPP) atau Marketing. */
+  async function applyBilling(orderId: string, billing: NewOrderBilling | undefined) {
+    if (!billing) return
+    const actor = { userId: currentUser.id, userName: currentUser.name }
+    try {
+      if (billing.kind === 'marketing') await setOrderMarketingBill(orderId, billing, actor)
+      else await setOrderHppPricing(orderId, billing, actor)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menerapkan jenis tagihan')
+    }
   }
 
   /** "+ Pesanan Baru": kasir cepat langsung membuka transaksi, selain itu tampilkan dialog. */
@@ -417,7 +433,20 @@ export function CashierScreen() {
       await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }).catch(() => {})
     }
     setActiveOrderId(null)
-    toast.success(`Tagihan tertunda ${params.name} tersimpan.`)
+    toast.success(order.marketingBill ? `Tagihan Marketing ${params.name} tersimpan.` : `Tagihan tertunda ${params.name} tersimpan.`)
+  }
+
+  /** Tagihan Marketing selesai: disimpan sebagai tagihan tertunda atas nama sales, dilunasi kantor nanti. */
+  async function handleMarketingBillSave() {
+    if (!order?.marketingBill) return
+    const m = order.marketingBill
+    const ok = await confirm({
+      title: 'Simpan Tagihan Marketing?',
+      description: `${formatRupiah(order.grandTotal)} ditagihkan ke kantor atas nama ${m.salesName}${m.clientName ? ` (klien ${m.clientName})` : ''}. Pelunasannya dari Pesanan Terbuka → Tagihan Tertunda.`,
+      confirmLabel: 'Simpan Tagihan',
+    })
+    if (!ok) return
+    await handlePayLaterConfirm({ name: m.salesName, note: [m.clientName && `Klien: ${m.clientName}`, m.purpose].filter(Boolean).join(' • ') })
   }
 
   async function handlePagerClick() {
@@ -641,7 +670,14 @@ export function CashierScreen() {
                   Tagihan sudah dicetak{order.billPrintCount > 1 ? ` ${order.billPrintCount}×` : ''} — menunggu pembayaran
                 </div>
               ) : null}
-              {order.payLater && (
+              {order.marketingBill && (
+                <div className="mt-2 rounded-lg bg-brand-600/12 px-2 py-1 text-xs font-semibold text-brand-400">
+                  Tagihan Marketing • {order.marketingBill.salesName}
+                  {order.marketingBill.clientName ? ` — klien ${order.marketingBill.clientName}` : ''}
+                  {order.payLater ? ' • menunggu pelunasan kantor' : ''}
+                </div>
+              )}
+              {order.payLater && !order.marketingBill && (
                 <div className="mt-2 rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500">
                   Tagihan Tertunda • {order.payLater.name}
                   {order.payLater.note ? ` — ${order.payLater.note}` : ''}
@@ -792,16 +828,31 @@ export function CashierScreen() {
                 )
               })()}
               <div className="px-1 pt-1.5">
-                <button
-                  className="min-h-[3.5rem] w-full rounded-full bg-brand-600 text-[1.2rem] font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
-                  disabled={activeItems.length === 0}
-                  onClick={() => navigate(`/kasir/${order.id}/bayar`)}
-                  aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
-                >
-                  Bayar
-                </button>
+                {order.marketingBill && !order.payLater ? (
+                  <button
+                    className="min-h-[3.5rem] w-full rounded-full bg-brand-600 text-[1.1rem] font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+                    disabled={activeItems.length === 0}
+                    onClick={() => void handleMarketingBillSave()}
+                  >
+                    Simpan Tagihan Marketing
+                  </button>
+                ) : (
+                  <button
+                    className="min-h-[3.5rem] w-full rounded-full bg-brand-600 text-[1.2rem] font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50"
+                    disabled={activeItems.length === 0}
+                    onClick={() => navigate(`/kasir/${order.id}/bayar`)}
+                    aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
+                  >
+                    {order.payLater ? 'Bayar / Lunasi' : 'Bayar'}
+                  </button>
+                )}
               </div>
-              {features.payLater && !order.payLater && (
+              {order.marketingBill && !order.payLater && (
+                <button className={`${CART_OUTLINE_BTN} w-full`} disabled={activeItems.length === 0} onClick={() => navigate(`/kasir/${order.id}/bayar`)}>
+                  Bayar Langsung di Tempat
+                </button>
+              )}
+              {features.payLater && !order.payLater && !order.marketingBill && (
                 <button className={`${CART_OUTLINE_BTN} w-full`} disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
                   Tagihan Tertunda (Bayar Nanti)
                 </button>
@@ -820,6 +871,8 @@ export function CashierScreen() {
           showTables={features.tables}
           requireBuyerName={features.buyerName}
           showWaiter={features.waiterTracking}
+          showHppBilling={features.hppPricing}
+          showMarketingBilling={features.marketingBill}
           defaultWaiterId={defaultWaiterFor(currentUser, features.waiterTracking)?.id ?? null}
           onCancel={() => {
             setShowNewOrder(false)
@@ -834,7 +887,7 @@ export function CashierScreen() {
       )}
       {showOpenBills && (
         <OpenBillsDrawer
-          showPayLater={features.payLater}
+          showPayLater={features.payLater || features.marketingBill}
           onClose={() => setShowOpenBills(false)}
           onSelect={(id) => {
             setActiveOrderId(id)

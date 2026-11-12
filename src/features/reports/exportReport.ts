@@ -5,6 +5,7 @@ import { saveFile, saveTextFile } from '@/lib/saveFile'
 import { REPORT_SCOPE_LABELS, type SalesReport, type DateRange } from '@/db/repositories/reports'
 import { ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { buildDepositReport, type DepositReport } from '@/db/repositories/deposits'
+import { MARKETING_BILL_STATUS_LABELS, type MarketingBillReport } from '@/db/repositories/marketingBills'
 import { buildMenuEngineering, MENU_CLASS_INFO } from '@/lib/menuEngineering'
 import { accountingExportToCsv, buildAccountingExport } from '@/db/repositories/accounting'
 import { buildKitchenSpeedReport, buildTableTurnover, STATION_LABELS, type TableTurnover } from '@/db/repositories/serviceInsights'
@@ -679,4 +680,40 @@ export async function exportSalesReportPdf(
   addFooters(doc)
 
   await saveFile(`laporan-penjualan${fileSuffix(report)}-${formatDate(report.range.from)}.pdf`, doc.output('blob'))
+}
+
+/** CSV Tagihan Marketing — untuk dikirim ke finance / kantor. */
+export async function exportMarketingBillsCsv(report: MarketingBillReport, range: DateRange): Promise<void> {
+  const lines = [
+    csvRow('Tagihan Marketing', `${formatDate(range.from)} – ${formatDate(range.to)}`),
+    csvRow('Total Tagihan', report.total),
+    csvRow('Belum Dibayar Kantor', report.outstanding),
+    '',
+    csvRow('Rekap per Sales'),
+    csvRow('Sales', 'Divisi', 'Kunjungan', 'Total', 'Belum Dibayar'),
+    ...report.bySales.map((s) => csvRow(s.salesName, s.salesDivision, s.count, s.total, s.outstanding)),
+    '',
+    csvRow('Rincian'),
+    csvRow('Tanggal & Jam', 'No. Pesanan', 'Sales', 'Divisi', 'Klien', 'Keperluan', 'Item', 'Subtotal', 'Diskon', 'Total', 'Dibayar', 'Sisa', 'Status', 'Dilunasi', 'Kasir'),
+    ...report.rows.map((r) =>
+      csvRow(
+        formatDateTime(r.orderedAt),
+        r.orderNumber,
+        r.salesName,
+        r.salesDivision,
+        r.clientName,
+        r.purpose,
+        r.itemsLabel,
+        r.subtotal,
+        r.discountAmount,
+        r.total,
+        r.paid,
+        r.outstanding,
+        MARKETING_BILL_STATUS_LABELS[r.status],
+        r.status === 'unpaid' || !r.paidAt ? '' : formatDateTime(r.paidAt),
+        r.cashierName,
+      ),
+    ),
+  ]
+  await saveTextFile(`tagihan-marketing-${formatDate(range.from)}.csv`, `\uFEFF${lines.join('\n')}`, 'text/csv')
 }

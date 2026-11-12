@@ -15,6 +15,7 @@ import { useSessionStore } from '@/state/sessionStore'
 import { toast } from '@/state/toastStore'
 import { Icon } from '@/components/ui/Icon'
 import { Modal } from '@/components/ui/Modal'
+import { MarketingTeamPanel } from '@/features/customers/MarketingTeamPanel'
 import type { Customer, PaymentMethod } from '@/types/domain'
 
 export function CustomersScreen() {
@@ -38,6 +39,8 @@ export function CustomersScreen() {
   const [showDeposit, setShowDeposit] = useState(false)
   const canManage = roleHasPermission(currentUser.role, 'settings.manage')
   const [showGreeting, setShowGreeting] = useState(false)
+  const marketingOn = !!settings && featuresForBusinessType(settings.businessType).marketingBill
+  const [tab, setTab] = useState<'customers' | 'marketing'>('customers')
   const now = Date.now()
   const daysSinceVisit = (customerId: string) => {
     const last = loyaltyByCustomer?.get(customerId)?.lastOrderAt
@@ -51,8 +54,35 @@ export function CustomersScreen() {
   })
   const selectedDays = selected ? daysSinceVisit(selected.id) : null
 
+  const tabs = marketingOn && (
+    <nav aria-label="Halaman pelanggan" className="flex flex-none gap-1 border-b border-ink-800 px-4">
+      {(['customers', 'marketing'] as const).map((t) => (
+        <button
+          key={t}
+          onClick={() => setTab(t)}
+          className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold ${tab === t ? 'border-brand-500 text-ink-50' : 'border-transparent text-ink-300 hover:text-ink-100'}`}
+        >
+          {t === 'customers' ? 'Pelanggan' : 'Tim Marketing'}
+        </button>
+      ))}
+    </nav>
+  )
+
+  if (marketingOn && tab === 'marketing') {
+    return (
+      <div className="flex h-full flex-col">
+        {tabs}
+        <div className="min-h-0 flex-1">
+          <MarketingTeamPanel canManage={canManage} />
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      {tabs}
+    <div className="flex min-h-0 flex-1">
       <div className="flex w-96 flex-none flex-col border-r border-ink-800">
         <div className="flex-none border-b border-ink-800 p-4">
           <h1 className="page-title mb-3 text-xl font-bold text-ink-50">Pelanggan</h1>
@@ -267,6 +297,7 @@ export function CustomersScreen() {
           }}
         />
       )}
+    </div>
     </div>
   )
 }

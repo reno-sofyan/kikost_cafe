@@ -159,7 +159,20 @@ export function OrderDetailPanel({ order, onClose }: { order: Order; onClose: ()
             <p className="text-sm text-ink-400">
               {STATUS_LABELS[order.status]} • {formatDateTime(order.createdAt)}
             </p>
-            {order.payLater && (
+            {order.marketingBill && (
+              <div className="mt-1 text-sm">
+                <span className="font-semibold text-brand-400">Tagihan Marketing • {order.marketingBill.salesName}</span>
+                {order.marketingBill.salesDivision && <span className="text-ink-400"> ({order.marketingBill.salesDivision})</span>}
+                <div className="text-xs text-ink-400">
+                  {[order.marketingBill.clientName && `Klien: ${order.marketingBill.clientName}`, order.marketingBill.purpose && `Keperluan: ${order.marketingBill.purpose}`]
+                    .filter(Boolean)
+                    .join(' • ')}
+                  {order.marketingBill.clientName || order.marketingBill.purpose ? ' • ' : ''}
+                  dicatat {formatDateTime(order.marketingBill.recordedAt)} oleh {order.marketingBill.recordedByName}
+                </div>
+              </div>
+            )}
+            {order.payLater && !order.marketingBill && (
               <p className="text-sm font-semibold text-accent-500">
                 {order.status === 'open' ? 'Tagihan Tertunda' : 'Dari Tagihan Tertunda'} • {order.payLater.name}
                 {order.payLater.note ? ` — ${order.payLater.note}` : ''}

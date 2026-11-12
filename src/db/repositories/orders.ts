@@ -23,6 +23,7 @@ import type {
   ComboComponent,
   DiscountType,
   KitchenItemStatus,
+  MarketingBillInfo,
   OnlinePlatform,
   Order,
   OrderItem,
@@ -369,7 +370,9 @@ export async function markOrderPayLater(
   params: { name: string; note: string; shiftId: string | null },
   actor: { userId: string; userName: string },
 ): Promise<Order> {
-  const name = params.name.trim()
+  // Tagihan Marketing: penanggungnya sales yang dipilih saat Pesanan Baru.
+  const marketing = (await db.orders.get(orderId))?.marketingBill ?? null
+  const name = (marketing ? marketing.salesName : params.name).trim()
   if (!name) throw new Error('Nama penanggung tagihan tertunda wajib diisi')
   return db.transaction('rw', [db.orders, db.orderItems, db.cafeTables, db.syncQueue, db.auditLogs], async () => {
     const order = await db.orders.get(orderId)
@@ -417,7 +420,53 @@ export async function markOrderPayLater(
       action: 'order.pay_later',
       entityType: 'order',
       entityId: orderId,
-      details: `Pesanan ${order.orderNumber} (${itemCount} item) dicatat sebagai tagihan tertunda atas nama ${name}.`,
+      details: marketing
+        ? `Pesanan ${order.orderNumber} (${itemCount} item, Rp${Math.round(order.grandTotal)}) dicatat sebagai Tagihan Marketing — sales ${name}` +
+          `${marketing.clientName ? `, klien ${marketing.clientName}` : ''}${marketing.purpose ? `, keperluan: ${marketing.purpose}` : ''}.`
+        : `Pesanan ${order.orderNumber} (${itemCount} item) dicatat sebagai tagihan tertunda atas nama ${name}.`,
+    })
+    return updated
+  })
+}
+
+/**
+ * Tagihan Marketing (kafe): sales tim marketing yang menjamu klien, dipilih saat Pesanan
+ * Baru. Harga tetap harga jual (diskon boleh); saat selesai, kasir menyimpannya sebagai
+ * tagihan tertunda (`markOrderPayLater`) yang nanti dilunasi kantor.
+ */
+export async function setOrderMarketingBill(
+  orderId: string,
+  input: { salesId: string; clientName: string; purpose: string },
+  actor: { userId: string; userName: string },
+): Promise<Order> {
+  return db.transaction('rw', [db.orders, db.customers, db.syncQueue, db.auditLogs], async () => {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('Pesanan tidak ditemukan')
+    if (order.status !== 'open') throw new Error('Pesanan ini sudah tidak terbuka')
+    const sales = await db.customers.get(input.salesId)
+    if (!sales?.marketingSales?.active) throw new Error('Sales tim marketing tidak ditemukan atau sudah nonaktif')
+    const now = getTrustedNow()
+    const marketingBill: MarketingBillInfo = {
+      salesId: sales.id,
+      salesName: sales.name,
+      salesDivision: sales.marketingSales.division,
+      clientName: input.clientName.trim(),
+      purpose: input.purpose.trim(),
+      recordedByName: actor.userName,
+      recordedAt: now,
+    }
+    const updated: Order = { ...order, marketingBill, updatedAt: now }
+    await db.orders.put(updated)
+    await enqueueSync('orders', orderId, updated)
+    await recordAuditLog({
+      userId: actor.userId,
+      userName: actor.userName,
+      action: 'order.marketing_bill',
+      entityType: 'order',
+      entityId: orderId,
+      details:
+        `Pesanan ${order.orderNumber} dibuat sebagai Tagihan Marketing — sales ${sales.name}` +
+        `${marketingBill.clientName ? `, klien ${marketingBill.clientName}` : ''}${marketingBill.purpose ? `, keperluan: ${marketingBill.purpose}` : ''}.`,
     })
     return updated
   })

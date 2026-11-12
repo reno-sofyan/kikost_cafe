@@ -66,7 +66,7 @@ export interface ReceiptData {
   tipTotal?: number
   /** Kanal pesanan online, mis. "GoFood #F-123". */
   onlineChannel?: string | null
-  /** Pesanan KOL / Compliment: label + penerima, mis. "Compliment — Pak RT (harga HPP)". */
+  /** Pesanan KOL / Compliment / Kalibrasi: label + penerima, mis. "Compliment — Pak RT (harga HPP)"; atau Tagihan Marketing + sales. */
   priceNote?: string | null
   /** Halaman ulasan tamu untuk struk ini (QR di kaki struk). Kosong = tak dicetak. */
   reviewUrl?: string | null
@@ -216,7 +216,11 @@ export async function buildReceiptData(
     additions: additions ? { subtotal: additions.reduce((s, a) => s + a.lineTotal, 0) } : null,
     waiterName: order.waiterName?.trim() || null,
     onlineChannel: onlineChannelLabel(order) || null,
-    priceNote: order.hppPricing ? `${describeHppPricing(order.hppPricing)} (harga HPP)` : null,
+    priceNote: order.hppPricing
+      ? `${describeHppPricing(order.hppPricing)} (harga HPP)`
+      : order.marketingBill
+        ? `TAGIHAN MARKETING - Sales: ${order.marketingBill.salesName}${order.marketingBill.clientName ? ` - Klien: ${order.marketingBill.clientName}` : ''}`
+        : null,
     guestCount: order.type === 'dine_in' ? order.guestCount : null,
     tipTotal: payments.filter((p) => p.amount > 0).reduce((s, p) => s + (p.tipAmount ?? 0), 0),
     reviewUrl: !opts.preBill && order.status === 'paid' && settings.receiptReviewQr ? reviewUrlFor(order.id, settings) : null,
