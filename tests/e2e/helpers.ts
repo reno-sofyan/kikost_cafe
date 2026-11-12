@@ -87,12 +87,32 @@ export async function waitForOrderItems(page: Page, count: number): Promise<void
     .toBe(count)
 }
 
-/** Hubungkan tablet ke backend di Pengaturan → Sinkronisasi (dipakai spec *.sync.spec.ts). */
+/** Tenant milik kunci perangkat e2e (lihat playwright.sync.config / sync-backend.sh). */
+async function e2eTenantForKey(deviceKey: string): Promise<string> {
+  const cfg = await import('../../playwright.sync.config')
+  return deviceKey === cfg.E2E_KANTIN_DEVICE_KEY ? cfg.E2E_KANTIN_TENANT : deviceKey === cfg.E2E_MULTI_DEVICE_KEY ? 'multi-e2e' : 'default'
+}
+
+/**
+ * Hubungkan tablet ke backend seperti developer di lapangan (dipakai spec *.sync.spec.ts):
+ * kode pasang dari /ops → Tentang → Mode Developer → tab Sinkronisasi (sudah terisi) → Simpan.
+ * Tablet mendapat kunci perangkat SENDIRI untuk tenant milik `deviceKey`.
+ */
 export async function configureBackend(page: Page, apiUrl: string, deviceKey: string): Promise<void> {
+  const cfg = await import('../../playwright.sync.config')
+  const res = await fetch(`${cfg.E2E_API_URL}/ops/api/tenant/${await e2eTenantForKey(deviceKey)}/pairing-code`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.E2E_OPS_TOKEN}` },
+  })
+  const { code } = (await res.json()) as { code: string }
   await page.getByRole('link', { name: 'Pengaturan' }).click()
+  await page.getByRole('button', { name: 'Tentang', exact: true }).click()
+  await page.getByLabel('Alamat server').fill(apiUrl)
+  await page.getByLabel('Kode pasang').fill(code)
+  await page.getByRole('button', { name: 'Pasangkan', exact: true }).click()
+  await expect(page.getByText('Mode Developer aktif')).toBeVisible()
   await page.getByRole('button', { name: 'Sinkronisasi' }).click()
-  await page.getByLabel('URL Backend').fill(apiUrl)
-  await page.getByLabel('Kunci Perangkat').fill(deviceKey)
+  await expect(page.getByLabel('URL Backend')).toHaveValue(apiUrl)
   await page.getByRole('button', { name: 'Uji Koneksi' }).click()
   await expect(page.getByText('Koneksi backend berhasil.')).toBeVisible()
   await page.getByRole('button', { name: 'Simpan' }).click()
@@ -158,10 +178,10 @@ export async function unlockDeveloperModeMocked(page: Page): Promise<void> {
 /** Mode Developer dengan token asli dari /ops (spec *.sync.spec.ts dengan backend sungguhan). */
 export async function unlockDeveloperModeWithOps(page: Page): Promise<void> {
   const cfg = await import('../../playwright.sync.config')
-  // Token dibuat untuk tenant milik kunci perangkat tablet ini (token lintas tenant ditolak server).
+  // Token untuk tenant tablet ini (lintas tenant ditolak server) — dari /api/sync/whoami kuncinya.
   const deviceKey = await page.evaluate(() => localStorage.getItem('kione.sync.deviceKey'))
-  const tenant =
-    deviceKey === cfg.E2E_KANTIN_DEVICE_KEY ? cfg.E2E_KANTIN_TENANT : deviceKey === cfg.E2E_MULTI_DEVICE_KEY ? 'multi-e2e' : 'default'
+  const who = await fetch(`${cfg.E2E_API_URL}/api/sync/whoami`, { headers: { Authorization: `Bearer ${deviceKey}` } })
+  const tenant = ((await who.json()) as { tenantId?: string }).tenantId ?? 'default'
   const res = await fetch(`${cfg.E2E_API_URL}/ops/api/tenant/${tenant}/developer-code`, { method: 'POST', headers: { Authorization: `Bearer ${cfg.E2E_OPS_TOKEN}` } })
   const { code } = (await res.json()) as { code: string }
   await page.getByRole('link', { name: 'Pengaturan', exact: true }).click()

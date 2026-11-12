@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { takePendingPairing } from '@/lib/developerAccess'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/db/schema'
 import { useSyncStore } from '@/state/syncStore'
@@ -44,8 +45,10 @@ export function SyncPanel() {
   const failedEntries = useLiveQuery(() => db.syncQueue.where('status').equals('failed').reverse().sortBy('updatedAt'), []) ?? []
   const pendingEntries = useLiveQuery(() => db.syncQueue.where('status').equals('pending').count(), []) ?? 0
 
-  const [apiUrl, setApiUrl] = useState(getApiBaseUrl())
-  const [deviceKey, setDeviceKey] = useState(getDeviceKey())
+  // Baru dipasangkan lewat kode pasang (Tentang → Mode Developer): isian terisi, tinggal Simpan.
+  const [pending] = useState(takePendingPairing)
+  const [apiUrl, setApiUrl] = useState(pending?.apiBaseUrl ?? getApiBaseUrl())
+  const [deviceKey, setDeviceKey] = useState(pending?.deviceKey ?? getDeviceKey())
   const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [saved, setSaved] = useState(false)
   const [resyncState, setResyncState] = useState<'idle' | 'running' | 'done'>('idle')

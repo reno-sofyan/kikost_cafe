@@ -36,7 +36,7 @@ function envDeviceKey(): string {
  * Tanpa ini, salah ketik begini bikin fetch() nyasar ke bundel HTML lokal aplikasi
  * sendiri alih-alih server, dan errornya jadi "Unexpected token '<'" yang membingungkan.
  */
-function normalizeApiBaseUrl(raw: string): string {
+export function normalizeApiBaseUrl(raw: string): string {
   let url = raw.trim().replace(/\/+$/, '')
   if (!url) return ''
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`

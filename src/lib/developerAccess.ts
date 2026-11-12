@@ -1,4 +1,4 @@
-import { consumeServerDeveloperCode } from '@/sync/client'
+import { consumeServerDeveloperCode, pairDeviceWithCode } from '@/sync/client'
 import { isBackendConfigured } from '@/sync/deviceConfig'
 import { recordAuditLog } from '@/db/repositories/auditLog'
 import { useDeveloperStore } from '@/state/developerStore'
@@ -12,7 +12,7 @@ import { useDeveloperStore } from '@/state/developerStore'
  */
 export const DEVELOPER_ONLY = [
   'Sinkronisasi (URL server, kunci perangkat, reset, hapus data tenant)',
-  'Backup → Pulihkan dari Backup (menimpa seluruh data)',
+  'Backup (unduh & pulihkan seluruh data perangkat)',
   'QRIS → penyedia (statis / Midtrans dinamis)',
   'Pager (koneksi perangkat keras)',
   'Barcode Timbangan (format harga/berat)',
@@ -49,4 +49,66 @@ export async function unlockDeveloperMode(token: string, actor: { userId: string
 
 export function lockDeveloperMode(): void {
   useDeveloperStore.getState().lock()
+}
+
+// ---- Tablet BARU (belum punya kunci perangkat): kode pasang dari /ops ----------------
+
+/** Kunci perangkat hasil pemasangan, menunggu disimpan developer di tab Sinkronisasi (alur cek tenant yang ada). */
+const PENDING_PAIRING_KEY = 'kione.pendingPairing'
+
+export interface PendingPairing {
+  apiBaseUrl: string
+  deviceKey: string
+}
+
+export function takePendingPairing(): PendingPairing | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PAIRING_KEY)
+    if (!raw) return null
+    sessionStorage.removeItem(PENDING_PAIRING_KEY)
+    return JSON.parse(raw) as PendingPairing
+  } catch {
+    return null
+  }
+}
+
+const PAIR_REASON_TEXT = {
+  invalid: 'Kode pasang salah atau sudah dipakai. Buat kode baru di Konsol Operator.',
+  expired: 'Kode pasang sudah kedaluwarsa. Buat kode baru di Konsol Operator.',
+  blocked: 'Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.',
+} as const
+
+/**
+ * Tukar kode pasang (8 karakter, dari /ops → Kode Pasang Tablet) → kunci perangkat baru
+ * khusus tablet ini, lalu Mode Developer terbuka. Kuncinya TIDAK langsung dipakai: developer
+ * menyimpannya di tab Sinkronisasi (isian sudah terisi) supaya pemeriksaan tenant & sinkron
+ * awal berjalan lewat alur yang sama seperti biasa.
+ */
+export async function pairAndUnlockDeveloperMode(
+  apiBaseUrl: string,
+  code: string,
+  label: string,
+  actor: { userId: string; userName: string },
+): Promise<DeveloperUnlockResult> {
+  const cleanCode = code.toUpperCase().replace(/[\s-]/g, '')
+  if (!/^[A-Z2-9]{8}$/.test(cleanCode)) return { ok: false, message: 'Kode pasang harus 8 huruf/angka, mis. K7QM-3XPA.' }
+  if (!apiBaseUrl.trim()) return { ok: false, message: 'Isi alamat server.' }
+  let result
+  try {
+    result = await pairDeviceWithCode(apiBaseUrl, cleanCode, label)
+  } catch {
+    return { ok: false, message: 'Tidak bisa menghubungi server. Periksa alamat server & koneksi internet.' }
+  }
+  if (!result.ok) {
+    await recordAuditLog({ ...actor, action: 'developer.pair_failed', entityType: 'device', entityId: 'developer', details: `Kode pasang ditolak (${result.reason})` })
+    return { ok: false, message: PAIR_REASON_TEXT[result.reason] }
+  }
+  try {
+    sessionStorage.setItem(PENDING_PAIRING_KEY, JSON.stringify({ apiBaseUrl: apiBaseUrl.trim(), deviceKey: result.deviceKey }))
+  } catch {
+    return { ok: false, message: 'Penyimpanan perangkat diblokir — tak bisa melanjutkan pemasangan.' }
+  }
+  useDeveloperStore.getState().unlock()
+  await recordAuditLog({ ...actor, action: 'developer.pair', entityType: 'device', entityId: 'developer', details: `Tablet dipasangkan ke server oleh ${actor.userName} (kode pasang); Mode Developer dibuka` })
+  return { ok: true }
 }

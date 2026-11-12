@@ -7,8 +7,12 @@ test('pengaturan teknis tersembunyi sampai Mode Developer dibuka dengan token, d
   await page.getByRole('button', { name: 'QRIS', exact: true }).click()
   await expect(page.getByText('penyedia QRIS diatur oleh developer')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Pager', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Backup', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Pilih File Backup untuk Dipulihkan' })).toHaveCount(0)
+  // Sinkronisasi & Backup tersembunyi total, walau perangkat belum terpasang ke server.
+  await expect(page.getByRole('button', { name: 'Sinkronisasi', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Backup', exact: true })).toHaveCount(0)
+  // Tablet belum terpasang: kartu Mode Developer meminta kode pasang, bukan token.
+  await page.getByRole('button', { name: 'Tentang', exact: true }).click()
+  await expect(page.getByLabel('Kode pasang')).toBeVisible()
 
   // Token salah dari server → tetap terkunci dengan pesan jelas.
   await page.route('**/api/sync/developer-code/consume', (r) => r.fulfill({ json: { ok: false, reason: 'invalid', attemptsLeft: 4 } }))
@@ -24,6 +28,7 @@ test('pengaturan teknis tersembunyi sampai Mode Developer dibuka dengan token, d
 
   await unlockDeveloperModeMocked(page)
   await expect(page.getByRole('button', { name: 'Pager', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Backup', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sinkronisasi', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Backup', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Pilih File Backup untuk Dipulihkan' })).toBeVisible()
@@ -31,4 +36,6 @@ test('pengaturan teknis tersembunyi sampai Mode Developer dibuka dengan token, d
   // Kunci sekarang → tab teknis hilang lagi.
   await page.getByRole('button', { name: 'Kunci', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Pager', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Sinkronisasi', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Backup', exact: true })).toHaveCount(0)
 })

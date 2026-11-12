@@ -1,5 +1,5 @@
 import type { SyncEntity } from '@/types/domain'
-import { getApiBaseUrl, getDeviceKey, isBackendConfigured as isConfigured } from '@/sync/deviceConfig'
+import { getApiBaseUrl, getDeviceKey, isBackendConfigured as isConfigured, normalizeApiBaseUrl } from '@/sync/deviceConfig'
 import { noteTrustedTimestampFromResponse } from '@/lib/clockGuard'
 
 export interface SyncPushItem {
@@ -299,6 +299,31 @@ export async function consumeServerDeveloperCode(code: string): Promise<ServerDe
     })
     const data = await parseJsonOrThrow<ServerDeveloperCodeResult & { error?: string }>(response, 'Cek token gagal')
     if (!response.ok) throw new Error(data.error || `Cek token gagal (HTTP ${response.status})`)
+    return data
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// ---- Kode pasang tablet baru dari /ops (lihat backend/src/routes/pairing.ts) ----
+
+export type PairDeviceResult = { ok: true; deviceKey: string; tenantId: string } | { ok: false; reason: 'invalid' | 'expired' | 'blocked'; error?: string }
+
+/** Tablet yang belum punya kunci perangkat menukar kode pasang → kunci perangkat baru. Tanpa auth. */
+export async function pairDeviceWithCode(apiBaseUrl: string, code: string, label: string): Promise<PairDeviceResult> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OWNER_CODE_TIMEOUT_MS)
+  try {
+    const response = await fetch(`${normalizeApiBaseUrl(apiBaseUrl)}/api/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, label }),
+      signal: controller.signal,
+    })
+    const data = (await response.json().catch(() => ({}))) as PairDeviceResult
+    if (response.status === 429) return { ok: false, reason: 'blocked' }
+    if (response.status === 400) return { ok: false, reason: 'invalid' }
+    if (!response.ok) throw new Error(`Pemasangan gagal (HTTP ${response.status})`)
     return data
   } finally {
     clearTimeout(timer)

@@ -16,6 +16,7 @@ import { recordAuditLog } from '@/db/repositories/auditLog'
 import { db } from '@/db/schema'
 import { Icon } from '@/components/ui/Icon'
 import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator'
+import { useDeveloperUnlocked } from '@/state/developerStore'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
 import { BusinessLogo } from '@/components/BusinessBrand'
 import { getSettings, businessDisplayName } from '@/db/repositories/settings'
@@ -76,11 +77,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     const t = setInterval(() => setNow(Date.now()), 10 * 60 * 1000)
     return () => clearInterval(t)
   }, [])
-  const showBackupWarning =
-    !!currentUser &&
-    roleHasPermission(currentUser.role, 'users.manage') &&
-    !isBackendConfigured() &&
-    backupIsStale(now)
+  // Backup kini khusus developer: pengingatnya hanya tampil di Mode Developer.
+  const devUnlocked = useDeveloperUnlocked()
+  const showBackupWarning = !!currentUser && devUnlocked && !isBackendConfigured() && backupIsStale(now)
 
   // Jam sistem tampak dimundurkan sejak terakhir aplikasi mengamati waktu yang lebih
   // maju (lihat clockGuard.ts). Re-render `now` di atas (setiap 10 menit) membuat ini

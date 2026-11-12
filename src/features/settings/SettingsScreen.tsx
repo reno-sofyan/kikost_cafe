@@ -24,7 +24,6 @@ import { readFileAsResizedDataUrl } from '@/lib/image'
 import { ONLINE_PLATFORMS, ONLINE_PLATFORM_LABELS } from '@/lib/onlineOrders'
 import { Icon } from '@/components/ui/Icon'
 import { useDeveloperUnlocked } from '@/state/developerStore'
-import { getDeviceKey } from '@/sync/deviceConfig'
 import { lockDeveloperMode } from '@/lib/developerAccess'
 import { BUSINESS_TYPE_DESCRIPTIONS, BUSINESS_TYPE_LABELS, featuresForBusinessType } from '@/lib/businessType'
 import type { OnlinePlatform, ReceiptPaperSize } from '@/types/domain'
@@ -81,7 +80,6 @@ export function SettingsScreen() {
   // menyembunyikan tab sekejap lalu memunculkannya lagi setelah data siap).
   const features = featuresForBusinessType(settings?.businessType ?? 'lainnya')
   const devUnlocked = useDeveloperUnlocked()
-  const [pairedWhenOpened] = useState(() => !!getDeviceKey())
 
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
     { key: 'profil', label: 'Profil Usaha', visible: true },
@@ -99,11 +97,10 @@ export function SettingsScreen() {
     { key: 'fitur-akses', label: 'Fitur & Akses', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'pengguna', label: 'Pengguna', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'kode-batal', label: 'Kode Pembatalan', visible: features.ownerPinCancel && currentUser.role === 'pemilik' },
-    // Terbuka juga bila perangkat belum dipasangkan ke server saat Pengaturan dibuka (token
-    // developer dicek ke server). Dibaca SEKALI saat dibuka: tab tak hilang di tengah proses
-    // pemasangan pertama; setelah Pengaturan ditinggalkan, tab terkunci.
-    { key: 'sinkronisasi', label: 'Sinkronisasi', visible: devUnlocked || !pairedWhenOpened },
-    { key: 'backup', label: 'Backup', visible: roleHasPermission(currentUser.role, 'users.manage') },
+    // Hanya developer (Mode Developer). Tablet baru dipasangkan lewat kode pasang dari /ops
+    // di Tentang → Mode Developer, yang sekaligus membuka mode ini.
+    { key: 'sinkronisasi', label: 'Sinkronisasi', visible: devUnlocked },
+    { key: 'backup', label: 'Backup', visible: devUnlocked },
     { key: 'audit', label: 'Log Aktivitas', visible: roleHasPermission(currentUser.role, 'users.manage') },
     { key: 'tentang', label: 'Tentang', visible: true },
   ]

@@ -6,16 +6,22 @@ import { useSessionStore } from '@/state/sessionStore'
 import type { User } from '@/types/domain'
 
 const consume = vi.fn()
+const pair = vi.fn()
 let configured = true
-vi.mock('@/sync/client', () => ({ consumeServerDeveloperCode: (code: string) => consume(code) }))
+vi.mock('@/sync/client', () => ({
+  consumeServerDeveloperCode: (code: string) => consume(code),
+  pairDeviceWithCode: (url: string, code: string, label: string) => pair(url, code, label),
+}))
 vi.mock('@/sync/deviceConfig', () => ({ isBackendConfigured: () => configured }))
 
-const { unlockDeveloperMode } = await import('./developerAccess')
+const { pairAndUnlockDeveloperMode, takePendingPairing, unlockDeveloperMode } = await import('./developerAccess')
 const actor = { userId: 'u1', userName: 'Reno' }
 
 beforeEach(async () => {
   await resetLocalDb()
   consume.mockReset()
+  pair.mockReset()
+  sessionStorage.clear()
   configured = true
   useDeveloperStore.getState().lock()
 })
@@ -57,5 +63,26 @@ describe('Mode Developer (token 4 angka dari /ops)', () => {
       end()
       expect(useDeveloperStore.getState().unlocked).toBe(false)
     }
+  })
+})
+
+describe('tablet baru: kode pasang dari /ops', () => {
+  it('kode benar → Mode Developer terbuka & kunci baru menunggu disimpan di tab Sinkronisasi', async () => {
+    pair.mockResolvedValue({ ok: true, deviceKey: 'k'.repeat(64), tenantId: 'kafe-a' })
+    expect(await pairAndUnlockDeveloperMode('https://pos.kikost.com', 'k7qm-3xpa', 'Tablet ABC', actor)).toEqual({ ok: true })
+    expect(pair).toHaveBeenCalledWith('https://pos.kikost.com', 'K7QM3XPA', 'Tablet ABC')
+    expect(useDeveloperStore.getState().unlocked).toBe(true)
+    expect(takePendingPairing()).toEqual({ apiBaseUrl: 'https://pos.kikost.com', deviceKey: 'k'.repeat(64) })
+    expect(takePendingPairing()).toBeNull() // sekali ambil
+  })
+
+  it('kode salah/kedaluwarsa/format keliru → tetap terkunci', async () => {
+    pair.mockResolvedValueOnce({ ok: false, reason: 'invalid' })
+    expect(await pairAndUnlockDeveloperMode('https://pos.kikost.com', 'ABCD-EFGH', 'T', actor)).toMatchObject({ ok: false })
+    expect(await pairAndUnlockDeveloperMode('https://pos.kikost.com', '1234', 'T', actor)).toMatchObject({ ok: false, message: expect.stringContaining('8 huruf') })
+    pair.mockRejectedValueOnce(new Error('offline'))
+    expect((await pairAndUnlockDeveloperMode('https://pos.kikost.com', 'ABCD-EFGH', 'T', actor)) as { message: string }).toMatchObject({ message: expect.stringContaining('internet') })
+    expect(useDeveloperStore.getState().unlocked).toBe(false)
+    expect(takePendingPairing()).toBeNull()
   })
 })

@@ -9,7 +9,9 @@ import { PRODUCT_LOGO, PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_VERSION } from '@/
 import { useUiPrefsStore } from '@/state/uiPrefsStore'
 import { useSessionStore } from '@/state/sessionStore'
 import { useDeveloperUnlocked } from '@/state/developerStore'
-import { DEVELOPER_ONLY, DEVELOPER_TOKEN_LENGTH, lockDeveloperMode, unlockDeveloperMode } from '@/lib/developerAccess'
+import { DEVELOPER_ONLY, DEVELOPER_TOKEN_LENGTH, lockDeveloperMode, pairAndUnlockDeveloperMode, unlockDeveloperMode } from '@/lib/developerAccess'
+import { Capacitor } from '@capacitor/core'
+import { getDeviceKey } from '@/sync/deviceConfig'
 import { Button } from '@/components/ui/Button'
 
 /**
@@ -87,8 +89,8 @@ export function AboutPanel() {
           <Icon name="alertTriangle" size={18} />
         </span>
         <p>
-          Data transaksi tersimpan di perangkat ini. Bila sinkronisasi server belum diatur, buat backup berkala lewat
-          tab <span className="font-semibold text-ink-50">Backup</span> — tanpa itu, kerusakan perangkat berarti data hilang.
+          Data transaksi tersimpan di perangkat ini. Sinkronisasi server & backup diatur oleh developer — hubungi developer bila
+          perangkat belum tersambung ke server, karena tanpa itu kerusakan perangkat berarti data hilang.
         </p>
       </div>
     </div>
@@ -134,10 +136,12 @@ function DeveloperAccessCard() {
             Kunci sekarang
           </Button>
         </>
+      ) : !getDeviceKey() ? (
+        <PairingForm />
       ) : (
         <>
           <p className="mt-1 text-xs text-ink-300">
-            Pengaturan teknis (sinkronisasi, pemulihan backup, penyedia QRIS, pager, barcode timbangan) hanya untuk developer. Masukkan token {DEVELOPER_TOKEN_LENGTH} angka
+            Pengaturan teknis (sinkronisasi, backup, penyedia QRIS, pager, barcode timbangan) hanya untuk developer. Masukkan token {DEVELOPER_TOKEN_LENGTH} angka
             dari Konsol Operator — sekali pakai, butuh internet.
           </p>
           <form
@@ -166,5 +170,74 @@ function DeveloperAccessCard() {
         </>
       )}
     </div>
+  )
+}
+
+/** Alamat server bawaan untuk tablet baru: aplikasi web memakai domainnya sendiri; APK ke server produksi. */
+function defaultServerUrl(): string {
+  if (Capacitor.isNativePlatform()) return 'https://pos.kikost.com'
+  return window.location.origin
+}
+
+/**
+ * Tablet BARU (belum punya kunci perangkat — token developer belum bisa dicek): kode pasang
+ * 8 karakter dari Konsol Operator → tablet mendapat kunci perangkat sendiri & Mode Developer
+ * terbuka; isian tab Sinkronisasi sudah terisi, developer tinggal menekan Simpan.
+ */
+function PairingForm() {
+  const user = useSessionStore((s) => s.currentUser)
+  const [server, setServer] = useState(defaultServerUrl)
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+
+  async function submit() {
+    if (!user || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await pairAndUnlockDeveloperMode(server, code, `Tablet ${getDeviceLabel()}`, { userId: user.id, userName: user.name })
+      if (res.ok) setDone(true)
+      else setError(res.message)
+    } finally {
+      setCode('')
+      setBusy(false)
+    }
+  }
+
+  if (done) return <p className="mt-2 text-sm text-success-500">Tablet dipasangkan. Buka tab Sinkronisasi — isian sudah terisi — lalu tekan Uji Koneksi & Simpan.</p>
+
+  return (
+    <>
+      <p className="mt-1 text-xs text-ink-300">
+        Perangkat ini belum tersambung ke server. Developer: buat <b>Kode Pasang Tablet</b> di Konsol Operator, lalu masukkan di sini (sekali pakai, butuh internet).
+      </p>
+      <form
+        className="mt-3 space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void submit()
+        }}
+      >
+        <input className="input-field" aria-label="Alamat server" autoComplete="off" value={server} onChange={(e) => setServer(e.target.value)} />
+        <div className="flex gap-2">
+          <input
+            className="input-field max-w-[12rem] text-center font-semibold uppercase tracking-[0.2em]"
+            aria-label="Kode pasang"
+            autoComplete="off"
+            autoCapitalize="characters"
+            maxLength={9}
+            placeholder="XXXX-XXXX"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+          />
+          <Button type="submit" disabled={code.replace(/[\s-]/g, '').length !== 8} loading={busy}>
+            Pasangkan
+          </Button>
+        </div>
+      </form>
+      {error && <p className="mt-2 text-sm text-red-600" role="alert">{error}</p>}
+    </>
   )
 }

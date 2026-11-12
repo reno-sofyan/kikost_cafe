@@ -242,6 +242,16 @@
         <div class="big hide" id="ocShow"><b id="ocCode"></b><span id="ocHint"></span></div>
         <div class="err" id="ocErr"></div>
       </div>
+      <div class="ocode" id="pcode">
+        <div class="row1">
+          <span class="t">Kode Pasang Tablet</span>
+          <button class="primary" id="pcGen" onclick="genPairCode()">Buat Kode Pasang</button>
+          <button id="pcDel" class="hide" onclick="delPairCode()">Cabut</button>
+        </div>
+        <div class="st" id="pcStatus">Memuat…</div>
+        <div class="big hide" id="pcShow"><b id="pcCode"></b><span id="pcHint"></span></div>
+        <div class="err" id="pcErr"></div>
+      </div>
       <div class="ocode" id="dcode">
         <div class="row1">
           <span class="t">Token Developer</span>
@@ -469,6 +479,11 @@
     document.getElementById('dcErr').textContent = '';
     document.getElementById('dcStatus').textContent = 'Memuat…';
     loadDevCode();
+    document.getElementById('pcShow').classList.add('hide');
+    document.getElementById('pcCode').textContent = '';
+    document.getElementById('pcErr').textContent = '';
+    document.getElementById('pcStatus').textContent = 'Memuat…';
+    loadPairCode();
     resetOwnerAccess();
     loadOwnerAccess();
     document.getElementById('overlay').classList.add('open');
@@ -512,6 +527,57 @@
     else text = 'Belum ada kode dari konsol ini.';
     document.getElementById('ocStatus').textContent = text;
   }
+  // ---- Kode pasang tablet baru: 8 karakter, sekali pakai, 30 menit ----
+  const PAIR_CLOSED = { used: 'dipakai', expired: 'kedaluwarsa', revoked: 'dicabut' };
+  function renderPairCode(st) {
+    document.getElementById('pcDel').classList.toggle('hide', !st.active);
+    let text;
+    if (st.active) text = 'Kode pasang aktif sampai ' + fmtTime(st.active.expiresAt) + '. Membuat kode baru menggantikannya.';
+    else if (st.last) text = 'Tidak ada kode aktif. Kode terakhir ' + (PAIR_CLOSED[st.last.reason] || st.last.reason) + (st.last.usedAt ? ' ' + fmtTime(st.last.usedAt) : '') + '.';
+    else text = 'Untuk tablet BARU yang belum tersambung: masukkan di tablet (Pengaturan → Tentang → Mode Developer). Tablet mendapat kunci perangkat sendiri & Mode Developer terbuka.';
+    document.getElementById('pcStatus').textContent = text;
+  }
+  async function loadPairCode() {
+    const id = currentTenantId;
+    try {
+      const st = await api('/tenant/' + encodeURIComponent(id) + '/pairing-code');
+      if (id === currentTenantId) renderPairCode(st);
+    } catch (e) {
+      if (String(e.message) !== '401' && id === currentTenantId) document.getElementById('pcStatus').textContent = 'Gagal memuat status kode pasang.';
+    }
+  }
+  async function genPairCode() {
+    const id = currentTenantId;
+    const btn = document.getElementById('pcGen');
+    document.getElementById('pcErr').textContent = '';
+    btn.disabled = true;
+    try {
+      const r = await api('/tenant/' + encodeURIComponent(id) + '/pairing-code', 'POST', {});
+      if (id !== currentTenantId) return;
+      document.getElementById('pcCode').textContent = r.code;
+      document.getElementById('pcHint').textContent = 'Sekali pakai, berlaku sampai ' + fmtTime(r.expiresAt) + '. Tablet perlu internet.';
+      document.getElementById('pcShow').classList.remove('hide');
+      renderPairCode({ active: { createdAt: r.createdAt, expiresAt: r.expiresAt }, last: null });
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('pcErr').textContent = e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function delPairCode() {
+    const id = currentTenantId;
+    document.getElementById('pcErr').textContent = '';
+    try {
+      await api('/tenant/' + encodeURIComponent(id) + '/pairing-code', 'DELETE');
+      if (id !== currentTenantId) return;
+      document.getElementById('pcShow').classList.add('hide');
+      document.getElementById('pcCode').textContent = '';
+      loadPairCode();
+    } catch (e) {
+      if (String(e.message) !== '401') document.getElementById('pcErr').textContent = e.message;
+    }
+  }
+
   // ---- Token Mode Developer: 4 angka, sekali pakai, 10 menit, hangus setelah 5x salah ----
   const DEV_CLOSED = { used: 'dipakai', expired: 'kedaluwarsa', burned: 'hangus karena 5x salah', revoked: 'dicabut' };
   function renderDevCode(st) {
@@ -672,6 +738,8 @@
     document.getElementById('ocCode').textContent = '';
     document.getElementById('dcShow').classList.add('hide');
     document.getElementById('dcCode').textContent = '';
+    document.getElementById('pcShow').classList.add('hide');
+    document.getElementById('pcCode').textContent = '';
     document.getElementById('overlay').classList.remove('open');
     document.getElementById('drawer').classList.remove('open');
   }
