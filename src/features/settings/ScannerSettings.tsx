@@ -174,8 +174,16 @@ export function ScannerSettings() {
             ganda" di atas atau perpanjang "same code delay" di pemindai.
           </li>
           <li>
-            Android: saat pemindai terpasang, keyboard di layar bisa tersembunyi (pemindai dianggap keyboard fisik). Munculkan lagi lewat Setelan → Sistem → Bahasa &amp;
-            masukan → Keyboard fisik → <b>Tampilkan keyboard virtual</b>.
+            <b>Keyboard layar tidak muncul saat pemindai terpasang?</b> Android menganggap pemindai sebagai keyboard fisik lalu menyembunyikan keyboard layar. Nyalakan
+            sekali saja, tak perlu cabut pemindai lagi:
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              <li>
+                Samsung (Galaxy Tab): Pengaturan → Manajemen umum → Keyboard fisik → <b>Tampilkan keyboard di layar</b>.
+              </li>
+              <li>
+                Android lain: Setelan → Sistem → Bahasa &amp; masukan → Keyboard fisik → <b>Tampilkan keyboard virtual</b>.
+              </li>
+            </ul>
           </li>
           <li>Pemindai laser 1D membaca barcode batang (EAN-13, UPC, Code 128, dll.), bukan kode QR.</li>
         </ol>

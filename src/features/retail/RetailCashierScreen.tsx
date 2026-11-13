@@ -335,9 +335,9 @@ export function RetailCashierScreen() {
           </div>
           <ScanButton className="!px-5" onClick={() => setScanning(true)} />
         </div>
-        <div className="mt-1.5 hidden flex-none gap-3 text-[0.7rem] text-ink-300 lg:flex" aria-label="Shortcut keyboard">
+        <div className="mt-1.5 hidden flex-none gap-x-3 gap-y-1 overflow-hidden text-[0.7rem] text-ink-300 lg:flex lg:flex-wrap" aria-label="Shortcut keyboard">
           {SHORTCUTS.map(([key, label]) => (
-            <span key={key}>
+            <span key={key} className="whitespace-nowrap">
               <kbd className="rounded border border-ink-500 bg-ink-900 px-1 font-mono text-ink-200">{key}</kbd> {label}
             </span>
           ))}
@@ -359,7 +359,8 @@ export function RetailCashierScreen() {
         </div>
 
         <div ref={productScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div className="grid grid-cols-3 gap-2.5 xl:grid-cols-4">
+          {/* Kolom mengikuti lebar (kartu ≥ 10rem): di layar sempit/zoom besar harga & tombol + tak bertabrakan. */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2.5">
             {products.map((p) => {
               const tone = stockTone(p)
               const units = validSellUnits(p.sellUnits)
@@ -371,7 +372,7 @@ export function RetailCashierScreen() {
                   </button>
                   <div className="mt-2 flex items-end justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[1rem] font-bold text-brand-400">{formatRupiah(p.price)}</p>
+                      <p className="whitespace-nowrap text-[1rem] font-bold text-brand-400">{formatRupiah(p.price)}</p>
                       {p.trackOwnStock && <p className={`text-xs ${tone.text}`}>{p.stockQty <= 0 ? 'Stok habis' : `Stok ${qtyLabel(p.stockQty)}`}</p>}
                     </div>
                     <button

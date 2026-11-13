@@ -217,145 +217,149 @@ export function RetailPaymentScreen() {
       </div>
 
       {/* Pembayaran */}
-      <div className="flex w-[29rem] flex-none flex-col overflow-y-auto rounded-2xl border border-ink-600 bg-ink-900 p-6">
-        <p className="mb-3 text-sm font-medium text-ink-100">Metode pembayaran</p>
-        <div className="mb-5 grid grid-cols-4 gap-2">
-          {METHODS.map((m) => (
-            <button
-              key={m.id}
-              aria-pressed={method === m.id}
-              onClick={() => {
-                setMethod(m.id)
-                setError(null)
-              }}
-              className={`min-h-[3rem] rounded-xl border text-sm font-semibold transition-colors ${
-                method === m.id ? 'border-brand-600 bg-brand-600 text-white' : 'border-ink-600 bg-ink-900 text-ink-100 hover:bg-ink-800'
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
+      {/* Isi panel boleh digulir di layar pendek (mis. Tab S5e dengan zoom layar besar), tapi
+          tombol Kembali / Selesaikan tetap menempel di bawah — tak pernah terpotong. */}
+      <div className="flex w-[29rem] flex-none flex-col rounded-2xl border border-ink-600 bg-ink-900">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-6">
+          <p className="mb-3 text-sm font-medium text-ink-100">Metode pembayaran</p>
+          <div className="mb-5 grid grid-cols-4 gap-2">
+            {METHODS.map((m) => (
+              <button
+                key={m.id}
+                aria-pressed={method === m.id}
+                onClick={() => {
+                  setMethod(m.id)
+                  setError(null)
+                }}
+                className={`min-h-[3rem] rounded-xl border text-sm font-semibold transition-colors ${
+                  method === m.id ? 'border-brand-600 bg-brand-600 text-white' : 'border-ink-600 bg-ink-900 text-ink-100 hover:bg-ink-800'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {method === 'cash' && (
+            <>
+              <label className="mb-2 block text-sm text-ink-100" htmlFor="cash-received">
+                Uang diterima
+              </label>
+              <div className="mb-2 flex items-center rounded-2xl border border-ink-600 px-5 focus-within:border-brand-500">
+                <span className="text-lg text-ink-300">Rp</span>
+                <input
+                  id="cash-received"
+                  className="min-h-[4.25rem] w-full bg-transparent text-right text-[2rem] font-bold text-brand-400 outline-none placeholder:text-ink-500"
+                  inputMode="numeric"
+                  placeholder="0"
+                  autoFocus
+                  value={cashText}
+                  onChange={(e) => {
+                    const n = parseRupiahInput(e.target.value)
+                    setCashText(n > 0 ? formatNumber(n) : '')
+                    setError(null)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && canSubmit) submit()
+                  }}
+                />
+              </div>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button className="rounded-lg border border-ink-600 px-3 py-1.5 text-sm text-ink-100 hover:bg-ink-800" onClick={() => setCashText(formatNumber(due))}>
+                  Uang pas
+                </button>
+                {quickAmounts(due).map((v) => (
+                  <button key={v} className="rounded-lg border border-ink-600 px-3 py-1.5 text-sm text-ink-100 hover:bg-ink-800" onClick={() => setCashText(formatNumber(v))}>
+                    {formatNumber(v)}
+                  </button>
+                ))}
+              </div>
+              <div className={`mb-4 flex items-center justify-between rounded-2xl px-6 py-5 text-white ${change >= 0 || !cashText ? 'bg-brand-600' : 'bg-red-700'}`}>
+                <span className="text-sm">{change >= 0 || !cashText ? 'Kembalian' : 'Kurang'}</span>
+                <span className="text-[1.6rem] font-bold">{formatRupiah(cashText ? Math.abs(change) : 0)}</span>
+              </div>
+            </>
+          )}
+
+          {method === 'split' && (
+            <>
+              <label className="mb-2 block text-sm text-ink-100" htmlFor="split-cash">
+                Dibayar tunai
+              </label>
+              <div className="mb-3 flex items-center rounded-2xl border border-ink-600 px-5 focus-within:border-brand-500">
+                <span className="text-lg text-ink-300">Rp</span>
+                <input
+                  id="split-cash"
+                  className="min-h-[3.75rem] w-full bg-transparent text-right text-[1.6rem] font-bold text-brand-400 outline-none placeholder:text-ink-500"
+                  inputMode="numeric"
+                  placeholder="0"
+                  autoFocus
+                  value={cashText}
+                  onChange={(e) => {
+                    const n = parseRupiahInput(e.target.value)
+                    setCashText(n > 0 ? formatNumber(n) : '')
+                    setError(null)
+                  }}
+                />
+              </div>
+              <p className="mb-2 text-sm text-ink-100">Sisa dibayar dengan</p>
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                {(['qris', 'card'] as const).map((m) => (
+                  <button
+                    key={m}
+                    aria-pressed={splitRest === m}
+                    onClick={() => setSplitRest(m)}
+                    className={`min-h-[2.75rem] rounded-xl border text-sm font-semibold ${splitRest === m ? 'border-brand-600 bg-brand-600/10 text-brand-400' : 'border-ink-600 text-ink-100'}`}
+                  >
+                    {m === 'qris' ? 'QRIS' : 'Debit'}
+                  </button>
+                ))}
+              </div>
+              {splitRest === 'card' && (
+                <input className="input-field mb-3" placeholder="No. referensi EDC (opsional)" aria-label="No. referensi EDC" value={reference} onChange={(e) => setReference(e.target.value)} />
+              )}
+              <div className="mb-4 flex items-center justify-between rounded-2xl bg-brand-600 px-6 py-4 text-white">
+                <span className="text-sm">Sisa {splitRest === 'qris' ? 'QRIS' : 'Debit'}</span>
+                <span className="text-[1.4rem] font-bold">{formatRupiah(splitCash > 0 ? splitRemainder : 0)}</span>
+              </div>
+              {received >= due && cashText && <p className="mb-3 text-xs text-accent-500">Tunai sudah menutup seluruh tagihan — pakai metode Tunai.</p>}
+            </>
+          )}
+
+          {method === 'qris' && (
+            <p className="mb-4 rounded-2xl bg-ink-800 p-4 text-sm text-ink-200">
+              Tekan <span className="font-semibold">Selesaikan pembayaran</span> untuk menampilkan QRIS {formatRupiah(due)} ke pelanggan, lalu konfirmasi setelah dana masuk.
+            </p>
+          )}
+
+          {method === 'card' && (
+            <label className="mb-4 block">
+              <span className="mb-2 block text-sm text-ink-100">No. referensi EDC (opsional)</span>
+              <input className="input-field" placeholder="mis. 4 digit akhir kartu / no. approval" value={reference} onChange={(e) => setReference(e.target.value)} />
+            </label>
+          )}
+
+          <ToggleRow
+            label="Export Nota ke PDF"
+            checked={exportPdf}
+            onChange={(v) => {
+              setExportPdf(v)
+              writePref(PREF_PDF, v)
+            }}
+          />
+          <ToggleRow
+            label="Simpan nota ke Laporan"
+            checked={saveNota}
+            onChange={(v) => {
+              setSaveNota(v)
+              writePref(PREF_SAVE, v)
+            }}
+          />
+
+          {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
         </div>
 
-        {method === 'cash' && (
-          <>
-            <label className="mb-2 block text-sm text-ink-100" htmlFor="cash-received">
-              Uang diterima
-            </label>
-            <div className="mb-2 flex items-center rounded-2xl border border-ink-600 px-5 focus-within:border-brand-500">
-              <span className="text-lg text-ink-300">Rp</span>
-              <input
-                id="cash-received"
-                className="min-h-[4.25rem] w-full bg-transparent text-right text-[2rem] font-bold text-brand-400 outline-none placeholder:text-ink-500"
-                inputMode="numeric"
-                placeholder="0"
-                autoFocus
-                value={cashText}
-                onChange={(e) => {
-                  const n = parseRupiahInput(e.target.value)
-                  setCashText(n > 0 ? formatNumber(n) : '')
-                  setError(null)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && canSubmit) submit()
-                }}
-              />
-            </div>
-            <div className="mb-4 flex flex-wrap gap-2">
-              <button className="rounded-lg border border-ink-600 px-3 py-1.5 text-sm text-ink-100 hover:bg-ink-800" onClick={() => setCashText(formatNumber(due))}>
-                Uang pas
-              </button>
-              {quickAmounts(due).map((v) => (
-                <button key={v} className="rounded-lg border border-ink-600 px-3 py-1.5 text-sm text-ink-100 hover:bg-ink-800" onClick={() => setCashText(formatNumber(v))}>
-                  {formatNumber(v)}
-                </button>
-              ))}
-            </div>
-            <div className={`mb-4 flex items-center justify-between rounded-2xl px-6 py-5 text-white ${change >= 0 || !cashText ? 'bg-brand-600' : 'bg-red-700'}`}>
-              <span className="text-sm">{change >= 0 || !cashText ? 'Kembalian' : 'Kurang'}</span>
-              <span className="text-[1.6rem] font-bold">{formatRupiah(cashText ? Math.abs(change) : 0)}</span>
-            </div>
-          </>
-        )}
-
-        {method === 'split' && (
-          <>
-            <label className="mb-2 block text-sm text-ink-100" htmlFor="split-cash">
-              Dibayar tunai
-            </label>
-            <div className="mb-3 flex items-center rounded-2xl border border-ink-600 px-5 focus-within:border-brand-500">
-              <span className="text-lg text-ink-300">Rp</span>
-              <input
-                id="split-cash"
-                className="min-h-[3.75rem] w-full bg-transparent text-right text-[1.6rem] font-bold text-brand-400 outline-none placeholder:text-ink-500"
-                inputMode="numeric"
-                placeholder="0"
-                autoFocus
-                value={cashText}
-                onChange={(e) => {
-                  const n = parseRupiahInput(e.target.value)
-                  setCashText(n > 0 ? formatNumber(n) : '')
-                  setError(null)
-                }}
-              />
-            </div>
-            <p className="mb-2 text-sm text-ink-100">Sisa dibayar dengan</p>
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              {(['qris', 'card'] as const).map((m) => (
-                <button
-                  key={m}
-                  aria-pressed={splitRest === m}
-                  onClick={() => setSplitRest(m)}
-                  className={`min-h-[2.75rem] rounded-xl border text-sm font-semibold ${splitRest === m ? 'border-brand-600 bg-brand-600/10 text-brand-400' : 'border-ink-600 text-ink-100'}`}
-                >
-                  {m === 'qris' ? 'QRIS' : 'Debit'}
-                </button>
-              ))}
-            </div>
-            {splitRest === 'card' && (
-              <input className="input-field mb-3" placeholder="No. referensi EDC (opsional)" aria-label="No. referensi EDC" value={reference} onChange={(e) => setReference(e.target.value)} />
-            )}
-            <div className="mb-4 flex items-center justify-between rounded-2xl bg-brand-600 px-6 py-4 text-white">
-              <span className="text-sm">Sisa {splitRest === 'qris' ? 'QRIS' : 'Debit'}</span>
-              <span className="text-[1.4rem] font-bold">{formatRupiah(splitCash > 0 ? splitRemainder : 0)}</span>
-            </div>
-            {received >= due && cashText && <p className="mb-3 text-xs text-accent-500">Tunai sudah menutup seluruh tagihan — pakai metode Tunai.</p>}
-          </>
-        )}
-
-        {method === 'qris' && (
-          <p className="mb-4 rounded-2xl bg-ink-800 p-4 text-sm text-ink-200">
-            Tekan <span className="font-semibold">Selesaikan pembayaran</span> untuk menampilkan QRIS {formatRupiah(due)} ke pelanggan, lalu konfirmasi setelah dana masuk.
-          </p>
-        )}
-
-        {method === 'card' && (
-          <label className="mb-4 block">
-            <span className="mb-2 block text-sm text-ink-100">No. referensi EDC (opsional)</span>
-            <input className="input-field" placeholder="mis. 4 digit akhir kartu / no. approval" value={reference} onChange={(e) => setReference(e.target.value)} />
-          </label>
-        )}
-
-        <ToggleRow
-          label="Export Nota ke PDF"
-          checked={exportPdf}
-          onChange={(v) => {
-            setExportPdf(v)
-            writePref(PREF_PDF, v)
-          }}
-        />
-        <ToggleRow
-          label="Simpan nota ke Laporan"
-          checked={saveNota}
-          onChange={(v) => {
-            setSaveNota(v)
-            writePref(PREF_SAVE, v)
-          }}
-        />
-
-        {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
-
-        <div className="mt-auto grid grid-cols-[1fr_1.9fr] gap-3 pt-6">
+        <div className="grid flex-none grid-cols-[1fr_1.9fr] gap-3 px-6 pb-6 pt-4">
           <Button variant="secondary" size="lg" className="text-base font-medium" onClick={() => navigate('/kasir')}>
             Kembali
           </Button>

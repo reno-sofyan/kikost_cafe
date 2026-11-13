@@ -145,14 +145,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={`flex h-full w-full overflow-hidden bg-ink-950 ${retail ? 'gap-1 p-3 pr-0' : ''}`}>
-      {/* flex-none pada anak nav: tanpa itu, di layar pendek (mis. Galaxy Tab A8
-          landscape ≈ 1280×728 CSS px) item ikut menyusut & blok nama usaha
-          terpotong alih-alih nav bisa di-scroll. */}
+      {/* flex-none pada blok nama usaha: tanpa itu, di layar pendek (mis. Galaxy Tab A8 /
+          Tab S5e landscape ≈ 1280×728 CSS px) blok itu menyusut & terpotong. Menu ritel
+          (11 item) boleh memadat sampai min-h 3rem supaya semuanya muat tanpa digulir;
+          bila tetap tak muat, nav bisa di-scroll. */}
       <nav
         ref={navRef}
         className={
           retail
-            ? 'relative flex w-[6.25rem] flex-none flex-col items-stretch gap-0.5 overflow-y-auto rounded-[1.25rem] bg-brand-600 py-4 text-white shadow-card'
+            ? 'relative flex w-[6.25rem] flex-none flex-col items-stretch gap-0.5 overflow-y-auto rounded-[1.25rem] bg-brand-600 py-4 text-white shadow-card [@media(max-height:680px)]:py-2'
             : 'relative flex w-24 flex-none flex-col items-stretch gap-0.5 overflow-y-auto border-r border-ink-700 bg-ink-900 py-3'
         }
       >
@@ -165,7 +166,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : (
             <BusinessLogo size="sm" />
           )}
-          <span className={`line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight ${retail ? 'text-[0.72rem] text-white' : 'text-ink-300'}`}>
+          <span className={`line-clamp-2 text-center text-[0.65rem] font-semibold leading-tight ${retail ? 'text-[0.72rem] text-white [@media(max-height:680px)]:hidden' : 'text-ink-300'}`}>
             {businessName}
           </span>
         </div>
@@ -175,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             to={item.to}
             className={({ isActive }) =>
               retail
-                ? `group relative flex flex-none flex-col items-center gap-1.5 py-3 text-[0.78rem] font-medium transition-colors [@media(max-height:800px)]:py-2 ${
+                ? `group relative flex min-h-[3rem] shrink flex-col items-center justify-center gap-1.5 py-3 text-[0.78rem] font-medium transition-colors [@media(max-height:800px)]:gap-1 [@media(max-height:800px)]:py-2 [@media(max-height:680px)]:min-h-[2.6rem] [@media(max-height:680px)]:gap-0.5 [@media(max-height:680px)]:py-1 ${
                     isActive ? 'text-white' : 'text-white/90 hover:bg-white/10 hover:text-white'
                   }`
                 : `group relative mx-2 flex flex-none flex-col items-center gap-1 rounded-xl py-2.5 text-[0.7rem] [@media(max-height:800px)]:py-1.5 font-medium transition-colors ${
@@ -183,7 +184,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   }`
             }
           >
-            <Icon name={item.icon} size={21} />
+            <Icon name={item.icon} size={21} className="flex-none" />
             <span className="leading-none">{item.label}</span>
             {(navBadges[item.to]?.count ?? 0) > 0 && (
               <span

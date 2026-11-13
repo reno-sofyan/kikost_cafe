@@ -327,14 +327,34 @@ function PrinterFormModal({
   const [fallbackPrinterId, setFallback] = useState<string | null>(printer?.fallbackPrinterId ?? null)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const [paired, setPaired] = useState<BluetoothPrinterDevice[]>([])
+  const [btStatus, setBtStatus] = useState<{ tone: 'info' | 'error'; text: string } | null>(null)
+  const [scanning, setScanning] = useState(false)
 
   async function scanBt() {
+    setScanning(true)
+    setBtStatus(null)
     try {
-      setPaired((await EscPosPrinter.listPairedDevices()).devices)
-    } catch {
-      /* abaikan */
+      const devices = (await EscPosPrinter.listPairedDevices()).devices
+      setPaired(devices)
+      if (devices.length === 0) {
+        setBtStatus({ tone: 'info', text: 'Belum ada perangkat Bluetooth yang dipasangkan. Nyalakan printer, pasangkan dulu di Pengaturan Bluetooth Android, lalu tekan Cari Perangkat lagi.' })
+      }
+    } catch (e) {
+      // Pesan dari plugin native: Bluetooth mati, izin ditolak, dsb. — tampilkan, jangan ditelan.
+      setBtStatus({ tone: 'error', text: e instanceof Error ? e.message : 'Gagal membaca perangkat Bluetooth.' })
+    } finally {
+      setScanning(false)
     }
   }
+
+  // Printer yang belum lengkap alamatnya tersimpan tapi selalu gagal mencetak — tahan di sini.
+  const missing = !name.trim()
+    ? 'Isi nama printer.'
+    : connectionType === 'bluetooth' && !btAddress
+      ? 'Pilih printer Bluetooth dari daftar (tekan Cari Perangkat).'
+      : connectionType === 'network' && !host.trim()
+        ? 'Isi alamat IP printer WiFi/LAN.'
+        : null
 
   return (
     <>
@@ -370,14 +390,16 @@ function PrinterFormModal({
         )}
         {connectionType === 'bluetooth' && (
           <div className="mb-3">
-            <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" onClick={() => void scanBt()}>
-              Cari Perangkat
+            <button type="button" className="btn-secondary !min-h-[2.75rem] !px-3 !py-1.5 text-xs" disabled={scanning} onClick={() => void scanBt()}>
+              {scanning ? 'Mencari…' : 'Cari Perangkat'}
             </button>
+            {btStatus && <p className={`mt-2 text-xs ${btStatus.tone === 'error' ? 'text-red-500' : 'text-ink-300'}`}>{btStatus.text}</p>}
             <div className="mt-1 space-y-1">
               {paired.map((d) => (
                 <button
                   key={d.address}
-                  className={`block w-full rounded-lg px-2 py-1.5 text-left text-xs ${btAddress === d.address ? 'bg-brand-600 text-white' : 'bg-ink-800 text-ink-200'}`}
+                  type="button"
+                  className={`block min-h-[2.75rem] w-full rounded-lg px-3 py-2 text-left text-sm ${btAddress === d.address ? 'bg-brand-600 text-white' : 'bg-ink-800 text-ink-200'}`}
                   onClick={() => {
                     setBtAddress(d.address)
                     setBtName(d.name)
@@ -417,6 +439,7 @@ function PrinterFormModal({
         <label className="mb-4 flex items-center gap-2 text-sm text-ink-300">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
         </label>
+        {missing && <p className="mb-3 text-xs text-ink-300">{missing}</p>}
 
         <div className="flex gap-2">
           <button className="btn-ghost flex-1" onClick={onClose}>
@@ -436,7 +459,7 @@ function PrinterFormModal({
           )}
           <button
             className="btn-primary flex-[2]"
-            disabled={!name.trim()}
+            disabled={!!missing}
             onClick={() =>
               void onSave({
                 id: printer?.id,

@@ -10,5 +10,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(EscPosPrinterPlugin.class);
         registerPlugin(UsbSerialPlugin.class);
         super.onCreate(savedInstanceState);
+        // Ukuran font Android (mis. Samsung "Ukuran font" besar) tak ikut memperbesar teks
+        // WebView — tata letak kasir dirancang per piksel CSS, teks yang membesar memotong tombol.
+        getBridge().getWebView().getSettings().setTextZoom(100);
     }
 }
