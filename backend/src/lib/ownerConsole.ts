@@ -1,5 +1,6 @@
 import type { Pool } from 'pg'
-import { RECOGNIZED_SALE_SQL, SALE_AT_MS, UNPAID_SQL, num, numField, tsOf } from './tenantReports.js'
+import { loadAttendanceLog } from './staffAttendance.js'
+import { RECOGNIZED_SALE_SQL, SALE_AT_MS, UNPAID_SQL, num, numField, parseWibRange, tsOf } from './tenantReports.js'
 
 /**
  * Konsol Pemilik dipisah per jenis usaha: kafe di `/owner/kafe`, kantin di
@@ -45,9 +46,25 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? 
 
 // ---------------------------------------------------------------- Kafe
 
-/** Tambahan ringkasan kafe: tamu & tip hari ini, meja terisi sekarang. */
+/** Absensi hari ini (WIB) untuk kartu ringkasan: hadir, masih bekerja, manual, tanpa selfie. */
+async function loadAttendanceToday(pool: Pool, tenantId: string) {
+  const range = parseWibRange(undefined, undefined)
+  if ('error' in range) throw new Error(range.error)
+  const { rows } = await loadAttendanceLog(pool, tenantId, range.sinceMs, range.untilMs)
+  // `rows` terbaru dulu → entri pertama per nama = status terakhirnya hari ini.
+  const last = new Map<string, 'in' | 'out'>()
+  for (const r of rows) if (!last.has(r.userName)) last.set(r.userName, r.type)
+  return {
+    present: new Set(rows.filter((r) => r.type === 'in').map((r) => r.userName)).size,
+    working: [...last.values()].filter((t) => t === 'in').length,
+    manual: rows.filter((r) => r.source === 'manual').length,
+    withoutSelfie: rows.filter((r) => r.source === 'phone' && !r.hasSelfie).length,
+  }
+}
+
+/** Tambahan ringkasan kafe: tamu & tip hari ini, meja terisi sekarang, absensi hari ini. */
 export async function loadCafeHighlights(pool: Pool, tenantId: string) {
-  const [today, tips, tables] = await Promise.all([
+  const [today, tips, tables, attendance] = await Promise.all([
     pool.query<{ guests: string }>(
       `SELECT coalesce(sum(coalesce(${nf('guestCount')}, 0)), 0) AS guests
          FROM sync_entity_state
@@ -70,11 +87,13 @@ export async function loadCafeHighlights(pool: Pool, tenantId: string) {
         WHERE tenant_id = $1 AND entity = 'cafeTables' AND deleted = FALSE`,
       [tenantId],
     ),
+    loadAttendanceToday(pool, tenantId),
   ])
   return {
     guestsToday: num(today.rows[0]?.guests),
     tipsToday: num(tips.rows[0]?.tips),
     tables: { total: num(tables.rows[0]?.total), occupied: num(tables.rows[0]?.occupied) },
+    attendance,
   }
 }
 

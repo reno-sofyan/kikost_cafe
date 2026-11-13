@@ -270,6 +270,10 @@ suite('konsol Pemilik /owner (integrasi)', () => {
       ['cafe', 'cafeTables', 't2', { id: 't2', name: 'Meja 2', area: 'Dalam', capacity: 2, status: 'available', currentOrderId: null }],
       ['cafe', 'orders', 'c2', { id: 'c2', orderNumber: 'CAFE-2', status: 'open', grandTotal: 45000, waiterName: 'Rani', createdAt: now }],
       ['cafe', 'payments', 'cp1', { id: 'cp1', orderId: 'c1', method: 'cash', amount: 99000, tipAmount: 7000 }],
+      // Absensi hari ini: Sari masuk lalu pulang, Budi masuk manual → 2 hadir, 1 masih bekerja.
+      ['cafe', 'auditLogs', 'a1', { id: 'a1', entityType: 'attendance', action: 'attendance.in', userName: 'Sari', details: '', createdAt: now - 3_000 }],
+      ['cafe', 'auditLogs', 'a2', { id: 'a2', entityType: 'attendance', action: 'attendance.out', userName: 'Sari', details: '', createdAt: now - 1_000 }],
+      ['cafe', 'auditLogs', 'a3', { id: 'a3', entityType: 'attendance', action: 'attendance.manual_in', userName: 'Budi', details: 'HP mati', createdAt: now - 2_000 }],
       ['kantin', 'orders', 'pl1', { id: 'pl1', orderNumber: 'TRX-3', status: 'open', grandTotal: 15000, createdAt: now, payLater: { name: 'Pak Budi', note: 'Divisi gudang', markedAt: now, markedByName: 'Andi' } }],
       ['kantin', 'payments', 'kp1', { id: 'kp1', orderId: 'o1', method: 'qris', amount: 25000 }],
       // Dibayar sebagian → sisa piutang Rp10.000; pembalikan tak mengurangi sisa.
@@ -291,7 +295,11 @@ suite('konsol Pemilik /owner (integrasi)', () => {
 
     const cov = (await get('/owner/kafe/api/overview', cafe.token)).json()
     expect(cov.area).toBe('kafe')
-    expect(cov.highlights).toMatchObject({ tipsToday: 7000, tables: { total: 2, occupied: 1 } })
+    expect(cov.highlights).toMatchObject({
+      tipsToday: 7000,
+      tables: { total: 2, occupied: 1 },
+      attendance: { present: 2, working: 1, manual: 1, withoutSelfie: 0 },
+    })
     const tables = (await get('/owner/kafe/api/tables', cafe.token)).json().tables
     expect(tables[0]).toMatchObject({ name: 'Meja 1', status: 'occupied', order: { orderNumber: 'CAFE-2', grandTotal: 45000, waiterName: 'Rani' } })
     expect(tables[1]).toMatchObject({ name: 'Meja 2', order: null })

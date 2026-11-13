@@ -62,6 +62,8 @@
   .kpi .val { font-size: 1.45rem; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
   .kpi .note { color: var(--ink-3); font-size: .74rem; margin-top: 2px; }
   .kpi.alert .val { color: var(--bad); }
+  .kpi.link { cursor: pointer; }
+  .kpi.link:hover { border-color: var(--ink-3); }
 
   .row2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 14px; }
   .panel { padding: 16px; }
@@ -435,6 +437,11 @@
         kpi('Tamu hari ini', h.guestsToday.toLocaleString('id-ID'), d.today.txns && h.guestsToday ? compact(d.today.revenue / h.guestsToday) + ' per tamu' : ''),
         kpi('Tip hari ini', compact(h.tipsToday), 'di luar omzet'),
       );
+      const a = h.attendance;
+      if (a) {
+        const flags = [a.manual ? a.manual + ' manual' : '', a.withoutSelfie ? a.withoutSelfie + ' tanpa selfie' : ''].filter(Boolean);
+        k.push(kpi('Karyawan hadir hari ini', a.present, a.working + ' masih bekerja' + (flags.length ? ' · ' + flags.join(' · ') : ''), flags.length > 0, 'attendance'));
+      }
     }
     if (AREA === 'kantin') {
       k.push(
@@ -447,8 +454,9 @@
     document.getElementById('kpis').innerHTML = k.join('');
     renderChart(d.last7Days);
   }
-  const kpi = (label, val, note, alert) =>
-    '<div class="card kpi' + (alert ? ' alert' : '') + '"><div class="label">' + esc(label) + '</div><div class="val">' + esc(val) + '</div>' +
+  /** `tab` = kartu bisa diketuk untuk membuka tab rinciannya. */
+  const kpi = (label, val, note, alert, tab) =>
+    '<div class="card kpi' + (alert ? ' alert' : '') + (tab ? ' link" role="button" tabindex="0" onclick="showTab(\'' + tab + '\'); document.getElementById(\'tabs\').scrollIntoView({ behavior: \'smooth\' })"' : '"') + '><div class="label">' + esc(label) + '</div><div class="val">' + esc(val) + '</div>' +
     (note ? '<div class="note">' + esc(note) + '</div>' : '') + '</div>';
 
   function renderChart(days) {
