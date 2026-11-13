@@ -9,6 +9,7 @@ import { PRODUCT_LOGO, PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_VERSION } from '@/
 import { useUiPrefsStore } from '@/state/uiPrefsStore'
 import { useSessionStore } from '@/state/sessionStore'
 import { useDeveloperUnlocked } from '@/state/developerStore'
+import { useSyncStore } from '@/state/syncStore'
 import { DEVELOPER_ONLY, DEVELOPER_TOKEN_LENGTH, lockDeveloperMode, pairAndUnlockDeveloperMode, unlockDeveloperMode } from '@/lib/developerAccess'
 import { Capacitor } from '@capacitor/core'
 import { getDeviceKey } from '@/sync/deviceConfig'
@@ -101,6 +102,9 @@ export function AboutPanel() {
 function DeveloperAccessCard() {
   const unlocked = useDeveloperUnlocked()
   const user = useSessionStore((s) => s.currentUser)
+  // Kunci perangkat ditolak server (dicabut / salah ketik): token developer pun tak bisa
+  // dicek, jadi tawarkan kode pasang lagi supaya tablet tak terkunci di luar.
+  const keyRejected = useSyncStore((s) => /HTTP 401/.test(s.lastError ?? ''))
   const [token, setToken] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -136,8 +140,8 @@ function DeveloperAccessCard() {
             Kunci sekarang
           </Button>
         </>
-      ) : !getDeviceKey() ? (
-        <PairingForm />
+      ) : !getDeviceKey() || keyRejected ? (
+        <PairingForm rejected={keyRejected && !!getDeviceKey()} />
       ) : (
         <>
           <p className="mt-1 text-xs text-ink-300">
@@ -184,7 +188,7 @@ function defaultServerUrl(): string {
  * 8 karakter dari Konsol Operator → tablet mendapat kunci perangkat sendiri & Mode Developer
  * terbuka; isian tab Sinkronisasi sudah terisi, developer tinggal menekan Simpan.
  */
-function PairingForm() {
+function PairingForm({ rejected = false }: { rejected?: boolean }) {
   const user = useSessionStore((s) => s.currentUser)
   const [server, setServer] = useState(defaultServerUrl)
   const [code, setCode] = useState('')
@@ -211,7 +215,8 @@ function PairingForm() {
   return (
     <>
       <p className="mt-1 text-xs text-ink-300">
-        Perangkat ini belum tersambung ke server. Developer: buat <b>Kode Pasang Tablet</b> di Konsol Operator, lalu masukkan di sini (sekali pakai, butuh internet).
+        {rejected ? 'Kunci perangkat tablet ini ditolak server (HTTP 401) — mungkin sudah dicabut atau salah ketik.' : 'Perangkat ini belum tersambung ke server.'} Developer: buat{' '}
+        <b>Kode Pasang Tablet</b> di Konsol Operator, lalu masukkan di sini (sekali pakai, butuh internet).
       </p>
       <form
         className="mt-3 space-y-2"

@@ -39,3 +39,24 @@ test('pengaturan teknis tersembunyi sampai Mode Developer dibuka dengan token, d
   await expect(page.getByRole('button', { name: 'Sinkronisasi', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Backup', exact: true })).toHaveCount(0)
 })
+
+test.describe(() => {
+  // Service worker PWA meneruskan GET ke jaringan tanpa lewat page.route.
+  test.use({ serviceWorkers: 'block' })
+
+  test('kunci perangkat ditolak server (HTTP 401) → tablet bisa dipasangkan ulang dengan kode pasang', async ({ page }) => {
+    await completeOnboarding(page, { businessType: 'Kafe & Restoran' })
+    await page.route('**/api/sync/**', (r) => r.fulfill({ status: 401, json: { error: 'Kunci perangkat tidak sah' } }))
+    await page.evaluate(() => {
+      localStorage.setItem('kione.sync.apiBaseUrl', 'http://e2e-backend.invalid')
+      localStorage.setItem('kione.sync.deviceKey', 'kunci-dicabut')
+      // Picu siklus sinkronisasi sekarang, tak menunggu interval 20 dtk.
+      window.dispatchEvent(new Event('online'))
+    })
+    await page.getByRole('link', { name: 'Pengaturan', exact: true }).click()
+    await page.getByRole('button', { name: 'Tentang', exact: true }).click()
+    await expect(page.getByText(/ditolak server \(HTTP 401\)/)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByLabel('Kode pasang')).toBeVisible()
+    await expect(page.getByLabel('Token developer')).toHaveCount(0)
+  })
+})
