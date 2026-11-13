@@ -74,6 +74,9 @@ export default defineConfig({
     // bisa tertinggal versi bila Play Store tak pernah memperbaruinya. es2022
     // meloloskan sintaks (class static block, dll.) yang baru ada di Chrome 94+.
     target: ['es2020', 'chrome87'],
+    // CSS ditulis untuk Chromium 80 (lihat postcss-legacy-webview.js): dengan target chrome87
+    // minifier menggabungkan lagi top/right/bottom/left jadi `inset` & membuang cadangan vh.
+    cssTarget: ['chrome80'],
     // Source map produksi TIDAK dibangkitkan sama sekali — sebelumnya `true`,
     // yang membuat seluruh source code (tak diminifikasi) bisa diambil siapa
     // pun yang tahu URL-nya, karena Dockerfile menyalin seluruh `dist/` apa

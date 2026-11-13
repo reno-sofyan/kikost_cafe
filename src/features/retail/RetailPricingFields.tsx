@@ -65,7 +65,7 @@ export function RetailPricingFields({
           <button
             type="button"
             className="text-sm font-medium text-brand-400"
-            onClick={() => onTierPrices([...tierPrices, { minQty: (tierPrices.at(-1)?.minQty ?? 5) * 2, price: 0 }])}
+            onClick={() => onTierPrices([...tierPrices, { minQty: (tierPrices[tierPrices.length - 1]?.minQty ?? 5) * 2, price: 0 }])}
           >
             + Tambah tingkat
           </button>

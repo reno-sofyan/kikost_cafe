@@ -12,6 +12,7 @@ import { useDeveloperUnlocked } from '@/state/developerStore'
 import { useSyncStore } from '@/state/syncStore'
 import { DEVELOPER_ONLY, DEVELOPER_TOKEN_LENGTH, lockDeveloperMode, pairAndUnlockDeveloperMode, unlockDeveloperMode } from '@/lib/developerAccess'
 import { Capacitor } from '@capacitor/core'
+import { RECOMMENDED_WEBVIEW_VERSION, webViewChromeVersion } from '@/lib/legacyWebView'
 import { getDeviceKey } from '@/sync/deviceConfig'
 import { Button } from '@/components/ui/Button'
 
@@ -46,6 +47,7 @@ export function AboutPanel() {
       ? 'Terkunci (aman dari penghapusan otomatis)'
       : 'Belum terkunci — cadangkan data secara berkala'
 
+  const webView = webViewChromeVersion()
   const rows: { label: string; value: string }[] = [
     { label: 'Versi aplikasi', value: PRODUCT_VERSION },
     { label: 'Usaha terdaftar', value: businessDisplayName(settings) },
@@ -54,6 +56,7 @@ export function AboutPanel() {
     { label: 'Server sinkronisasi', value: apiBaseUrl || 'Belum diatur (mode offline penuh)' },
     { label: 'Zona waktu', value: settings?.timezone ?? '—' },
     { label: 'Penyimpanan data', value: storageLabel },
+    { label: 'WebView (mesin tampilan)', value: webView ? `Chrome ${webView}` : '—' },
   ]
 
   return (
@@ -73,6 +76,18 @@ export function AboutPanel() {
           </div>
         ))}
       </div>
+
+      {webView != null && webView < RECOMMENDED_WEBVIEW_VERSION && (
+        <div className="card flex items-start gap-3 border-accent-500/40 p-5 text-sm text-ink-200">
+          <span className="mt-0.5 flex-none text-accent-500">
+            <Icon name="alertTriangle" size={18} />
+          </span>
+          <p>
+            WebView tablet ini versi lama (Chrome {webView}). Aplikasi tetap berjalan, tetapi tampilan paling rapi dengan versi terbaru: buka{' '}
+            <b>Play Store</b>, cari <b>Android System WebView</b>, lalu ketuk <b>Perbarui</b>.
+          </p>
+        </div>
+      )}
 
       {/* Preferensi perangkat ini saja (tiap tablet bisa beda) — lihat uiPrefsStore. */}
       <label className="card flex cursor-pointer items-center justify-between gap-4 p-5">

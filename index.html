@@ -27,7 +27,7 @@
       #portrait-lock { display: none; }
       @media (pointer: coarse) and (orientation: portrait), (pointer: coarse) and (max-width: 760px) {
         body:not(.customer-view) #portrait-lock {
-          position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
+          position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
           padding: 2rem; background: rgb(241 245 249); color: #1e293b; text-align: center;
           font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         }
