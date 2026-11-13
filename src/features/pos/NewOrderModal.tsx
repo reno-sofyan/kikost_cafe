@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listMarketingSales, searchCustomers } from '@/db/repositories/customers'
+import { depositEnabledFor, listCustomerDeposits } from '@/db/repositories/deposits'
+import { getSettings } from '@/db/repositories/settings'
+import { formatRupiah } from '@/lib/currency'
 import { listKols } from '@/db/repositories/promos'
 import { listTables, TABLE_STATUS_LABELS } from '@/db/repositories/tables'
 import { listWaiterCandidates } from '@/db/repositories/users'
@@ -98,6 +101,15 @@ export function NewOrderModal({
   const waiters = useLiveQuery(() => (showWaiter ? listWaiterCandidates() : []), [showWaiter]) ?? []
 
   const customerResults = useLiveQuery(() => searchCustomers(customerQuery), [customerQuery]) ?? []
+  // Klien Tagihan Marketing bisa dipilih dari pelanggan terdaftar → saldo membernya bisa dipakai melunasi.
+  const clientResults = useLiveQuery(() => (activeBilling === 'marketing' && clientName.trim() ? searchCustomers(clientName) : []), [activeBilling, clientName]) ?? []
+  const deposits = useLiveQuery(async () => (depositEnabledFor(await getSettings()) ? listCustomerDeposits() : new Map()), [])
+  // Klien terdaftar hanya bila namanya masih sama dengan pelanggan yang dipilih dari daftar.
+  const clientCustomer = customer && customer.name === clientName ? customer : null
+  const saldoOf = (c: Customer) => {
+    const balance = deposits?.get(c.id)?.balance ?? 0
+    return balance > 0 ? ` • saldo ${formatRupiah(balance)}` : ''
+  }
   const tables = useLiveQuery(() => listTables(), []) ?? []
   const selectableTables = tables.filter((t) => t.status === 'available' || t.id === tableId)
 
@@ -117,7 +129,7 @@ export function NewOrderModal({
     onConfirm({
       billing: billingParams(),
       type,
-      customerId: activeBilling === 'marketing' ? undefined : customer?.id,
+      customerId: activeBilling === 'marketing' ? clientCustomer?.id : customer?.id,
       guestCount: showTables && type === 'dine_in' ? guestCount : undefined,
       notes: notes.trim() || undefined,
       tableId: showTables && type === 'dine_in' && tableId ? tableId : undefined,
@@ -370,8 +382,42 @@ export function NewOrderModal({
                         ))}
                       </div>
                     )}
-                    <div className="grid flex-none grid-cols-2 gap-2">
-                      <input className="input-field" maxLength={80} placeholder="Klien / perusahaan" aria-label="Nama klien" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+                    <div className="grid flex-none grid-cols-2 items-start gap-2">
+                      <div className="relative min-w-0">
+                        <input
+                          className="input-field"
+                          maxLength={80}
+                          placeholder="Klien / pelanggan terdaftar"
+                          aria-label="Nama klien"
+                          autoComplete="off"
+                          value={clientName}
+                          onChange={(e) => {
+                            setCustomer(null)
+                            setClientName(e.target.value)
+                          }}
+                        />
+                        {clientCustomer && (
+                          <p className="mt-1 truncate text-xs font-semibold text-brand-400">Terdaftar{saldoOf(clientCustomer)}</p>
+                        )}
+                        {!clientCustomer && clientResults.length > 0 && (
+                          <div className="absolute inset-x-0 bottom-full z-20 mb-1 max-h-48 overflow-y-auto rounded-xl border border-ink-600 bg-ink-900 shadow-pop">
+                            {clientResults.map((c: Customer) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="block w-full px-3 py-2.5 text-left text-sm text-ink-100 hover:bg-ink-800"
+                                onClick={() => {
+                                  setCustomer(c)
+                                  setClientName(c.name)
+                                }}
+                              >
+                                {c.name} {c.phone && `• ${c.phone}`}
+                                {saldoOf(c)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <input className="input-field" maxLength={120} placeholder="Keperluan" aria-label="Keperluan" value={purpose} onChange={(e) => setPurpose(e.target.value)} />
                     </div>
                   </div>
@@ -421,6 +467,7 @@ export function NewOrderModal({
                         }}
                       >
                         {c.name} {c.phone && `• ${c.phone}`}
+                        {saldoOf(c)}
                       </button>
                     ))}
                   </div>

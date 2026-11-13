@@ -74,7 +74,7 @@ test('beli X gratis Y, saldo member, promo ulang tahun, dan pembayaran komisi KO
   await page.getByLabel('Kode voucher').fill('DINA2K')
   await page.getByRole('button', { name: 'Pasang Voucher' }).click()
   await expect(page.getByText('Voucher DINA2K').first()).toBeVisible()
-  await page.getByRole('button', { name: 'Tambah member' }).click()
+  await page.getByRole('button', { name: 'Pilih pelanggan / member' }).click()
   await page.getByRole('button', { name: /Bu Sari/ }).click()
   await expect(page.getByRole('button', { name: /Bu Sari.*saldo Rp100\.000.*ulang tahun bulan ini/ })).toBeVisible()
   await shot(page, '23-kasir-bxgy-saldo')

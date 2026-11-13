@@ -61,7 +61,7 @@ test('promo otomatis, voucher KOL, dan poin member dari pengaturan sampai lapora
   await page.getByRole('button', { name: 'Pasang Voucher' }).click()
   await expect(page.getByText('Voucher DINA2K').first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'Tambah member' }).click()
+  await page.getByRole('button', { name: 'Pilih pelanggan / member' }).click()
   await page.getByRole('button', { name: '+ Member Baru' }).click()
   await page.getByPlaceholder('Nama', { exact: true }).fill('Bu Sari')
   await page.getByPlaceholder('No. HP').fill('08123')

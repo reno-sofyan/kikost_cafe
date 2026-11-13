@@ -4,7 +4,7 @@ import { db } from '@/db/schema'
 import { setOrderCustomer, setOrderPointsRedeem, setOrderVoucher } from '@/db/repositories/orders'
 import { createCustomer, searchCustomers } from '@/db/repositories/customers'
 import { getCustomerLoyalty } from '@/db/repositories/loyalty'
-import { depositEnabledFor, getCustomerDeposit } from '@/db/repositories/deposits'
+import { depositEnabledFor, getCustomerDeposit, listCustomerDeposits, type CustomerDeposit } from '@/db/repositories/deposits'
 import { getSettings } from '@/db/repositories/settings'
 import { loyaltySettingsOf } from '@/lib/loyalty'
 import { isBirthdayAt } from '@/lib/promos'
@@ -46,14 +46,18 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
     <div className="space-y-1.5 pb-1">
       {(memberOn || customer) && (
         <div className="flex items-center justify-between gap-2 text-sm">
-          <button className="flex min-w-0 items-center gap-1.5 text-ink-200 underline-offset-2 hover:underline" onClick={() => setShowMember(true)}>
-            <Icon name="user" size={14} className="flex-none" />
-            <span className="truncate">
-              {customer ? customer.name : 'Tambah member'}
+          <button
+            className="flex min-h-[2.4rem] min-w-0 flex-1 items-center gap-2 rounded-xl border border-ink-700 bg-ink-800 px-3 text-left text-ink-100 hover:border-brand-500"
+            onClick={() => setShowMember(true)}
+          >
+            <Icon name="user" size={15} className="flex-none text-ink-300" />
+            <span className={`min-w-0 flex-1 truncate ${customer ? 'font-medium' : 'text-ink-300'}`}>
+              {customer ? customer.name : 'Pilih pelanggan / member'}
               {customer && memberOn && info ? ` • ${info.tier.name} • ${formatNumber(info.available)} poin` : ''}
               {customer && depositBalance ? ` • saldo ${formatRupiah(depositBalance)}` : ''}
               {customer && isBirthdayAt(customer.birthDate, Date.now(), 'month') ? ' • ulang tahun bulan ini' : ''}
             </span>
+            <Icon name="chevronDown" size={15} className="flex-none text-ink-300" />
           </button>
           {customer && memberOn && info && loyalty && !hppMode && (
             <button
@@ -108,6 +112,7 @@ function MemberPickerModal({ order, onClose }: { order: Order; onClose: () => vo
   const [newPhone, setNewPhone] = useState('')
   const [adding, setAdding] = useState(false)
   const results = useLiveQuery(() => searchCustomers(query), [query]) ?? []
+  const deposits = useLiveQuery(async () => (depositEnabledFor(await getSettings()) ? listCustomerDeposits() : new Map<string, CustomerDeposit>()), [])
 
   async function pick(customerId: string | null) {
     await setOrderCustomer(order.id, customerId)
@@ -116,7 +121,7 @@ function MemberPickerModal({ order, onClose }: { order: Order; onClose: () => vo
 
   return (
     <Modal onClose={onClose} className="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-ink-900 p-6">
-      <h2 className="mb-3 text-lg font-bold text-ink-50">Member</h2>
+      <h2 className="mb-3 text-lg font-bold text-ink-50">Pilih Pelanggan</h2>
       {adding ? (
         <>
           <input className="input-field mb-3" autoFocus placeholder="Nama" value={newName} onChange={(e) => setNewName(e.target.value)} />
@@ -149,6 +154,9 @@ function MemberPickerModal({ order, onClose }: { order: Order; onClose: () => vo
               >
                 <span className="font-semibold text-ink-50">{c.name}</span>
                 <span className="ml-2 text-sm text-ink-400">{c.phone}</span>
+                {(deposits?.get(c.id)?.balance ?? 0) > 0 && (
+                  <span className="float-right text-sm font-semibold text-brand-400">saldo {formatRupiah(deposits!.get(c.id)!.balance)}</span>
+                )}
               </button>
             ))}
             {results.length === 0 && <p className="py-4 text-center text-sm text-ink-500">Tidak ditemukan.</p>}
