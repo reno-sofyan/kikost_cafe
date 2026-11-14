@@ -73,6 +73,14 @@
   .spark .bar { flex: 1; background: var(--brand-600); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
   .warnflag { color: var(--warn); font-size: .76rem; }
 
+  /* Usaha baru */
+  .newtenant { background: var(--surface); border: 1px solid var(--brand-600); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 20px; }
+  .newtenant h2 { margin: 0 0 4px; font-size: 1rem; }
+  .newtenant p { margin: 0 0 12px; color: var(--ink-400); font-size: .82rem; }
+  .newtenant .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .newtenant input { flex: 1 1 240px; width: auto; font-family: ui-monospace, monospace; }
+
   /* Drawer */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; }
   .overlay.open { display: block; }
@@ -210,10 +218,22 @@
       <div class="brand"><span class="dot"></span><h1>Kione · Operator Console</h1></div>
       <div style="display:flex; gap:8px; align-items:center;">
         <span id="updated" class="muted"></span>
+        <button class="primary" onclick="toggleNewTenant()">+ Usaha Baru</button>
         <button onclick="load()">Muat ulang</button>
         <button onclick="logout()">Keluar</button>
       </div>
     </header>
+    <div id="newTenant" class="newtenant hide">
+      <h2>Usaha Baru</h2>
+      <p>Usaha baru muncul sebagai kartu setelah tabletnya sinkron pertama kali. Isi ID usaha (huruf kecil, angka, - atau _),
+        lalu buat Kode Pasang Tablet dan masukkan di tablet: Pengaturan → Tentang → Mode Developer.</p>
+      <div class="row">
+        <input id="ntId" placeholder="mis. minimarket-sejahtera" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" />
+        <button class="primary" id="ntGo" onclick="createTenant()">Buat Kode Pasang</button>
+        <button onclick="toggleNewTenant()">Batal</button>
+      </div>
+      <div class="err" id="ntErr"></div>
+    </div>
     <div id="kpis" class="kpis"></div>
     <div id="grid" class="grid"></div>
     <div id="mainLoading" class="loading">Memuat…</div>
@@ -309,6 +329,7 @@
   let currentDetail = null;
   let currentTenantId = null;
   let cancelDays = 30;
+  let knownTenants = [];
 
   function token() { try { return sessionStorage.getItem(TK) || ''; } catch { return ''; } }
   function setToken(v) { try { v ? sessionStorage.setItem(TK, v) : sessionStorage.removeItem(TK); } catch {} }
@@ -409,6 +430,7 @@
       kpi('Tenant bermasalah', issues, issues ? 'var(--warn)' : null),
     ].join('');
 
+    knownTenants = data.tenants;
     const grid = document.getElementById('grid');
     if (!data.tenants.length) { grid.innerHTML = '<div class="empty">Belum ada tenant yang mengirim data.</div>'; return; }
     grid.innerHTML = data.tenants.map(cardHtml).join('');
@@ -455,6 +477,37 @@
         '<span class="muted">' + ago(t.health.lastActivityAt) + '</span>' +
       '</div>' + warn +
     '</button>';
+  }
+
+  // ---- Usaha baru: belum punya data di server, jadi belum ada kartunya ----
+  // Sama dengan TENANT_ID_RE di backend/src/config.ts.
+  const TENANT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+  function toggleNewTenant() {
+    const box = document.getElementById('newTenant');
+    const show = box.classList.contains('hide');
+    box.classList.toggle('hide', !show);
+    document.getElementById('ntErr').textContent = '';
+    if (show) document.getElementById('ntId').focus();
+  }
+  async function createTenant() {
+    const input = document.getElementById('ntId');
+    const id = input.value.trim().toLowerCase().replace(/\s+/g, '-');
+    const err = document.getElementById('ntErr');
+    if (!TENANT_ID_RE.test(id)) {
+      err.textContent = 'ID hanya boleh huruf kecil, angka, - atau _ (maks. 64), diawali huruf/angka.';
+      return;
+    }
+    const existing = knownTenants.find((t) => t.tenantId === id);
+    if (existing) {
+      // Sudah ada: buka panelnya saja — kode pasang di sana menyambungkan tablet tambahan.
+      err.textContent = 'ID "' + id + '" sudah dipakai ' + (existing.businessName || 'usaha lain') + '. Pilih ID lain, atau buka kartunya untuk menambah tablet.';
+      return;
+    }
+    input.value = '';
+    toggleNewTenant();
+    openTenant(id, id, 'Usaha baru (belum ada data)');
+    await genPairCode();
+    document.getElementById('pcode').scrollIntoView({ block: 'center' });
   }
 
   function cancelStatHtml(c) {
@@ -942,6 +995,7 @@
   }
 
   document.getElementById('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+  document.getElementById('ntId').addEventListener('keydown', (e) => { if (e.key === 'Enter') createTenant(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
   // Auto-masuk bila token sudah tersimpan di sesi ini.

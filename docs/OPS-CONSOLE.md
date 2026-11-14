@@ -38,6 +38,19 @@ diiklankan, tapi jangan jadikan mekanisme untuk menipu pengguna soal adanya pema
 Token dikirim sebagai `Authorization: Bearer <token>` dari halaman ke `/ops/api/*`
 (disimpan di `sessionStorage`, tidak pernah di URL). Perbandingan token timing-safe.
 
+## Menyambungkan usaha baru
+
+Usaha baru belum punya kartu sampai tabletnya sinkron pertama kali. Caranya:
+
+1. Klik **+ Usaha Baru**, isi ID usaha (huruf kecil, angka, `-` atau `_`, mis.
+   `minimarket-sejahtera`), lalu **Buat Kode Pasang**. ID yang sudah dipakai ditolak.
+2. Panel usaha terbuka dan Kode Pasang Tablet langsung dibuat (8 karakter, sekali pakai, 30 menit).
+3. Di tablet buka **Pengaturan → Tentang → Mode Developer**. Isi alamat server
+   (`https://pos.kikost.com`) dan kode tadi, lalu tekan **Pasangkan**. Setelah itu buka
+   **Pengaturan → Sinkronisasi** dan tekan **Simpan**.
+4. Setelah sinkron pertama, usaha muncul sebagai kartu. Tautan **Akses Konsol Pemilik**
+   bisa dibuat di panelnya, termasuk dari panel yang sama di langkah 2.
+
 ## Endpoint
 
 | Method | Path | Auth | Isi |
