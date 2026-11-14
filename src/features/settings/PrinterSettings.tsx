@@ -324,6 +324,7 @@ function PrinterFormModal({
   const [btName, setBtName] = useState(printer?.bluetoothName ?? '')
   const [paperSize, setPaperSize] = useState<ReceiptPaperSize>(printer?.paperSize ?? '58mm')
   const [active, setActive] = useState(printer?.active ?? true)
+  const [slowMode, setSlowMode] = useState(printer?.slowMode ?? false)
   const [fallbackPrinterId, setFallback] = useState<string | null>(printer?.fallbackPrinterId ?? null)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const [paired, setPaired] = useState<BluetoothPrinterDevice[]>([])
@@ -436,6 +437,15 @@ function PrinterFormModal({
             ))}
           </select>
         </label>
+        {connectionType === 'bluetooth' && (
+          <label className="mb-3 flex items-start gap-2 text-sm text-ink-300">
+            <input type="checkbox" className="mt-1" checked={slowMode} onChange={(e) => setSlowMode(e.target.checked)} />
+            <span>
+              Printer lambat
+              <span className="block text-xs text-ink-400">Nyalakan bila struk terpotong atau Bluetooth putus saat mencetak. Struk dikirim lebih pelan (beberapa detik).</span>
+            </span>
+          </label>
+        )}
         <label className="mb-4 flex items-center gap-2 text-sm text-ink-300">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
         </label>
@@ -472,6 +482,7 @@ function PrinterFormModal({
                 networkPort: connectionType === 'network' ? port : null,
                 paperSize,
                 active,
+                slowMode: connectionType === 'bluetooth' && slowMode,
                 fallbackPrinterId,
               })
             }

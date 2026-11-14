@@ -136,6 +136,7 @@ interface EscPosTransportTarget {
   bluetoothAddress: string | null
   networkHost: string | null
   networkPort: number | null
+  slowMode?: boolean
 }
 
 export type EscPosSender = (target: EscPosTransportTarget, bytes: Uint8Array) => Promise<void>
@@ -164,12 +165,12 @@ async function defaultSender(target: EscPosTransportTarget, bytes: Uint8Array): 
  */
 async function nativePrint(
   connectionType: 'bluetooth' | 'network',
-  target: Pick<EscPosTransportTarget, 'bluetoothAddress' | 'networkHost' | 'networkPort'>,
+  target: Pick<EscPosTransportTarget, 'bluetoothAddress' | 'networkHost' | 'networkPort' | 'slowMode'>,
   base64: string,
 ): Promise<void> {
   if (connectionType === 'bluetooth') {
     if (!target.bluetoothAddress) throw new PrinterNotConfiguredError()
-    await withPrinterTimeout(EscPosPrinter.print({ type: 'bluetooth', address: target.bluetoothAddress, base64 }))
+    await withPrinterTimeout(EscPosPrinter.print({ type: 'bluetooth', address: target.bluetoothAddress, base64, slow: !!target.slowMode }))
   } else {
     if (!target.networkHost || !target.networkPort) throw new PrinterNotConfiguredError()
     await withPrinterTimeout(EscPosPrinter.print({ type: 'network', host: target.networkHost, port: target.networkPort, base64 }))

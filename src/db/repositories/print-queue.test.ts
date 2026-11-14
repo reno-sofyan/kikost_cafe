@@ -248,6 +248,26 @@ describe('Antrean per printer', () => {
     expect(sent.map((s) => s.host)).toContain('10.0.0.1')
   })
 
+  it('"Printer lambat" ikut terkirim ke transport printer Bluetooth', async () => {
+    await savePrinter({ name: 'Kasir BT', station: 'cashier', connectionType: 'bluetooth', bluetoothAddress: 'AA:BB', bluetoothName: 'RPP02', networkHost: null, networkPort: null, paperSize: '58mm', active: true, slowMode: true, fallbackPrinterId: null }, actor)
+    const targets: { slowMode?: boolean; bluetoothAddress: string | null }[] = []
+    setEscPosSender(async (target) => {
+      targets.push(target)
+    })
+    await enqueuePrintJob({
+      kind: 'receipt',
+      station: 'cashier',
+      payload: buildSampleReceiptData(DEFAULT_SETTINGS),
+      title: 'Struk',
+      idempotencyKey: 'slow-1',
+      requestedBy: 'u1',
+      requestedByName: 'Admin',
+    })
+    await processPrintQueue()
+    await printQueueIdle()
+    expect(targets).toEqual([expect.objectContaining({ bluetoothAddress: 'AA:BB', slowMode: true })])
+  })
+
   it('struk baru didahulukan dari job lama yang sedang dicoba ulang', async () => {
     await seedPrinters()
     const order: string[] = []

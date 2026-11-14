@@ -12,6 +12,8 @@ export interface EscPosPrintOptions {
   port?: number
   /** Byte ESC/POS (base64). String kosong = hanya pastikan terhubung (pemanasan). */
   base64: string
+  /** Bluetooth: kirim lebih pelan (potongan kecil, jeda lebih lama) — "Printer lambat". */
+  slow?: boolean
 }
 
 export interface EscPosPrinterPlugin {

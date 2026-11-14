@@ -87,6 +87,20 @@ public class EscPosPrinterPlugin extends Plugin {
      *  dicoba → paling lama ±2x ini; batas di sisi JS (printerDrivers.ts) harus
      *  lebih panjang dari total terburuk supaya cetakan yang telat tak diulang (dobel). */
     private static final long BT_CONNECT_TIMEOUT_MS = 8000;
+    /** Bluetooth dikirim per potongan dengan jeda: modul SPP printer thermal murah punya
+     *  buffer kecil tanpa flow control — struk (apalagi logo raster) yang dikirim sekaligus
+     *  meluap dan sisanya dibuang diam-diam → struk tercetak setengah. ±6 KB struk ≈ +0,25 dtk. */
+    private static final int BT_CHUNK_BYTES = 512;
+    private static final long BT_CHUNK_PAUSE_MS = 20;
+    /** Mode "Printer lambat" (per printer, dari Pengaturan → Printer): untuk printer yang
+     *  tetap memutus Bluetooth di tengah struk dengan setelan normal. ±2 KB/dtk. */
+    private static final int BT_SLOW_CHUNK_BYTES = 128;
+    private static final long BT_SLOW_CHUNK_PAUSE_MS = 60;
+
+    /** Sebagian struk sudah terkirim sebelum koneksi gagal — jangan dikirim ulang utuh (dobel). */
+    private static final class PartialWriteException extends IOException {
+        PartialWriteException(IOException cause) { super(cause.getMessage(), cause); }
+    }
 
     /** Penutup socket yang connect()-nya melewati batas waktu. */
     private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
@@ -333,6 +347,7 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         byte[] payload = Base64.decode(base64, Base64.DEFAULT);
+        boolean slow = Boolean.TRUE.equals(call.getBoolean("slow", false));
         JSObject ok = new JSObject();
         ok.put("success", true);
         if (payload.length == 0) {
@@ -353,7 +368,7 @@ public class EscPosPrinterPlugin extends Plugin {
         real.incrementAndGet();
         onPrinterThread(target, call, "Gagal mencetak: ", () -> {
             try {
-                writeWithReconnect(target, payload);
+                writeWithReconnect(target, payload, slow);
             } finally {
                 real.decrementAndGet();
             }
@@ -429,7 +444,7 @@ public class EscPosPrinterPlugin extends Plugin {
             return;
         }
         onPrinterThread(target, call, "Gagal mengirim data ke printer: ", () -> {
-            writeWithReconnect(target, payload);
+            writeWithReconnect(target, payload, false);
             JSObject ret = new JSObject();
             ret.put("success", true);
             call.resolve(ret);
@@ -445,17 +460,18 @@ public class EscPosPrinterPlugin extends Plugin {
     // ---- Koneksi (hanya dari thread printer bersangkutan) ----
 
     /** Kirim ke printer; bila koneksi lama ternyata basi, sambung ulang sekali lalu kirim lagi. */
-    private void writeWithReconnect(Target target, byte[] payload) throws Exception {
+    private void writeWithReconnect(Target target, byte[] payload, boolean slow) throws Exception {
         Connection before = connections.get(target.key());
         Connection conn = ensureConnected(target, false);
         try {
-            write(conn, payload);
+            write(conn, payload, slow);
         } catch (IOException staleConnection) {
             // Koneksi yang BARU saja dibuat lalu gagal = printer bermasalah, bukan
             // koneksi basi — jangan menyambung ulang lagi (menggandakan waktu tunggu).
-            if (conn != before) throw staleConnection;
+            // Sebagian sudah tercetak → kirim ulang utuh akan mencetak dobel; biar kasir cetak ulang.
+            if (conn != before || staleConnection instanceof PartialWriteException) throw staleConnection;
             conn = ensureConnected(target, true);
-            write(conn, payload);
+            write(conn, payload, slow);
         }
         touch(conn);
     }
@@ -540,9 +556,34 @@ public class EscPosPrinterPlugin extends Plugin {
     }
 
     private void write(Connection conn, byte[] payload) throws IOException {
+        write(conn, payload, false);
+    }
+
+    private void write(Connection conn, byte[] payload, boolean slow) throws IOException {
         if (conn.output == null) throw new IOException("Printer belum terhubung");
-        conn.output.write(payload);
-        conn.output.flush();
+        int chunk = slow ? BT_SLOW_CHUNK_BYTES : BT_CHUNK_BYTES;
+        long pause = slow ? BT_SLOW_CHUNK_PAUSE_MS : BT_CHUNK_PAUSE_MS;
+        if (conn.bluetoothSocket == null || payload.length <= chunk) {
+            conn.output.write(payload);
+            conn.output.flush();
+            return;
+        }
+        for (int offset = 0; offset < payload.length; offset += chunk) {
+            try {
+                conn.output.write(payload, offset, Math.min(chunk, payload.length - offset));
+                conn.output.flush();
+            } catch (IOException e) {
+                throw offset == 0 ? e : new PartialWriteException(e);
+            }
+            if (offset + chunk < payload.length) {
+                try {
+                    Thread.sleep(pause);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new PartialWriteException(new IOException("Cetak dihentikan"));
+                }
+            }
+        }
     }
 
     private void closeConnection(Target target) {

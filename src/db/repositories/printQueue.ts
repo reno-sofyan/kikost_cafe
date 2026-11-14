@@ -84,6 +84,7 @@ function targetFrom(printer: Printer) {
     bluetoothAddress: printer.bluetoothAddress,
     networkHost: printer.networkHost,
     networkPort: printer.networkPort,
+    slowMode: printer.slowMode,
   }
 }
 

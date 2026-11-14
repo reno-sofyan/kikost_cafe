@@ -38,6 +38,17 @@ describe('NativeEscPosDriver — cetak lewat satu panggilan native', () => {
     expect(printBytes).not.toHaveBeenCalled()
   })
 
+  it('"Printer lambat" diteruskan ke plugin Bluetooth (dikirim lebih pelan di native)', async () => {
+    print.mockResolvedValue({ success: true })
+    const { NativeEscPosDriver } = await import('./printerDrivers')
+
+    await new NativeEscPosDriver({ ...btConfig, slowMode: true }).print(sample)
+    await new NativeEscPosDriver(btConfig).print(sample)
+
+    expect(print.mock.calls[0][0]).toMatchObject({ type: 'bluetooth', slow: true })
+    expect(print.mock.calls[1][0]).toMatchObject({ type: 'bluetooth', slow: false })
+  })
+
   it('tidak menyerah di 3 detik: Bluetooth yang lambat menyambung (5 dtk) tetap berhasil', async () => {
     vi.useFakeTimers()
     print.mockReturnValue(new Promise((resolve) => setTimeout(() => resolve({ success: true }), 5000)))
@@ -105,7 +116,7 @@ describe('warmUpPrinter', () => {
     print.mockRejectedValue(new Error('printer mati'))
     const { warmUpPrinter } = await import('./printerDrivers')
     expect(() => warmUpPrinter(btConfig)).not.toThrow()
-    expect(print).toHaveBeenCalledWith({ type: 'bluetooth', address: 'AA:BB:CC', base64: '' })
+    expect(print).toHaveBeenCalledWith({ type: 'bluetooth', address: 'AA:BB:CC', base64: '', slow: false })
     await Promise.resolve()
   })
 

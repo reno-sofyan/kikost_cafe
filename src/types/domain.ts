@@ -197,6 +197,9 @@ export interface PrinterConnectionSettings {
   bluetoothAddress: string | null
   networkHost: string | null
   networkPort: number | null
+  /** "Printer lambat": Bluetooth dikirim lebih pelan, untuk printer yang memutus koneksi
+   *  di tengah struk (buffer kecil / daya lemah). Kosong = normal. */
+  slowMode?: boolean
 }
 
 export interface PrinterConfig extends PrinterConnectionSettings {
@@ -282,6 +285,8 @@ export interface Printer {
   networkPort: number | null
   paperSize: ReceiptPaperSize
   active: boolean
+  /** "Printer lambat" (Bluetooth) — lihat PrinterConnectionSettings.slowMode. */
+  slowMode?: boolean
   /** Printer cadangan bila printer ini gagal. */
   fallbackPrinterId: string | null
   createdAt: number
