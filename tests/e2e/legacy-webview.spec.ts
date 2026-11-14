@@ -103,6 +103,17 @@ async function visibleBoxes(page: Page) {
   )
 }
 
+/**
+ * Sama bila tag sama dan setiap angka posisi/ukuran selisih ≤ 2px — teks berisi jam bisa
+ * berganti menit di antara dua jalan (lebar teks bergeser 1px), bukan karena celah.
+ */
+function sameBox(a: string, b: string | undefined) {
+  if (!b || a.split(' ')[0] !== b.split(' ')[0]) return false
+  const na = a.match(/-?\d+/g) ?? []
+  const nb = b.match(/-?\d+/g) ?? []
+  return na.length === nb.length && na.every((n, i) => Math.abs(Number(n) - Number(nb[i])) <= 2)
+}
+
 /** Layar minimarket yang dibandingkan; setiap langkah diakhiri tangkapan posisi. */
 const SCREENS: [string, (page: Page) => Promise<void>][] = [
   ['Beranda', async () => {}],
@@ -152,7 +163,7 @@ for (const viewport of [
     const [native, fallback] = runs
     for (const [name] of SCREENS) {
       expect(native[name].length, name).toBeGreaterThan(20)
-      const diff = native[name].flatMap((box, i) => (box === fallback[name][i] ? [] : [`${box}  →  ${fallback[name][i]}`]))
+      const diff = native[name].flatMap((box, i) => (sameBox(box, fallback[name][i]) ? [] : [`${box}  →  ${fallback[name][i]}`]))
       expect(diff.slice(0, 10), name).toEqual([])
     }
   })

@@ -20,6 +20,9 @@ test('pengaturan teknis tersembunyi sampai Mode Developer dibuka dengan token, d
     localStorage.setItem('kione.sync.apiBaseUrl', 'http://e2e-backend.invalid')
     localStorage.setItem('kione.sync.deviceKey', 'e2e-device-key')
   })
+  // Kunci perangkat dibaca saat panel dirender: pindah tab dulu supaya Tentang dimuat ulang
+  // (mengetuk tab yang sedang terbuka tak merender ulang — di CI kartu tetap meminta kode pasang).
+  await page.getByRole('button', { name: 'QRIS', exact: true }).click()
   await page.getByRole('button', { name: 'Tentang', exact: true }).click()
   await page.getByLabel('Token developer').fill('9999')
   await page.getByRole('button', { name: 'Buka', exact: true }).click()
