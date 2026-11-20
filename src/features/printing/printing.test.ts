@@ -126,4 +126,20 @@ describe('Test Dapur (tiket contoh)', () => {
     // Hanya isi pesanan: tanpa harga, nomor pesanan, antrean, pelanggan, waktu, kasir.
     expect(text).not.toMatch(/Rp|TOTAL|Tunai|No:|Antrean|Pelanggan|Waktu|Oleh|Kasir/)
   })
+  it('huruf ringan: isi sama, tanpa huruf 2× lebar & tanpa tebal (hemat daya printer)', async () => {
+    const { buildSampleKitchenTicket } = await import('./receiptData')
+    const { buildEscPosKitchenTicket } = await import('./escpos')
+    const ticket = buildSampleKitchenTicket({ ...DEFAULT_SETTINGS, businessName: 'Kopi Senja' }, 'Printer Bar')
+    const normal = buildEscPosKitchenTicket(ticket)
+    const light = buildEscPosKitchenTicket(ticket, { light: true })
+    const has = (bytes: Uint8Array, ...seq: number[]) => bytes.some((_, i) => seq.every((v, k) => bytes[i + k] === v))
+
+    expect(has(normal, 0x1d, 0x21, 0x11)).toBe(true)
+    expect(has(normal, 0x1b, 0x45, 1)).toBe(true)
+    expect(has(light, 0x1d, 0x21, 0x11)).toBe(false) // GS ! 2× lebar+tinggi
+    expect(has(light, 0x1b, 0x45, 1)).toBe(false) // ESC E tebal
+    expect(has(light, 0x1d, 0x21, 0x01)).toBe(true) // tetap 2× tinggi
+    const text = decode(light)
+    for (const part of ['TEST Printer Bar', '2x ', 'Kopi Susu Gula Aren', '- Ukuran: Regular', '! Tidak pedas']) expect(text).toContain(part)
+  })
 })

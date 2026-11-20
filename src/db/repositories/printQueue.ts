@@ -99,7 +99,7 @@ async function runJob(job: PrintJob): Promise<void> {
     const bytes =
       job.kind === 'receipt'
         ? buildEscPosReceipt(job.payload as ReceiptData, await receiptLogoFor(job.payload as ReceiptData))
-        : buildEscPosKitchenTicket(job.payload as KitchenTicketPayload)
+        : buildEscPosKitchenTicket(job.payload as KitchenTicketPayload, { light: printer.lightKitchenText })
 
     try {
       await sendEscPosBytes(targetFrom(printer), bytes)

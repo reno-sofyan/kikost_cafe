@@ -287,6 +287,9 @@ export interface Printer {
   active: boolean
   /** "Printer lambat" (Bluetooth) — lihat PrinterConnectionSettings.slowMode. */
   slowMode?: boolean
+  /** "Tiket dapur huruf ringan": huruf besar tiket dapur hanya 2× tinggi & tanpa tebal —
+   *  untuk printer yang memutus koneksi saat mencetak tiket dapur (lihat buildEscPosKitchenTicket). */
+  lightKitchenText?: boolean
   /** Printer cadangan bila printer ini gagal. */
   fallbackPrinterId: string | null
   createdAt: number

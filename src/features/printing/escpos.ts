@@ -211,22 +211,34 @@ function wrapWords(text: string, cols: number): string[] {
  * Tiket dapur/bar ESC/POS — hanya isi pesanan untuk tiket ini: judul, lalu tiap
  * item dengan qty besar, varian/modifier, dan catatan tebal. Tanpa nomor
  * pesanan, antrean, pelanggan, waktu, kasir, maupun harga.
+ *
+ * `light` ("Tiket dapur huruf ringan", per printer): huruf besar hanya 2× tinggi dan tanpa
+ * tebal. Huruf 2× lebar + tebal memanaskan dua kali lebih banyak titik per baris — printer
+ * Bluetooth berdaya lemah drop tegangan, reset, dan memutus koneksi di tengah tiket.
  */
-export function buildEscPosKitchenTicket(p: KitchenTicketPayload): Uint8Array {
+export function buildEscPosKitchenTicket(p: KitchenTicketPayload, { light = false }: { light?: boolean } = {}): Uint8Array {
   const width = CHARS_PER_LINE[p.paperSize]
   const b = new EscPosBuilder().init()
+  const big = light ? 0x01 : 0x11
+  const bold = (on: boolean) => b.bold(on && !light)
 
   b.align('center')
   b.line('='.repeat(width))
   const title = p.ticketLabel || 'PESANAN'
   // Judul 2× lebar & tinggi bila muat satu baris; kalau tidak, 2× tinggi saja.
-  b.bold(true).raw(GS, 0x21, title.length * 2 <= width ? 0x11 : 0x01).line(title).raw(GS, 0x21, 0x00).bold(false)
+  bold(true)
+  b.raw(GS, 0x21, title.length * 2 <= width ? big : 0x01).line(title).raw(GS, 0x21, 0x00)
+  bold(false)
   b.line('='.repeat(width))
   b.align('left')
   // Tiket tambahan: dapur perlu tahu pesanan mana yang ditambah.
   if (p.isAddition) {
     b.line(`No   : ${p.orderNumber}`)
-    if (p.tableOrQueue) b.bold(true).raw(GS, 0x21, 0x01).line(p.tableOrQueue).raw(GS, 0x21, 0x00).bold(false)
+    if (p.tableOrQueue) {
+      bold(true)
+      b.raw(GS, 0x21, 0x01).line(p.tableOrQueue).raw(GS, 0x21, 0x00)
+      bold(false)
+    }
     b.line(divider(width))
   }
 
@@ -234,18 +246,21 @@ export function buildEscPosKitchenTicket(p: KitchenTicketPayload): Uint8Array {
     if (i > 0) b.line()
     // Qty 2× lebar & tinggi (paling menonjol), nama 2× tinggi saja supaya tetap muat satu baris.
     const qty = `${line.qty}x `
-    const indent = qty.length * 2
+    // Lebar qty di kertas: 2× bila huruf besar juga 2× lebar.
+    const indent = qty.length * (light ? 1 : 2)
     wrapWords(line.name, width - indent).forEach((part, j) => {
-      if (j === 0) b.bold(true).raw(GS, 0x21, 0x11).text(qty).raw(GS, 0x21, 0x01).line(part).raw(GS, 0x21, 0x00).bold(false)
-      else b.bold(true).raw(GS, 0x21, 0x01).line(' '.repeat(indent) + part).raw(GS, 0x21, 0x00).bold(false)
+      bold(true)
+      if (j === 0) b.raw(GS, 0x21, big).text(qty).raw(GS, 0x21, 0x01).line(part).raw(GS, 0x21, 0x00)
+      else b.raw(GS, 0x21, 0x01).line(' '.repeat(indent) + part).raw(GS, 0x21, 0x00)
+      bold(false)
     })
     for (const m of line.modifiers) {
       for (const [j, part] of wrapWords(m, width - indent - 2).entries()) b.line(`${' '.repeat(indent)}${j === 0 ? '- ' : '  '}${part}`)
     }
     if (line.note) {
-      b.bold(true)
+      bold(true)
       for (const [j, part] of wrapWords(line.note, width - indent - 2).entries()) b.line(`${' '.repeat(indent)}${j === 0 ? '! ' : '  '}${part}`)
-      b.bold(false)
+      bold(false)
     }
   })
   b.line('='.repeat(width))

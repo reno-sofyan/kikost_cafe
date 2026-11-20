@@ -13,7 +13,7 @@ import {
   stationForCategory,
 } from '@/db/repositories/printers'
 import { enqueuePrintJob, processPrintQueue } from '@/db/repositories/printQueue'
-import { buildSampleKitchenTicket, buildSampleReceiptData } from '@/features/printing/receiptData'
+import { buildSampleKitchenTicket, buildSampleReceiptData, reviewUrlFor } from '@/features/printing/receiptData'
 import { openCashDrawer } from '@/features/printing/cashDrawer'
 import { getSettings, updateSettings } from '@/db/repositories/settings'
 import { Modal } from '@/components/ui/Modal'
@@ -54,7 +54,13 @@ export function PrinterSettings() {
       station: printer.station,
       payload:
         kind === 'receipt'
-          ? { ...buildSampleReceiptData(settings), businessName: `TEST — ${printer.name}` }
+          ? {
+              ...buildSampleReceiptData(settings),
+              businessName: `TEST — ${printer.name}`,
+              // Sama dengan struk lunas sungguhan: QR ulasan ikut bila dinyalakan — printer yang
+              // tak sanggup mencetak QR harus ketahuan di sini, bukan saat melayani tamu.
+              reviewUrl: settings.receiptReviewQr ? reviewUrlFor('test', settings) : null,
+            }
           : buildSampleKitchenTicket(settings, printer.name),
       title: `${label} — ${printer.name}`,
       idempotencyKey: `test_${kind}_${printer.id}_${Date.now()}`,
@@ -325,6 +331,7 @@ function PrinterFormModal({
   const [paperSize, setPaperSize] = useState<ReceiptPaperSize>(printer?.paperSize ?? '58mm')
   const [active, setActive] = useState(printer?.active ?? true)
   const [slowMode, setSlowMode] = useState(printer?.slowMode ?? false)
+  const [lightKitchenText, setLightKitchenText] = useState(printer?.lightKitchenText ?? false)
   const [fallbackPrinterId, setFallback] = useState<string | null>(printer?.fallbackPrinterId ?? null)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
   const [paired, setPaired] = useState<BluetoothPrinterDevice[]>([])
@@ -446,6 +453,13 @@ function PrinterFormModal({
             </span>
           </label>
         )}
+        <label className="mb-3 flex items-start gap-2 text-sm text-ink-300">
+          <input type="checkbox" className="mt-1" checked={lightKitchenText} onChange={(e) => setLightKitchenText(e.target.checked)} />
+          <span>
+            Tiket dapur huruf ringan
+            <span className="block text-xs text-ink-400">Nyalakan bila printer putus saat mencetak tiket dapur. Huruf tetap tinggi tapi tidak melebar &amp; tidak tebal, jadi lebih hemat daya.</span>
+          </span>
+        </label>
         <label className="mb-4 flex items-center gap-2 text-sm text-ink-300">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif
         </label>
@@ -483,6 +497,7 @@ function PrinterFormModal({
                 paperSize,
                 active,
                 slowMode: connectionType === 'bluetooth' && slowMode,
+                lightKitchenText,
                 fallbackPrinterId,
               })
             }

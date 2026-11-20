@@ -268,6 +268,29 @@ describe('Antrean per printer', () => {
     expect(targets).toEqual([expect.objectContaining({ bluetoothAddress: 'AA:BB', slowMode: true })])
   })
 
+  it('"Tiket dapur huruf ringan" dipakai untuk tiket dapur di printer itu saja', async () => {
+    await savePrinter({ name: 'Kasir BT', station: 'cashier', connectionType: 'bluetooth', bluetoothAddress: 'AA:BB', bluetoothName: 'RPP02', networkHost: null, networkPort: null, paperSize: '58mm', active: true, lightKitchenText: true, fallbackPrinterId: null }, actor)
+    const jobs: Uint8Array[] = []
+    setEscPosSender(async (_target, bytes) => {
+      jobs.push(bytes)
+    })
+    const { buildSampleKitchenTicket } = await import('@/features/printing/receiptData')
+    await enqueuePrintJob({
+      kind: 'kitchen_ticket',
+      station: 'cashier',
+      payload: buildSampleKitchenTicket(DEFAULT_SETTINGS, 'Kasir BT'),
+      title: 'Tiket',
+      idempotencyKey: 'light-1',
+      requestedBy: 'u1',
+      requestedByName: 'Admin',
+    })
+    await processPrintQueue()
+    await printQueueIdle()
+    const doubleWide = (b: Uint8Array) => b.some((_, i) => b[i] === 0x1d && b[i + 1] === 0x21 && b[i + 2] === 0x11)
+    expect(jobs).toHaveLength(1)
+    expect(doubleWide(jobs[0])).toBe(false)
+  })
+
   it('struk baru didahulukan dari job lama yang sedang dicoba ulang', async () => {
     await seedPrinters()
     const order: string[] = []
