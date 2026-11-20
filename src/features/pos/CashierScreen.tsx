@@ -46,6 +46,8 @@ import { featuresForBusinessType } from '@/lib/businessType'
 import { isOnlineOrder, onlineChannelLabel, onlinePlatformOf, productPriceFor } from '@/lib/onlineOrders'
 import { discountLinesOf } from '@/lib/promos'
 import { OrderPerks } from '@/features/pos/OrderPerks'
+import { OrderItemList } from '@/features/pos/OrderItemList'
+import { OrderItemSheet } from '@/features/pos/OrderItemSheet'
 import { ModifierPickerModal } from '@/features/pos/ModifierPickerModal'
 import { NewOrderModal, type NewOrderBilling } from '@/features/pos/NewOrderModal'
 import { setOrderHppPricing } from '@/db/repositories/hppPricing'
@@ -60,6 +62,7 @@ import { SupervisorPinModal } from '@/components/ui/SupervisorPinModal'
 import { OwnerCancelCodeModal } from '@/components/ui/OwnerCancelCodeModal'
 import type { OwnerApproval } from '@/db/repositories/cancelCodes'
 import { Icon } from '@/components/ui/Icon'
+import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { ProductGridSkeleton } from '@/components/ui/Skeleton'
 import { useConfirmDialog } from '@/components/ui/useConfirmDialog'
@@ -107,6 +110,12 @@ export function CashierScreen() {
     null | { step: 'reason' } | { step: 'approval'; reason: string } | { step: 'owner'; reason: string }
   >(null)
   const { confirm, dialog: confirmDialog } = useConfirmDialog()
+  /** Menu ⋯ Lainnya di kaki keranjang (Diskon, Kosongkan, Batalkan, …). */
+  const [showMore, setShowMore] = useState(false)
+  /** Tampilan Perbesar: daftar pesanan layar penuh untuk dibacakan ke pelanggan. */
+  const [expanded, setExpanded] = useState(false)
+  const [detailItemId, setDetailItemId] = useState<string | null>(null)
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   const openShift = useLiveQuery(() => getOpenShift(), [])
   const categories = useLiveQuery(() => listCategories(), []) ?? []
@@ -145,6 +154,8 @@ export function CashierScreen() {
   // Pesanan online memakai Harga Online produk (bila diisi).
   const orderIsOnline = !!order && !!activeOrderId && isOnlineOrder(order)
   const orderPlatform = order && orderIsOnline ? onlinePlatformOf(order) : null
+  const tableName = useLiveQuery(async () => (order?.tableId ? ((await db.cafeTables.get(order.tableId))?.name ?? null) : null), [order?.tableId])
+  const detailItem = detailItemId ? activeItems.find((i) => i.id === detailItemId) : undefined
 
   if (!openShift) {
     return (
@@ -519,9 +530,31 @@ export function CashierScreen() {
     await updateOrderItemQty(item.id, nextQty)
   }
 
+  async function handleSendToKitchen() {
+    if (!order) return
+    const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
+    toast.success(
+      res.itemCount === 0
+        ? 'Semua item sudah dikirim ke dapur.'
+        : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}${res.heldCount > 0 ? ` • ${res.heldCount} item ditahan untuk tahap berikutnya` : ''}.`,
+    )
+  }
+
   const canDiscount = roleHasPermission(currentUser.role, 'discount.apply')
 
   const pagerOn = features.pager && !!settings && settings.pagerConfig.connectionType !== 'none'
+
+  const orderTitle = order ? (features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber) : ''
+  const totalPcs = activeItems.reduce((s, i) => s + i.qty, 0)
+  const showKitchen = features.kitchen && activeItems.some((i) => !i.skipKitchen && i.kitchenPrintedAt == null)
+  const kitchenLabel = heldCourse != null ? `Lepas ${COURSE_LABELS[heldCourse]} ke Dapur/Bar` : 'Kirim ke Dapur/Bar'
+  const hasBillAdditions = !!order?.billPrintCount && billAdditions(order, activeItems).length > 0
+  const payLaterAvailable = features.payLater && !!order && !order.payLater && !order.marketingBill
+  const payPrimary = order?.marketingBill && !order.payLater ? 'marketing' : 'pay'
+  const discountLines = order ? discountLinesOf(order) : []
+  const surcharge = (order?.serviceChargeAmount ?? 0) + (order?.taxAmount ?? 0)
+  // Rincian disembunyikan bila Subtotal = Total (tanpa potongan, pajak, layanan, pembulatan).
+  const hasBreakdown = discountLines.length > 0 || surcharge > 0 || (order?.roundingAdjustment ?? 0) !== 0
 
   return (
     <div className="flex h-full">
@@ -566,7 +599,7 @@ export function CashierScreen() {
         </div>
 
         <div ref={productScrollRef} className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(12rem,45%),1fr))] gap-2.5">
             {products.map((product) => (
               <button
                 key={product.id}
@@ -606,7 +639,7 @@ export function CashierScreen() {
         </div>
       </div>
 
-      <div className="flex w-[24rem] flex-none flex-col border-l border-ink-700 bg-ink-900 lg:w-[28rem] xl:w-[32rem]">
+      <div className="flex w-[clamp(360px,36vw,460px)] flex-none flex-col border-l border-ink-700 bg-ink-900">
         {!activeOrderId || !order ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-600/12 text-brand-400">
@@ -626,156 +659,158 @@ export function CashierScreen() {
           </div>
         ) : (
           <>
-            <div className="flex-none border-b border-ink-700 px-4 pb-2.5 pt-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[1.2rem] font-semibold text-ink-50">
-                  {features.queueNumbers && order.queueNumber ? `Antrean #${order.queueNumber}` : order.orderNumber}
+            {/* Kepala ringkas (2 baris): nomor & jenis pesanan, jumlah item, Perbesar; lalu TRX • tamu • pelayan. */}
+            <div className="flex-none border-b border-ink-700 px-3 pb-1.5 pt-1">
+              <div className="flex items-center gap-2">
+                <h2 className="min-w-0 flex-1 truncate text-[1.15rem] font-semibold text-ink-50">
+                  {orderTitle}
+                  {features.orderTypes.length > 1 && <span className="font-medium text-brand-400"> · {ORDER_TYPE_LABELS[order.type]}</span>}
+                  {tableName && <span className="font-medium text-ink-200"> · {tableName}</span>}
+                </h2>
+                <span className="flex-none whitespace-nowrap text-sm text-ink-300">
+                  {activeItems.length} item · {totalPcs} pcs
                 </span>
-                {features.orderTypes.length > 1 && <span className="text-sm text-brand-400">{ORDER_TYPE_LABELS[order.type]}</span>}
+                <button
+                  className="-mr-1.5 flex h-11 w-11 flex-none items-center justify-center rounded-lg text-ink-200 hover:bg-ink-800 hover:text-ink-50"
+                  aria-label="Perbesar pesanan"
+                  title="Perbesar pesanan"
+                  onClick={() => setExpanded(true)}
+                >
+                  <Icon name="expand" size={20} />
+                </button>
               </div>
-              <div className="mt-0.5 flex flex-wrap gap-x-1.5 text-[0.85rem] text-ink-300">
+              <div className="-mt-1 flex flex-wrap items-center gap-x-1.5 text-[0.82rem] text-ink-300">
                 <span>{order.orderNumber}</span>
-                {order.type === 'dine_in' && order.guestCount ? <span>• {order.guestCount} tamu</span> : null}
-                {order.notes ? <span className="text-ink-200">• {order.notes}</span> : null}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                {order.type === 'dine_in' && order.guestCount ? <span>· {order.guestCount} tamu</span> : null}
+                {order.notes ? <span className="text-ink-200">· {order.notes}</span> : null}
                 {((features.waiterTracking && !isOnlineOrder(order)) || order.waiterName) && (
-                  <button className="flex items-center gap-1.5 text-[0.85rem] text-ink-300 hover:text-ink-100" onClick={() => setShowWaiterPicker(true)}>
-                    <Icon name="user" size={15} />
-                    {order.waiterName ? `Pelayan: ${order.waiterName}` : 'Pilih Pelayan'}
-                  </button>
+                  <>
+                    <span>·</span>
+                    {/* Teks kecil, tapi area sentuhnya tetap 44 px (padding vertikal + margin negatif). */}
+                    <button
+                      className="-my-3 py-3 underline decoration-dotted underline-offset-2 hover:text-ink-100"
+                      aria-label={order.waiterName ? undefined : 'Pilih pelayan'}
+                      onClick={() => setShowWaiterPicker(true)}
+                    >
+                      Pelayan: {order.waiterName ?? '—'}
+                    </button>
+                  </>
                 )}
                 {pagerOn && (
-                  <button
-                    className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.8rem] font-semibold ${
-                      order.pagerNumber != null ? 'border-brand-600 bg-brand-600 text-white' : 'border-dashed border-brand-500 text-brand-400'
-                    }`}
-                    disabled={order.pagerCalledAt != null}
-                    onClick={() => void handlePagerClick()}
-                    aria-label="Nomor pager"
-                  >
-                    <Icon name="bell" size={14} />
-                    {order.pagerNumber != null ? `Pager #${order.pagerNumber}` : 'Isi No. Pager'}
+                  <button className="-my-2.5 ml-1 py-2.5" disabled={order.pagerCalledAt != null} onClick={() => void handlePagerClick()} aria-label="Nomor pager">
+                    <span
+                      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.78rem] font-semibold ${
+                        order.pagerNumber != null ? 'border-brand-600 bg-brand-600 text-white' : 'border-dashed border-brand-500 text-brand-400'
+                      }`}
+                    >
+                      <Icon name="bell" size={13} />
+                      {order.pagerNumber != null ? `Pager #${order.pagerNumber}` : 'Isi No. Pager'}
+                    </span>
                   </button>
                 )}
               </div>
-              {isOnlineOrder(order) && (
-                <div className="mt-2 rounded-lg bg-brand-600/12 px-2 py-1 text-xs font-semibold text-brand-400">
-                  Pesanan Online • {onlineChannelLabel(order)}
-                </div>
-              )}
-              {order.billPrintCount ? (
-                <div className="mt-2 rounded-lg bg-yellow-900/25 px-2 py-1 text-xs font-semibold text-yellow-400">
-                  Tagihan sudah dicetak{order.billPrintCount > 1 ? ` ${order.billPrintCount}×` : ''} — menunggu pembayaran
-                </div>
-              ) : null}
-              {order.marketingBill && (
-                <div className="mt-2 rounded-lg bg-brand-600/12 px-2 py-1 text-xs font-semibold text-brand-400">
-                  Tagihan Marketing • {order.marketingBill.salesName}
-                  {order.marketingBill.clientName ? ` — klien ${order.marketingBill.clientName}` : ''}
-                  {order.payLater ? ' • menunggu pelunasan kantor' : ''}
-                </div>
-              )}
-              {order.payLater && !order.marketingBill && (
-                <div className="mt-2 rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500">
-                  Tagihan Tertunda • {order.payLater.name}
-                  {order.payLater.note ? ` — ${order.payLater.note}` : ''}
+              {(isOnlineOrder(order) || !!order.billPrintCount || order.marketingBill || order.payLater) && (
+                <div className="mt-1 flex flex-wrap gap-1 text-xs font-semibold">
+                  {isOnlineOrder(order) && <span className="rounded-md bg-brand-600/12 px-2 py-0.5 text-brand-400">Pesanan Online • {onlineChannelLabel(order)}</span>}
+                  {order.billPrintCount ? (
+                    <span className="rounded-md bg-yellow-900/25 px-2 py-0.5 text-yellow-400">
+                      Tagihan sudah dicetak{order.billPrintCount > 1 ? ` ${order.billPrintCount}×` : ''} — menunggu pembayaran
+                    </span>
+                  ) : null}
+                  {order.marketingBill && (
+                    <span className="rounded-md bg-brand-600/12 px-2 py-0.5 text-brand-400">
+                      Tagihan Marketing • {order.marketingBill.salesName}
+                      {order.marketingBill.clientName ? ` — klien ${order.marketingBill.clientName}` : ''}
+                      {order.payLater ? ' • menunggu pelunasan kantor' : ''}
+                    </span>
+                  )}
+                  {order.payLater && !order.marketingBill && (
+                    <span className="rounded-md bg-accent-500/15 px-2 py-0.5 text-accent-500">
+                      Tagihan Tertunda • {order.payLater.name}
+                      {order.payLater.note ? ` — ${order.payLater.note}` : ''}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto px-2.5 py-3">
-              {activeItems.length === 0 && <p className="py-6 text-center text-sm text-ink-300">Keranjang kosong — tap produk di kiri.</p>}
-              <div className="space-y-3">
-                {activeItems.map((item) => (
-                  <div key={item.id} className="rounded-xl bg-ink-800 px-3.5 py-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 text-[1.05rem] font-semibold leading-snug text-ink-50">{item.productName}</p>
-                      <span className="flex-none text-[1.05rem] font-semibold text-ink-50">{formatRupiah(item.lineTotal)}</span>
-                    </div>
-                    <div className="mt-1 flex items-end justify-between gap-2">
-                      <div className="min-w-0 space-y-0.5">
-                        {item.modifiers.map((m) => (
-                          <p key={m.optionId} className="text-[0.8rem] text-ink-200">
-                            {m.groupName} : {m.optionName}
-                            {m.priceDelta > 0 ? ` (+${formatRupiah(m.priceDelta)})` : ''}
-                          </p>
-                        ))}
-                        {item.notes && <p className="text-[0.8rem] italic text-ink-300">"{item.notes}"</p>}
-                        {(item.skipKitchen || (item.kitchenStatus === 'new' && item.kitchenPrintedAt == null)) && (
-                          <button
-                            className="flex items-center gap-1 pt-0.5 text-[0.8rem] font-medium text-brand-500 hover:text-brand-600"
-                            aria-label={`${item.notes ? 'Ubah' : 'Tambah'} catatan ${item.productName}`}
-                            onClick={() => setNoteItem(item)}
-                          >
-                            <Icon name="edit" size={12} />
-                            {item.notes ? 'Ubah catatan' : 'Tambah catatan'}
-                          </button>
-                        )}
-                        {features.kitchen && !item.skipKitchen && item.kitchenStatus !== 'new' && (
-                          <span className="inline-block rounded bg-success-600/20 px-2 py-0.5 text-[10px] text-success-500">Dapur: {item.kitchenStatus}</span>
-                        )}
-                      </div>
-                      <div className="flex flex-none flex-col items-end gap-2">
-                        {courseMode && !item.skipKitchen && (
-                          <button
-                            className="text-[0.8rem] text-ink-300 disabled:opacity-60"
-                            disabled={item.kitchenPrintedAt != null}
-                            aria-label={`Urutan saji ${item.productName}`}
-                            onClick={() => void setOrderItemCourse(item.id, cycleCourse(item.course)).catch((e) => toast.error(e instanceof Error ? e.message : 'Gagal'))}
-                          >
-                            Urutan Saji : {item.course ? COURSE_LABELS[item.course] : '-'}
-                            {item.course && item.kitchenPrintedAt == null && heldCourse != null && item.course > heldCourse ? ' • ditahan' : ''}
-                          </button>
-                        )}
-                        <div className="flex items-center gap-1">
-                          <button
-                            className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700"
-                            aria-label={`Kurangi jumlah ${item.productName}`}
-                            onClick={() => void handleQtyChange(item, -1)}
-                          >
-                            <Icon name="minus" size={14} />
-                          </button>
-                          <span className="w-9 text-center text-[1rem] font-semibold text-ink-50">{item.qty}</span>
-                          <button
-                            className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700"
-                            aria-label={`Tambah jumlah ${item.productName}`}
-                            onClick={() => void handleQtyChange(item, 1)}
-                          >
-                            <Icon name="plus" size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {/* Daftar item = area paling dominan; kepala & kaki tidak ikut menggulir. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-2">
+              <OrderItemList
+                orderId={order.id}
+                items={activeItems}
+                splitSent={features.kitchen}
+                courseMode={courseMode}
+                heldCourse={heldCourse}
+                onQtyChange={(item, delta) => void handleQtyChange(item, delta)}
+                onOpenItem={(item) => setDetailItemId(item.id)}
+              />
             </div>
 
-            <div className="flex-none space-y-2 px-2 pb-3 pt-2">
+            <div className="flex-none space-y-1.5 border-t border-ink-700 px-2.5 pb-2.5 pt-2">
               <OrderPerks order={order} features={features} />
-              <div className="space-y-1 px-1.5 text-[0.95rem] text-ink-300">
-                <SummaryRow label="Subtotal" value={order.subtotal} />
-                {discountLinesOf(order).map((d) => (
-                  <SummaryRow key={d.label} label={d.label} value={-d.amount} />
-                ))}
-                {order.serviceChargeAmount > 0 && <SummaryRow label={`Service Charge (${order.serviceChargePercent}%)`} value={order.serviceChargeAmount} />}
-                {order.taxAmount > 0 && <SummaryRow label={`Pajak (${order.taxPercent}%)`} value={order.taxAmount} />}
-                {order.roundingAdjustment !== 0 && <SummaryRow label="Pembulatan" value={order.roundingAdjustment} />}
-              </div>
-              <div className="mx-1.5 flex items-center justify-between border-t border-ink-700 pt-2 text-[1.1rem] font-bold text-ink-50">
-                <span>Total</span>
-                <span>{formatRupiah(order.grandTotal)}</span>
-              </div>
+              {hasBreakdown && (
+                // Rincian hanya bila ada potongan/pajak/layanan; ringkas satu baris, tap untuk merinci.
+                <button className="-my-1 block min-h-[2.75rem] w-full px-1 text-left text-[0.88rem] text-ink-300" aria-expanded={showBreakdown} onClick={() => setShowBreakdown((v) => !v)}>
+                  {showBreakdown ? (
+                    <span className="block space-y-0.5 py-1">
+                      <SummaryRow label="Subtotal" value={order.subtotal} />
+                      {discountLines.map((d) => (
+                        <SummaryRow key={d.label} label={d.label} value={-d.amount} />
+                      ))}
+                      {order.serviceChargeAmount > 0 && <SummaryRow label={`Service Charge (${order.serviceChargePercent}%)`} value={order.serviceChargeAmount} />}
+                      {order.taxAmount > 0 && <SummaryRow label={`Pajak (${order.taxPercent}%)`} value={order.taxAmount} />}
+                      {order.roundingAdjustment !== 0 && <SummaryRow label="Pembulatan" value={order.roundingAdjustment} />}
+                      <span className="flex items-center justify-between border-t border-ink-700 pt-1 font-bold text-ink-50">
+                        <span>Total</span>
+                        <span>{formatRupiah(order.grandTotal)}</span>
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="flex min-h-[2.75rem] items-center gap-2">
+                      {/* Nama tiap potongan (promo/voucher/diskon) tetap terbaca walau terlipat. */}
+                      <span className="min-w-0 flex-1 py-1 leading-snug">
+                        Subtotal {formatRupiah(order.subtotal)}
+                        {discountLines.map((d) => (
+                          <span key={d.label} className="text-success-500">
+                            {' · '}
+                            <span>{d.label}</span> −{formatRupiah(d.amount)}
+                          </span>
+                        ))}
+                        {surcharge > 0 && <span> · Pajak & layanan +{formatRupiah(surcharge)}</span>}
+                      </span>
+                      <Icon name="chevronDown" size={16} className="flex-none" />
+                    </span>
+                  )}
+                </button>
+              )}
+              {payPrimary === 'marketing' && !showBreakdown && (
+                <div className="flex items-center justify-between px-1 text-[1.1rem] font-bold text-ink-50">
+                  <span>Total</span>
+                  <span>{formatRupiah(order.grandTotal)}</span>
+                </div>
+              )}
 
-              <div className="grid grid-cols-3 gap-1.5 px-1.5 pt-1">
-                <Button variant="secondary" size="sm" className={CART_BTN} disabled={!canDiscount || !!order?.hppPricing} title={order?.hppPricing ? 'Pesanan KOL/Compliment sudah berharga HPP' : undefined} onClick={() => setShowDiscount(true)}>
-                  Diskon
-                </Button>
+              <div className="flex gap-1.5">
+                {showKitchen && (
+                  <Button variant="outline" size="sm" className={`${CART_BTN} min-w-0 flex-auto`} onClick={() => handleSendToKitchen()}>
+                    {kitchenLabel}
+                  </Button>
+                )}
+                {features.preBill && (
+                  <Button variant="secondary" size="sm" className={`${CART_BTN} min-w-0 flex-auto`} disabled={activeItems.length === 0} onClick={() => prepareReceiptData(order, { preBill: true }).then(setPreBill)}>
+                    {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
+                  </Button>
+                )}
+                {payLaterAvailable && (
+                  <Button variant="secondary" size="sm" className={`${CART_BTN} min-w-0 flex-auto`} disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
+                    Tagihan Tertunda (Bayar Nanti)
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
-                  className={CART_BTN}
+                  className={`${CART_BTN} flex-none ${showKitchen || features.preBill || payLaterAvailable ? '' : 'flex-1'}`}
                   title="Pesanan sudah tersimpan otomatis — ini hanya menutup layar keranjang"
                   onClick={() => {
                     setActiveOrderId(null)
@@ -783,82 +818,151 @@ export function CashierScreen() {
                 >
                   Tutup
                 </Button>
-                <Button variant="secondary" size="sm" className={CART_BTN} disabled={activeItems.length === 0} onClick={() => void handleClearCart()}>
-                  Kosongkan
+                <Button variant="secondary" size="sm" className="w-11 flex-none !px-0" aria-label="Lainnya" title="Diskon, Kosongkan, Batalkan Pesanan" onClick={() => setShowMore(true)}>
+                  <Icon name="more" size={20} />
                 </Button>
               </div>
-              {(() => {
-                const hasBillAdditions = !!order.billPrintCount && billAdditions(order, activeItems).length > 0
-                const showKitchen = features.kitchen && activeItems.some((i) => !i.skipKitchen && i.kitchenPrintedAt == null)
-                if (!showKitchen && !features.preBill) return null
-                return (
-                  <div className={`grid gap-1.5 px-1.5 ${showKitchen && features.preBill ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    {showKitchen && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={CART_BTN}
-                        onClick={async () => {
-                          const res = await sendOrderToKitchen(order.id, { userId: currentUser.id, userName: currentUser.name }, { holdCourses: courseMode })
-                          toast.success(
-                            res.itemCount === 0
-                              ? 'Semua item sudah dikirim ke dapur.'
-                              : `${res.itemCount} item dikirim ke ${res.stations.join(', ') || 'dapur'}${res.heldCount > 0 ? ` • ${res.heldCount} item ditahan untuk tahap berikutnya` : ''}.`,
-                          )
-                        }}
-                      >
-                        {heldCourse != null ? `Lepas ${COURSE_LABELS[heldCourse]} ke Dapur/Bar` : 'Kirim ke Dapur/Bar'}
-                      </Button>
-                    )}
-                    {features.preBill && (
-                      <Button size="sm" className={CART_BTN} disabled={activeItems.length === 0} onClick={() => prepareReceiptData(order, { preBill: true }).then(setPreBill)}>
-                        {order.billPrintCount ? 'Cetak Ulang Tagihan' : 'Cetak Tagihan'}
-                      </Button>
-                    )}
-                    {features.preBill && hasBillAdditions && (
-                      <Button variant="outline" size="sm" className={`col-span-full ${CART_BTN}`} onClick={() => prepareReceiptData(order, { preBill: true, additionsOnly: true }).then(setPreBill)}>
-                        Cetak Tagihan Tambahan
-                      </Button>
-                    )}
-                  </div>
-                )
-              })()}
-              <div className="px-1 pt-1.5">
-                {order.marketingBill && !order.payLater ? (
-                  <Button size="lg" fullWidth className="rounded-full" disabled={activeItems.length === 0} onClick={() => void handleMarketingBillSave()}>
-                    Simpan Tagihan Marketing
-                  </Button>
-                ) : (
-                  <Button
-                    size="lg"
-                    fullWidth
-                    className="rounded-full text-[1.2rem]"
-                    disabled={activeItems.length === 0}
-                    onClick={() => navigate(`/kasir/${order.id}/bayar`)}
-                    aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
-                  >
-                    {order.payLater ? 'Bayar / Lunasi' : 'Bayar'}
-                  </Button>
-                )}
-              </div>
-              {order.marketingBill && !order.payLater && (
-                <Button variant="secondary" size="sm" fullWidth className={CART_BTN} disabled={activeItems.length === 0} onClick={() => navigate(`/kasir/${order.id}/bayar`)}>
-                  Bayar Langsung di Tempat
+              {features.preBill && hasBillAdditions && (
+                <Button variant="outline" size="sm" fullWidth className={CART_BTN} onClick={() => prepareReceiptData(order, { preBill: true, additionsOnly: true }).then(setPreBill)}>
+                  Cetak Tagihan Tambahan
                 </Button>
               )}
-              {features.payLater && !order.payLater && !order.marketingBill && (
-                <Button variant="secondary" size="sm" fullWidth className={CART_BTN} disabled={activeItems.length === 0} onClick={() => setShowPayLater(true)}>
-                  Tagihan Tertunda (Bayar Nanti)
+              {payPrimary === 'marketing' ? (
+                <Button size="lg" fullWidth className="rounded-full" disabled={activeItems.length === 0} onClick={() => void handleMarketingBillSave()}>
+                  Simpan Tagihan Marketing
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  fullWidth
+                  className="rounded-full text-[1.2rem]"
+                  disabled={activeItems.length === 0}
+                  onClick={() => navigate(`/kasir/${order.id}/bayar`)}
+                  aria-label={`Bayar • ${formatRupiah(order.grandTotal)}`}
+                >
+                  {`${order.payLater ? 'Bayar / Lunasi' : 'Bayar'} • ${formatRupiah(order.grandTotal)}`}
                 </Button>
               )}
-              <Button variant="ghost" size="sm" fullWidth className="font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300" onClick={() => void handleCancelOrderClick()}>
-                Batalkan Pesanan
-              </Button>
             </div>
           </>
         )}
       </div>
 
+      {/* Urutan penting: lapisan yang dibuka dari dalamnya (sheet item, catatan, PIN) dirender sesudahnya → tampil di atas. */}
+      {expanded && order && (
+        <Modal onClose={() => setExpanded(false)} motion="pop" className="flex h-full w-full flex-col bg-ink-900">
+          <div className="flex flex-none items-center gap-3 border-b border-ink-700 px-5 py-3">
+            <h2 className="min-w-0 flex-1 truncate text-2xl font-bold text-ink-50">
+              {orderTitle}
+              {features.orderTypes.length > 1 && <span className="font-semibold text-brand-400"> · {ORDER_TYPE_LABELS[order.type]}</span>}
+              {tableName && <span className="font-semibold text-ink-200"> · {tableName}</span>}
+            </h2>
+            <span className="flex-none whitespace-nowrap text-lg text-ink-300">
+              {activeItems.length} item · {totalPcs} pcs
+            </span>
+            <Button variant="secondary" aria-label="Tutup tampilan besar" leftIcon={<Icon name="close" size={20} />} onClick={() => setExpanded(false)}>
+              Tutup
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+            <div className="mx-auto max-w-4xl">
+              <OrderItemList
+                orderId={order.id}
+                items={activeItems}
+                splitSent={features.kitchen}
+                courseMode={courseMode}
+                heldCourse={heldCourse}
+                size="large"
+                onQtyChange={(item, delta) => void handleQtyChange(item, delta)}
+                onOpenItem={(item) => setDetailItemId(item.id)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-none flex-wrap items-center gap-3 border-t border-ink-700 px-5 py-3">
+            <div className="mr-auto">
+              <p className="text-sm text-ink-300">Total</p>
+              <p className="text-3xl font-bold text-ink-50">{formatRupiah(order.grandTotal)}</p>
+            </div>
+            {showKitchen && (
+              <Button variant="outline" size="lg" onClick={() => handleSendToKitchen()}>
+                {kitchenLabel}
+              </Button>
+            )}
+            {payPrimary === 'marketing' ? (
+              <Button size="lg" className="min-w-[14rem] rounded-full" disabled={activeItems.length === 0} onClick={() => void handleMarketingBillSave()}>
+                Simpan Tagihan Marketing
+              </Button>
+            ) : (
+              <Button size="lg" className="min-w-[14rem] rounded-full text-[1.2rem]" disabled={activeItems.length === 0} onClick={() => navigate(`/kasir/${order.id}/bayar`)}>
+                {order.payLater ? 'Bayar / Lunasi' : 'Bayar'}
+              </Button>
+            )}
+          </div>
+        </Modal>
+      )}
+      {detailItem && (
+        <OrderItemSheet
+          item={detailItem}
+          courseMode={courseMode}
+          heldCourse={heldCourse}
+          onClose={() => setDetailItemId(null)}
+          onEditNote={() => {
+            setDetailItemId(null)
+            setNoteItem(detailItem)
+          }}
+          onCycleCourse={() => void setOrderItemCourse(detailItem.id, cycleCourse(detailItem.course)).catch((e) => toast.error(e instanceof Error ? e.message : 'Gagal'))}
+          onRemove={() => {
+            setDetailItemId(null)
+            void handleQtyChange(detailItem, -detailItem.qty)
+          }}
+        />
+      )}
+      {showMore && order && (
+        <Modal onClose={() => setShowMore(false)} align="bottom" className="w-full max-w-sm rounded-t-2xl bg-ink-900 p-4 sm:rounded-2xl">
+          <h2 className="mb-3 px-1 text-lg font-bold text-ink-50">Lainnya • {orderTitle}</h2>
+          <div className="space-y-2">
+            <Button
+              variant="secondary"
+              fullWidth
+              disabled={!canDiscount || !!order.hppPricing}
+              title={order.hppPricing ? 'Pesanan KOL/Compliment sudah berharga HPP' : undefined}
+              onClick={() => {
+                setShowMore(false)
+                setShowDiscount(true)
+              }}
+            >
+              Diskon
+            </Button>
+            {payPrimary === 'marketing' && (
+              <Button variant="secondary" fullWidth disabled={activeItems.length === 0} onClick={() => navigate(`/kasir/${order.id}/bayar`)}>
+                Bayar Langsung di Tempat
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              fullWidth
+              disabled={activeItems.length === 0}
+              onClick={() => {
+                setShowMore(false)
+                void handleClearCart()
+              }}
+            >
+              Kosongkan
+            </Button>
+            <Button
+              variant="ghost"
+              fullWidth
+              className="font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300"
+              onClick={() => {
+                setShowMore(false)
+                void handleCancelOrderClick()
+              }}
+            >
+              Batalkan Pesanan
+            </Button>
+          </div>
+        </Modal>
+      )}
       {showNewOrder && (
         <NewOrderModal
           orderTypes={features.orderTypes}
@@ -1065,13 +1169,14 @@ export function CashierScreen() {
 }
 
 /** Tombol aksi keranjang: lebih rapat dari bawaan supaya muat 2–3 sejajar. */
-const CART_BTN = 'px-2 text-[0.95rem]'
+const CART_BTN = 'px-2 text-[0.95rem] leading-tight'
 
+/** Baris rincian total — `span` karena dirender di dalam tombol lipat rincian. */
 function SummaryRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between">
+    <span className="flex items-center justify-between">
       <span>{label}</span>
       <span>{formatRupiah(value)}</span>
-    </div>
+    </span>
   )
 }

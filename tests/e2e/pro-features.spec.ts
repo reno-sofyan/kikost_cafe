@@ -72,12 +72,16 @@ test('target omzet, harga online massal, absensi, voucher hadiah, daftar tunggu,
   await page.getByRole('button', { name: 'Snack' }).click()
   await page.getByRole('button', { name: /Kentang Goreng/ }).click()
   await page.getByRole('button', { name: /Pisang Goreng Keju Rp/ }).click()
-  const courseChips = page.getByRole('button', { name: /^Urutan saji / })
-  await expect(courseChips).toHaveCount(2)
-  await courseChips.nth(0).click() // Pembuka
-  await courseChips.nth(1).click()
-  await courseChips.nth(1).click() // Utama
-  await expect(page.getByText('Utama • ditahan')).toBeVisible()
+  // Urutan saji diatur dari sheet detail item (tap nama item di keranjang).
+  const setCourse = async (item: string, taps: number) => {
+    await page.getByRole('button', { name: `Detail ${item}` }).click()
+    for (let i = 0; i < taps; i++) await page.getByRole('button', { name: `Urutan saji ${item}` }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('button', { name: `Urutan saji ${item}` })).toBeHidden()
+  }
+  await setCourse('Kentang Goreng', 1) // Pembuka
+  await setCourse('Pisang Goreng Keju', 2) // Utama
+  await expect(page.getByText(/Utama • ditahan/)).toBeVisible()
   await shot(page, '33-kasir-urutan-saji')
   await page.getByRole('button', { name: 'Lepas Pembuka ke Dapur/Bar' }).click()
   await expect(page.getByText(/1 item dikirim.*1 item ditahan/)).toBeVisible()

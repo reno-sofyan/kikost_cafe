@@ -37,6 +37,7 @@ async function startOrderWithItem(page: Page, buyer: string, itemCount: number) 
 
 /** Batalkan Pesanan → alasan → kode Pemilik; mengembalikan dialog kode. */
 async function submitCancelCode(page: Page, code: string): Promise<Locator> {
+  await page.getByRole('button', { name: 'Lainnya', exact: true }).click() // menu ⋯ keranjang
   await page.getByRole('button', { name: 'Batalkan Pesanan', exact: true }).click()
   const reason = dialogWith(page, /^Batalkan Pesanan/)
   await reason.getByRole('button', { name: 'Pembeli tidak jadi' }).click()

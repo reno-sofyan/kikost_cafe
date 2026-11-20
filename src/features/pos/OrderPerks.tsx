@@ -42,26 +42,45 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
   const hppMode = !!order.hppPricing
   const voucher = order.appliedPromos?.find((p) => p.voucherCode)
 
+  const showMemberChip = memberOn || !!customer
+  const customerMeta = customer
+    ? [
+        memberOn && info ? `${info.tier.name} • ${formatNumber(info.available)} poin` : '',
+        depositBalance ? `saldo ${formatRupiah(depositBalance)}` : '',
+        isBirthdayAt(customer.birthDate, Date.now(), 'month') ? 'ulang tahun bulan ini' : '',
+      ]
+        .filter(Boolean)
+        .join(' • ')
+    : ''
+  const showVoucherChip = features.promos && !hppMode
   return (
-    <div className="space-y-1.5 pb-1">
-      {(memberOn || customer) && (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <button
-            className="flex min-h-[2.4rem] min-w-0 flex-1 items-center gap-2 rounded-xl border border-ink-700 bg-ink-800 px-3 text-left text-ink-100 hover:border-brand-500"
-            onClick={() => setShowMember(true)}
-          >
-            <Icon name="user" size={15} className="flex-none text-ink-300" />
-            <span className={`min-w-0 flex-1 truncate ${customer ? 'font-medium' : 'text-ink-300'}`}>
-              {customer ? customer.name : 'Pilih pelanggan / member'}
-              {customer && memberOn && info ? ` • ${info.tier.name} • ${formatNumber(info.available)} poin` : ''}
-              {customer && depositBalance ? ` • saldo ${formatRupiah(depositBalance)}` : ''}
-              {customer && isBirthdayAt(customer.birthDate, Date.now(), 'month') ? ' • ulang tahun bulan ini' : ''}
-            </span>
-            <Icon name="chevronDown" size={15} className="flex-none text-ink-300" />
-          </button>
+    <div className="space-y-1.5">
+      {features.hppPricing && <HppPricingControl order={order} />}
+      {(showMemberChip || showVoucherChip) && (
+        // Dua chip sejajar: [Pelanggan/member] [Voucher]; setelah dipilih chip menampilkan nama/kode.
+        <div className="flex items-stretch gap-1.5 text-sm">
+          {showMemberChip && (
+            <button
+              className={`${CHIP} min-w-0 flex-1 border-ink-600 bg-ink-900 text-ink-100 hover:border-brand-500`}
+              aria-label={customer ? undefined : 'Pilih pelanggan / member'}
+              title={customer ? [customer.name, customerMeta].filter(Boolean).join(' • ') : undefined}
+              onClick={() => setShowMember(true)}
+            >
+              <Icon name="user" size={15} className="flex-none text-ink-300" />
+              <span className="min-w-0 flex-1 text-left leading-tight">
+                <span className={`block truncate ${customer ? 'font-semibold text-ink-50' : 'text-ink-200'}`}>{customer ? customer.name : 'Pelanggan'}</span>
+                {customerMeta && (
+                  <span className="block truncate text-[0.72rem] text-ink-300">
+                    <span className="sr-only"> • </span>
+                    {customerMeta}
+                  </span>
+                )}
+              </span>
+            </button>
+          )}
           {customer && memberOn && info && loyalty && !hppMode && (
             <button
-              className="flex-none rounded-lg bg-accent-500/15 px-2 py-1 text-xs font-semibold text-accent-500 disabled:opacity-40"
+              className={`${CHIP} flex-none border-transparent bg-accent-500/15 text-xs font-semibold text-accent-500 disabled:opacity-40`}
               disabled={!order.pointsRedeemed && info.available < loyalty.minRedeem}
               title={info.available < loyalty.minRedeem ? `Minimal tukar ${loyalty.minRedeem} poin` : undefined}
               onClick={() => setShowRedeem(true)}
@@ -69,31 +88,28 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
               {order.pointsRedeemed ? `Tukar ${order.pointsRedeemed} poin ✎` : 'Tukar Poin'}
             </button>
           )}
-        </div>
-      )}
-      {features.hppPricing && <HppPricingControl order={order} />}
-      {features.promos && !hppMode && (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          {voucher ? (
-            <>
-              <span className="truncate text-ink-200">
-                Voucher <span className="font-semibold">{voucher.voucherCode}</span>
+          {showVoucherChip &&
+            (voucher ? (
+              <span className={`${CHIP} min-w-0 flex-1 border-brand-500/60 bg-brand-600/10 pr-0 text-ink-100`}>
+                <span className="min-w-0 flex-1 truncate">
+                  Voucher <span className="font-semibold">{voucher.voucherCode}</span>
+                </span>
+                <button
+                  className="flex min-h-[2.75rem] flex-none items-center px-3 text-xs font-semibold text-red-400"
+                  aria-label={`Lepas voucher ${voucher.voucherCode}`}
+                  onClick={() => void setOrderVoucher(order.id, null).then(() => toast.success('Voucher dilepas.'))}
+                >
+                  Lepas
+                </button>
               </span>
+            ) : (
               <button
-                className="flex-none text-xs font-semibold text-red-400"
-                onClick={() => void setOrderVoucher(order.id, null).then(() => toast.success('Voucher dilepas.'))}
+                className={`${CHIP} min-w-0 flex-1 justify-center border-dashed border-brand-500/60 font-medium text-ink-100 hover:bg-brand-600/5`}
+                onClick={() => setShowVoucher(true)}
               >
-                Lepas
+                <Icon name="plus" size={15} className="flex-none" /> <span className="truncate">Kode Voucher</span>
               </button>
-            </>
-          ) : (
-            <button
-              className="flex min-h-[2.4rem] w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-brand-500/60 text-[0.85rem] font-medium text-ink-100 hover:bg-brand-600/5"
-              onClick={() => setShowVoucher(true)}
-            >
-              <Icon name="plus" size={16} /> Kode Voucher
-            </button>
-          )}
+            ))}
         </div>
       )}
 
@@ -105,6 +121,9 @@ export function OrderPerks({ order, features }: { order: Order; features: Busine
     </div>
   )
 }
+
+/** Chip keranjang: setinggi target sentuh (44 px), cukup ringkas untuk dua sejajar. */
+const CHIP = 'flex min-h-[2.75rem] items-center gap-2 rounded-xl border px-3'
 
 function MemberPickerModal({ order, onClose }: { order: Order; onClose: () => void }) {
   const [query, setQuery] = useState('')

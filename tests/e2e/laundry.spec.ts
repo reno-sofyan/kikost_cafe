@@ -74,6 +74,7 @@ test('laundry: nama pelanggan wajib, layanan kiloan, bayar tunai, riwayat, login
     await addService(/Cuci Setrika \(per kg\)/)
     // Layanan laundry tak lewat dapur: tanpa label "Dapur", dan Kosongkan benar-benar mengosongkan.
     await expect(page.getByText(/^Dapur:/)).toHaveCount(0)
+    await page.getByRole('button', { name: 'Lainnya', exact: true }).click() // menu ⋯ keranjang
     await page.getByRole('button', { name: 'Kosongkan', exact: true }).click()
     await page.getByRole('button', { name: 'Ya, Kosongkan' }).click()
     await expect(page.getByText('Keranjang kosong — tap produk di kiri.')).toBeVisible()

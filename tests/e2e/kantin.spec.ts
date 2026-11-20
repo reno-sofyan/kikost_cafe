@@ -123,6 +123,7 @@ test('kantin: diskon wajib alasan & tercatat; diskon besar dan pembatalan butuh 
   await waitForOrderItems(page, 2)
 
   // Diskon di bawah batas: alasan wajib, lalu tercatat beserta nama kasir.
+  await page.getByRole('button', { name: 'Lainnya', exact: true }).click() // menu ⋯ keranjang
   await page.getByRole('button', { name: 'Diskon', exact: true }).click()
   const discount = dialogWith(page, 'Diskon Transaksi')
   await discount.getByRole('spinbutton').fill('5')
@@ -135,6 +136,7 @@ test('kantin: diskon wajib alasan & tercatat; diskon besar dan pembatalan butuh 
   expect((await idbAll<OrderRow>(page, 'orders'))[0]!.discountByName).toBe('Admin E2E')
 
   // Di atas batas 10% → butuh kode Pemilik; belum ada akun Pemilik → diblokir, diskon lama tetap.
+  await page.getByRole('button', { name: 'Lainnya', exact: true }).click() // menu ⋯ keranjang
   await page.getByRole('button', { name: 'Diskon', exact: true }).click()
   await discount.getByRole('spinbutton').fill('50')
   await discount.getByRole('button', { name: 'Promo', exact: true }).click()
@@ -159,6 +161,7 @@ test('kantin: diskon wajib alasan & tercatat; diskon besar dan pembatalan butuh 
   await page.getByRole('link', { name: 'Kasir' }).click()
   await page.getByRole('button', { name: 'Pesanan Terbuka', exact: true }).click()
   await page.getByRole('button', { name: /Siti/ }).first().click()
+  await page.getByRole('button', { name: 'Lainnya', exact: true }).click() // menu ⋯ keranjang
   await page.getByRole('button', { name: 'Batalkan Pesanan', exact: true }).click()
   const reason = dialogWith(page, /^Batalkan Pesanan/)
   await reason.getByRole('button', { name: 'Pembeli tidak jadi' }).click()

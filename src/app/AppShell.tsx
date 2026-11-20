@@ -314,7 +314,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             backendConfigured: isBackendConfigured(),
             isOnline: sync.isOnline,
             failedSync: sync.failedCount,
-            printFailures: printAlerts,
+            // Kasir butuh setiap piksel tinggi untuk keranjang: di sana cukup chip merah
+            // "cetak bermasalah" di header (ke Antrean Cetak), tanpa banner selebar layar.
+            printFailures: pathname === '/kasir' ? 0 : printAlerts,
             onRetrySync: () => void triggerManualSync(),
             onOpenPrintQueue: () => navigate('/cetak'),
           })}

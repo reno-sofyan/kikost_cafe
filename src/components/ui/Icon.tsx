@@ -43,6 +43,8 @@ export type IconName =
   | 'pager'
   | 'phone'
   | 'bag'
+  | 'expand'
+  | 'more'
 
 const SHAPES: Record<IconName, ReactNode> = {
   search: (
@@ -257,6 +259,14 @@ const SHAPES: Record<IconName, ReactNode> = {
     <>
       <path d="M6 8h12l-1 12.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 20.5L6 8Z" />
       <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
+    </>
+  ),
+  expand: <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />,
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.4" fill="currentColor" />
     </>
   ),
 }
